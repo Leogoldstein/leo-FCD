@@ -53,7 +53,7 @@ WinActive=[];%find(speed>1);
 kmean_iter = 100;
 kmeans_surrogate = 100;
 
-[all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = data_processing(all_DF, all_ops, MinPeakDistance, synchronous_frames, directories);
+[all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = raster_processing(all_DF, all_ops, MinPeakDistance, synchronous_frames, directories);
 
 %If you want to retrieve datas
 % clearvars
