@@ -1,4 +1,4 @@
-function fit_linear_model(directories, all_data, animal_date_list)
+function fit_linear_model(directories, field_size_fraction, num_cells_fraction, num_SCEs, animal_date_list)
     % Fonction pour ajuster un modèle linéaire aux données SCEs en fonction
     % de la fraction de la taille de l'image, du nombre de neurones et de l'âge
     %
@@ -19,10 +19,10 @@ function fit_linear_model(directories, all_data, animal_date_list)
     % Itérer sur chaque ensemble de données (un par dossier/animal)
     for k = 1:length(directories)
         % Extraire les données pour le dossier courant
-        field_size_fraction = all_data.field_size_fraction{k}; % Taille de champ pour chaque fraction
-        num_neurons = all_data.num_cells_fraction{k};          % Nombre de neurones pour chaque fraction
-        num_SCEs = all_data.num_SCEs{k};                       % Nombre de SCEs pour chaque fraction
-        current_age = animal_date_list(k,3);                                 % Age correspondant à ce directory (valeur numérique)
+        field_size_fraction = field_size_fraction{k}; % Taille de champ pour chaque fraction
+        num_neurons = num_cells_fraction{k};          % Nombre de neurones pour chaque fraction
+        num_SCEs = num_SCEs{k};                       % Nombre de SCEs pour chaque fraction
+        current_age = animal_date_list(k,5);                                 % Age correspondant à ce directory (valeur numérique)
 
         % Concaténer les données pour chaque animal dans des colonnes
         for f = 1:length(field_size_fraction)
@@ -83,17 +83,16 @@ function fit_linear_model(directories, all_data, animal_date_list)
     %plotEffects(mdl)
     %plotInteraction(mdl,'Field_Size_Fraction','Number_of_Neurons','predictions')
 
-    animal_part = animal_date_list{1, 1}; % Assuming the same animal part for all directories
-    fig_name = sprintf('Linear regression analysis of %s', animal_part);
+    fig_name = sprintf('Linear regression analysis');
 
     % Save the figure to the specified destination folder
-    PathSave = fullfile('D:', 'after_processing', 'Synchrony peaks', animal_part);
+    %PathSave = fullfile('D:', 'after_processing', 'Synchrony peaks', animal_part);
     
-    savefig(fullfile(PathSave, [fig_name, '.fig'])); % Sauvegarde de la figure interactive
+    %savefig(fullfile(PathSave, [fig_name, '.fig'])); % Sauvegarde de la figure interactive
 
     % Vous pouvez également sauvegarder au format .mat si vous souhaitez enregistrer le modèle
-    save(fullfile(PathSave, [fig_name, '_model.mat']), 'mdl');
+    %save(fullfile(PathSave, [fig_name, '_model.mat']), 'mdl');
 
-    close(gcf);
+    %close(gcf);
     
 end

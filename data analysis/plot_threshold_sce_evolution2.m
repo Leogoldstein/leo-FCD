@@ -1,4 +1,4 @@
-function plot_threshold_sce_evolution2(all_data, all_DF, all_MAct, animal_date_list, fractions, sce_n_cells_threshold, num_samples, field_width_microm, NShfl, synchronous_frames, MinPeakDistance, MinPeakDistancesce, directories)
+function plot_threshold_sce_evolution2(gcamp_mask, all_DF, all_MAct, animal_date_list, fractions, sce_n_cells_threshold, num_samples, field_width_microm, synchronous_frames, MinPeakDistance, MinPeakDistancesce, directories)
     % Fonction pour visualiser l'évolution des seuils et du nombre de SCEs en fonction de la taille du champ
 
     % Initialiser les variables pour stocker les résultats
@@ -9,7 +9,6 @@ function plot_threshold_sce_evolution2(all_data, all_DF, all_MAct, animal_date_l
     areas_microm2 = cell(numFolders, 1);
     num_cells_fractions_all = cell(numFolders, 1);
 
-    gcamp_mask  = all_data.gcamp_mask ;
     %sce_n_cells_threshold = all_data.sce_n_cells_threshold ;
     %TRace = all_data.TRace;
 
@@ -192,9 +191,9 @@ function plot_threshold_sce_evolution2(all_data, all_DF, all_MAct, animal_date_l
         
         save(fullfile(directories{k}, 'SCEs_evolution.mat'), 'num_cells_fraction_k', 'num_sces_local_k', 'avg_num_sces_k', 'areas_microm2_k');
 
-        % animal_part = animal_date_list{k,1};
-        % date_part = animal_date_list{k,2};
-        % 
+        % animal_part = animal_date_list{k,3};
+        % date_part = animal_date_list{k,4};
+        % % 
         % % Plot les résultats
         % figure;
         % hold on;
