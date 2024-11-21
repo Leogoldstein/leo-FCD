@@ -1,6 +1,6 @@
-function [workingFolders, canceledIndices] = find_Fall_folders(selectedFolders)
+function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
     % Initialize cell arrays to store paths and canceled indices
-    workingFolders = {};  
+    truedataFolders = {};  
     canceledIndices = []; % To keep track of canceled selections
 
     % Loop through each selected folder
@@ -89,7 +89,7 @@ function [workingFolders, canceledIndices] = find_Fall_folders(selectedFolders)
         
         % Check if Fall.mat exists
         if exist(file_path, 'file') == 2
-            workingFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
+            truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
         else
             % If Fall.mat does not exist, display an error message
             disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
@@ -98,7 +98,7 @@ function [workingFolders, canceledIndices] = find_Fall_folders(selectedFolders)
     
     % Display the directories with Fall.mat files
     disp('Directories with Fall.mat files:');
-    for i = 1:length(workingFolders)
-        disp(workingFolders{i});
+    for i = 1:length(truedataFolders)
+        disp(truedataFolders{i});
     end 
 end

@@ -1,4 +1,4 @@
-function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, workingFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, destinationFolder)
+function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, destinationFolder)
     % Store all path variables in a cell array
     allPaths = {FPaths, statPaths, iscellPaths, opsPaths};
 
@@ -81,12 +81,12 @@ function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, workingFolders] 
     end
 
     % Get the unique directories
-    workingFolders = unique(allFolders);
+    truedataFolders = unique(allFolders);
 
     % Display the unique directories
     disp('Directories with npy files:');
-    for i = 1:length(workingFolders)
-        disp(workingFolders{i});
+    for i = 1:length(truedataFolders)
+        disp(truedataFolders{i});
     end
 
 end
