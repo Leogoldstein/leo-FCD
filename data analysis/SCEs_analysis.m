@@ -1,4 +1,4 @@
-function SCEs_analysis(directories, all_DF, all_data, all_Race, all_Raster, sampling_rate, animal_date_list)
+function SCEs_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Raster, sampling_rate, animal_date_list)
     % Initialize lists to store results
     animal_ncell_list = [];
     animal_num_sces_list = [];
@@ -8,19 +8,6 @@ function SCEs_analysis(directories, all_DF, all_data, all_Race, all_Raster, samp
     elbow_points_list = [];
     animal_entropy_list = [];  % List to store entropy values
     animal_mean_pairwise_correlation_list = [];  % List to store mean pairwise correlations
-
-    % Extract parts from the animal_date_list
-    type_part = animal_date_list(:, 1);
-    animal_part = animal_date_list(:, 3);
-    mTor_part = animal_date_list(:, 2);
-
-    % Create unique combinations of animal and group based on type_part
-    if strcmp(type_part{1}, 'jm')
-        unique_animal_group = unique(animal_part);
-    else
-        animal_group = strcat(animal_part, ' (', mTor_part, ')');
-        unique_animal_group = unique(animal_group);
-    end
 
     unique_combined = unique(unique_animal_group); % Get unique combinations
     num_animals = length(unique_combined);
@@ -70,7 +57,7 @@ function SCEs_analysis(directories, all_DF, all_data, all_Race, all_Raster, samp
                 [NCell, Nz] = size(DF);
                 animal_ncell_list = [animal_ncell_list; NCell];
                 
-                % number of frequency
+                % number of SCEs
                 TRace = all_data.TRace{k};
                 TRace = TRace(:);
                 num_sces = numel(TRace);
@@ -82,27 +69,11 @@ function SCEs_analysis(directories, all_DF, all_data, all_Race, all_Raster, samp
                 sce_frequency_minutes = sce_frequency_seconds * 60;
                 animal_sce_frequencies = [animal_sce_frequencies; sce_frequency_minutes];
 
-                % Skewness
-                Raster = all_Raster{k};
-                yall = skewness(Raster, 1, 'all');
-                animal_skewness_list = [animal_skewness_list; yall];
+                % Number of cells / SCEs
+                
+               
 
-                % Elbow points
-                [~, ~, eigenvalues] = pca(Raster);
-                cumulative_variance = cumsum(eigenvalues) / sum(eigenvalues);
-                num_components_70 = find(cumulative_variance >= 0.7, 1);  % Find the first component where cumulative variance is >= 70%
-                elbow_points_list = [elbow_points_list; num_components_70];
 
-                % Entropy calculation on columns (frames)
-                entropy_value = calculate_entropy(Raster);
-                animal_entropy_list = [animal_entropy_list; entropy_value];
-
-                % Compute the mean of the pairwise correlation
-                corr_matrix = corrcoef(Raster'); 
-                triu_mask = triu(true(size(corr_matrix)), 1);
-                pairwise_correlations = corr_matrix(triu_mask);
-                mean_pairwise_correlation = mean(pairwise_correlations);
-                animal_mean_pairwise_correlation_list = [animal_mean_pairwise_correlation_list; mean_pairwise_correlation];
 
             catch ME
                 fprintf('Error in directory %s: %s\n', directories{k}, ME.message);
@@ -218,32 +189,6 @@ function SCEs_analysis(directories, all_DF, all_data, all_Race, all_Raster, samp
     close(gcf)
 end
 
-function entropy = calculate_entropy(raster_data)
-    [num_cells, num_frames] = size(raster_data);  % num_cells: rows (neurons), num_frames: columns (time)
-    entropy = zeros(num_frames, 1);  % Initialize entropy array to store results
-
-    for i = 1:num_frames
-        % Calculate the probability of activity (1) in the frame (column)
-        p_1 = sum(raster_data(:, i) == 1) / num_cells;  % Probability of activity (1)
-        p_0 = 1 - p_1;  % Probability of inactivity (0)
-        
-        % Initialize entropy for the current frame
-        frame_entropy = 0;
-        
-        % If p_1 > 0, calculate contribution of p_1 to entropy
-        if p_1 > 0
-            frame_entropy = frame_entropy - p_1 * log2(p_1);
-        end
-        
-        % If p_0 > 0, calculate contribution of p_0 to entropy
-        if p_0 > 0
-            frame_entropy = frame_entropy - p_0 * log2(p_0);
-        end
-        
-        % Store the calculated entropy for the current frame
-        entropy(i) = frame_entropy;
-    end
-end
 
 function plot_segments(x, y, color)
     % Helper function to plot data with gaps for missing values
