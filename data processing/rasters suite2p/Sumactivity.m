@@ -1,4 +1,4 @@
-function [Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames)
+function [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames)
     % Get the dimensions of the input matrix F
     [NCell, Nz] = size(DF);
 
@@ -30,6 +30,8 @@ function [Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_
     for i = 1:(Nz - synchronous_frames)
         MAct(i) = sum(max(Raster(:, i:i+synchronous_frames), [], 2));
     end
+
+    DF = DF(:, 1:(Nz - synchronous_frames));
     
     % Display the sum of transient activities
     %disp(['Sum transient: ' num2str(sum(MAct))]);

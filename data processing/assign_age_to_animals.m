@@ -1,4 +1,4 @@
-function animal_date_list = assign_age_to_animal(animal_date_list)
+function animal_date_list = assign_age_to_animals(animal_date_list)
     % assign_age_to_animals prompts the user to assign an age to each unique animal in each unique group
     % 
     % Arguments:
@@ -55,4 +55,3 @@ function animal_date_list = assign_age_to_animal(animal_date_list)
     disp(animal_date_list);
     
 end
-sauvegarde da,s

@@ -17,6 +17,7 @@ function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
                 selectedFolder = suite2pFolder;
             else
                 disp('Error: No ''suite2p'' subfolder found in the selected TSeries folder. Skipping this folder.');
+                canceledIndices = [canceledIndices, idx]; % Record the canceled index
                 continue;  % Skip to the next iteration of the loop
             end
         else
@@ -26,6 +27,7 @@ function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
             % Handle cases based on the number of TSeries folders found
             if isempty(TSeriesFolders)
                 disp('No TSeries folders found. Skipping this folder.');
+                canceledIndices = [canceledIndices, idx]; % Record the canceled index
                 continue;  % Skip to the next iteration if none found
             elseif isscalar(TSeriesFolders) && TSeriesFolders(1).isdir
                 % If there is only one 'TSeries' folder, select it automatically
@@ -38,11 +40,13 @@ function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
                     selectedFolder = suite2pFolder;
                 else
                     disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
+                    canceledIndices = [canceledIndices, idx]; % Record the canceled index
                     continue;  % Skip to the next iteration of the loop
                 end
             else
                 % If there are multiple 'TSeries' folders, prompt the user to select one
                 TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
+                disp(TSeriesPath)
                 
                 % Check if the user canceled the selection
                 if isequal(TSeriesPath, 0)
@@ -59,6 +63,7 @@ function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
                     selectedFolder = suite2pFolder;
                 else
                     disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
+                    canceledIndices = [canceledIndices, idx];
                     continue;  % Skip to the next iteration of the loop
                 end
             end
@@ -92,6 +97,7 @@ function [truedataFolders, canceledIndices] = find_Fall_folders(selectedFolders)
             truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
         else
             % If Fall.mat does not exist, display an error message
+            canceledIndices = [canceledIndices, idx];
             disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
         end
     end

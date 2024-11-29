@@ -90,9 +90,7 @@ function [sce_n_cells_threshold, Race, RasterRace] = select_synchronies(director
         hold off;
 
         % Generate the figure name using animal and date
-        animal_part = animal_date{1};  % Assuming `animal_date` is a cell with two elements, animal and date
-        date_part = animal_date{2};
-        fig_name = sprintf('Raster_plot_of_Race_data_of_%s_%s', animal_part, date_part);
+        fig_name = sprintf('Raster_plot_of_Race_data_of_%s_%s', animal_group, date_part);
 
         % Save the figure
         save_path = fullfile(directory, [fig_name, '.png']);

@@ -11,9 +11,6 @@ function [F, DF, ops, stat, iscell] = load_and_preprocess_data(workingFolder, va
     % - stat_list: Statistics from loaded files.
     % - iscell_list: Cell status.
 
-    % Process the folder
-    disp(workingFolder)
-
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
     files = dir(fullfile(workingFolder, '*.npy'));
