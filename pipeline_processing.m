@@ -26,9 +26,9 @@ dataFolders = select_folders(initial_folder);
 
 %%
 
-animal_date_list = create_animal_date_list(dataFolders);
+animal_date_list = create_animal_date_list(truedataFolders);
 % Assign ages to the animals
 animal_date_list = assign_age_to_animals(animal_date_list);
 %%
 PathSave = 'D:\after_processing';
-process_data(PathSave, animal_date_list, truedataFolders, canceledIndices); % newFPaths, newStatPaths, newIscellPaths, newOpsPaths)
+process_data(PathSave, animal_date_list, truedataFolders); % newFPaths, newStatPaths, newIscellPaths, newOpsPaths)

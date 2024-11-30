@@ -30,8 +30,6 @@ function [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchron
     for i = 1:(Nz - synchronous_frames)
         MAct(i) = sum(max(Raster(:, i:i+synchronous_frames), [], 2));
     end
-
-    DF = DF(:, 1:(Nz - synchronous_frames));
     
     % Display the sum of transient activities
     %disp(['Sum transient: ' num2str(sum(MAct))]);

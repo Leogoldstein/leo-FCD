@@ -1,4 +1,4 @@
-function [sce_n_cells_threshold, Race, RasterRace] = select_synchronies(directory, DF, MAct, MinPeakDistancesce, Raster, animal_date, synchronous_frames, WinActive)
+function [sce_n_cells_threshold, TRace, Race, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
     % select_synchronies processes data from a single folder, detecting synchronies (SCEs),
     % creating raster plots, and saving the results.
     %
@@ -8,7 +8,6 @@ function [sce_n_cells_threshold, Race, RasterRace] = select_synchronies(director
     % - MAct: Sum of max cell activities for the folder
     % - MinPeakDistance: Minimum distance between peaks in frames
     % - Raster: Raster data for the folder
-    % - animal_date: Animal and date information for file naming
     % - synchronous_frames: Number of frames considered for synchrony detection
     % - WinActive: A window of active frames
     %
@@ -90,7 +89,7 @@ function [sce_n_cells_threshold, Race, RasterRace] = select_synchronies(director
         hold off;
 
         % Generate the figure name using animal and date
-        fig_name = sprintf('Raster_plot_of_Race_data_of_%s_%s', animal_group, date_part);
+        fig_name = sprintf('Raster_plot_of_Race_data_of_%s_%s', animal, date);
 
         % Save the figure
         save_path = fullfile(directory, [fig_name, '.png']);
@@ -98,7 +97,7 @@ function [sce_n_cells_threshold, Race, RasterRace] = select_synchronies(director
         close(gcf);
 
         % Save the results to .mat file for the current directory
-        save(fullfile(directory, 'results_SCEs.mat'), 'DF', 'Race', 'TRace', 'RasterRace', 'sce_n_cells_threshold');
+        save(fullfile(directory, 'results_SCEs.mat'), 'Race', 'TRace', 'RasterRace', 'sce_n_cells_threshold');
         
     catch ME
         warning('Error processing folder %s: %s', directory, ME.message);
