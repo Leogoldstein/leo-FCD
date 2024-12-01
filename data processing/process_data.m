@@ -70,7 +70,7 @@ function process_data(PathSave, animal_date_list, truedataFolders)
     end
     
     % Ask for analysis type after gathering all inputs
-    analysis_choice = input('Choose analysis type: raster plot (1), mean images (2), or SCE analysis (3)? ');
+    analysis_choice = input('Choose analysis type: raster plot (1), mean images (2), SCEs (3) or clusters analysis (4)? ');
 
     % Perform analyses
     for k = 1:length(selected_groups)
@@ -83,26 +83,29 @@ function process_data(PathSave, animal_date_list, truedataFolders)
         switch analysis_choice
             case 1
                 disp(['Performing raster plot analysis for ', current_animal_group]);
-                raster_path = create_base_folders(current_ani_path_group, 'Raster plots');
-                raster_group_paths = create_date_folders(raster_path, current_dates_group);
-    
+                [raster_path, raster_group_paths] = create_base_folders(current_ani_path_group, 'Raster plots', current_dates_group);
+
                 [synchronous_frames, all_DF, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(current_folders_group, raster_group_paths);
     
                 build_rasterplots(all_DF, all_isort1, all_MAct, raster_path, current_animal_group, current_dates_group, current_age_group);
            
             case 2
                 disp(['Performing mean images for ', current_animal_group]);
-                mean_path = create_base_folders(current_ani_path_group, 'Mean images');
-                mean_group_paths = create_date_folders(mean_path, current_dates_group);
-                
+                [mean_path, mean_group_paths] = create_base_folders(current_ani_path_group, 'Mean images', current_dates_group);
+               
                 load_or_process_mean_images(mean_group_paths, current_folders_group, current_animal_group, current_dates_group)
                     
             case 3
                 disp(['Performing SCEs analysis for ', current_animal_group]);
-                sce_path = create_base_folders(current_ani_path_group, 'SCEs');
-                sce_group_paths = create_date_folders(sce_path, current_dates_group);
+                [sce_path, sce_group_paths] = create_base_folders(current_ani_path_group, 'SCEs', current_dates_group);
     
                 [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
+
+            case 4
+                disp(['Performing clusters analysis for ', current_animal_group]);
+                [clusters_path, clusters_group_paths] = create_base_folders(current_ani_path_group, 'Clusters of SCEs', current_dates_group);
+    
+                [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, clusters_group_paths);
 
             otherwise
                 disp('Invalid analysis choice. Skipping...');
@@ -220,21 +223,18 @@ end
 %% Helper Functions
 
 % Create subfolders for analysis
-function analysis_path = create_base_folders(base_path, folder_name)
-    analysis_path = fullfile(base_path, folder_name);
-    if ~exist(analysis_path, 'dir')
-        mkdir(analysis_path);
-        disp(['Created folder: ', analysis_path]);
+function [save_path, date_group_paths] = create_base_folders(base_path, folder_name, current_dates_group)
+    save_path = fullfile(base_path, folder_name);
+    if ~exist(save_path, 'dir')
+        mkdir(save_path);
+        disp(['Created folder: ', save_path]);
     end
-end
 
-function date_group_paths = create_date_folders(raster_path, current_group_dates)
-    % Initialise les sorties
-    date_group_paths = cell(length(current_group_dates), 1);  % Chemins regroupés par date
+    date_group_paths = cell(length(current_dates_group), 1);  % Chemins regroupés par date
     
-    for k = 1:length(current_group_dates)
+    for k = 1:length(current_dates_group)
         % Crée le chemin complet pour chaque date
-        date_path = fullfile(raster_path, current_group_dates{k});
+        date_path = fullfile(save_path, current_dates_group{k});
         
         % Vérifie si le dossier existe déjà
         if ~exist(date_path, 'dir')
@@ -387,8 +387,7 @@ function [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load
     if process_needed
         disp('Processing missing files...');
         % Generate the raster path and group paths
-        raster_path = create_base_folders(current_ani_path_group, 'Raster plots');
-        raster_group_paths = create_date_folders(raster_path, current_dates_group);
+        [raster_path, raster_group_paths] = create_base_folders(current_ani_path_group, 'Raster plots', current_dates_group);
 
         % Load or process raster data
         [synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
@@ -424,6 +423,137 @@ function [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load
             all_Race{m} = Race;
             all_TRace{m} = TRace;
             all_RasterRace{m} = RasterRace;
+        end
+    end
+end
+
+
+function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, clusters_group_paths)
+    
+    % Initialize output cell arrays to store results for each directory
+    numFolders = length(clusters_group_paths);  % Number of groups
+    % Initialize all output variables
+    all_IDX2 = cell(numFolders, 1);
+    all_sCl = cell(numFolders, 1);
+    all_M = cell(numFolders, 1);
+    all_S = cell(numFolders, 1);
+    all_R = cell(numFolders, 1);
+    all_CellScore = cell(numFolders, 1);
+    all_CellScoreN = cell(numFolders, 1);
+    all_CellCl = cell(numFolders, 1);
+    all_NClOK = cell(numFolders, 1);
+    validDirectories = cell(numFolders, 1);
+    all_assemblyraw = cell(numFolders, 1);
+    all_assemblystat = cell(numFolders, 1);
+    all_RaceOK = cell(numFolders, 1);
+    all_clusterMatrix = cell(numFolders, 1);
+
+    % Initialize a flag to track if processing is needed
+    process_needed = false;
+
+    % First loop: Check if results exist and load them
+    for m = 1:numFolders
+        % Create the full file path for results_SCEs.mat
+        filePath = fullfile(clusters_group_paths{m}, 'results_clustering.mat');
+
+        if exist(filePath, 'file') == 2
+            disp(['Loading file: ', filePath]);
+            % Try to load the pre-existing results from the file
+            data = load(filePath);
+
+            if isfield(data, 'IDX2')
+                all_IDX2{k} = data.IDX2;
+            end
+            if isfield(data, 'sCl')
+                all_sCl{k} = data.sCl;
+            end
+            if isfield(data, 'M')
+                all_M{k} = data.M;
+            end
+            if isfield(data, 'S')
+                all_S{k} = data.S;
+            end
+            if isfield(data, 'R')
+                all_R{k} = data.R;
+            end
+            if isfield(data, 'CellScore')
+                all_CellScore{k} = data.CellScore;
+            end
+            if isfield(data, 'CellScoreN')
+                all_CellScoreN{k} = data.CellScoreN;
+            end
+            if isfield(data, 'CellCl')
+                all_CellCl{k} = data.CellCl;
+            end
+            if isfield(data, 'NClOK')
+                all_NClOK{k} = data.NClOK;
+            end
+            if isfield(data, 'validDirectory')
+                validDirectories{k} = data.validDirectory;
+            end
+            if isfield(data, 'assemblyraw')
+                all_assemblyraw{k} = data.assemblyraw;
+            end
+            if isfield(data, 'assemblystat')
+                all_assemblystat{k} = data.assemblystat;
+            end
+            if isfield(data, 'RaceOK')
+                all_RaceOK{k} = data.RaceOK;
+            end
+            if isfield(data, 'clusterMatrix')
+                all_clusterMatrix{k} = data.clusterMatrix;
+            end
+        else
+            % If at least one file is missing, mark that processing is needed
+            process_needed = true;
+        end
+    end
+
+    % If processing is needed, handle it outside the loop
+    if process_needed
+        disp('Processing missing files...');
+
+        % Generate the raster path and sce paths
+        [raster_path, raster_group_paths] = create_base_folders(current_ani_path_group, 'Raster plots', current_dates_group);
+        [sce_path, sce_group_paths] = create_base_folders(current_ani_path_group, 'SCEs', current_dates_group);
+
+        % Load or process raster and sce data
+        [synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+            load_or_process_raster_data(current_folders_group, raster_group_paths);
+        
+        [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = ...
+            load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
+
+        % Process data for missing files and save results
+        for m = 1:numFolders
+            % Create the full file path for results_SCEs.mat
+            filePath = fullfile(clusters_group_paths{m}, 'results_clustering.mat');
+
+            % Skip already loaded files
+            if exist(filePath, 'file') == 2
+                continue;
+            end
+
+            % Process and save the missing results
+            disp(['Processing folder: ', clusters_group_paths{m}]);
+
+            % Extract relevant data for the current folder
+            DF = all_DF{m};
+            Raster = all_Raster{m};
+            MAct = all_MAct{m};
+            Race = all_Race{m};
+
+            kmean_iter = 100;
+            kmeans_surrogate = 100;
+
+            % Call the processing function
+            [validDirectory, clusterMatrix, NClOK] = ...
+                cluster_synchronies(clusters_group_paths{m}, DF, MAct, Raster, Race, kmean_iter, kmeans_surrogate);
+
+            % Store results in output variables
+            validDirectories{m} = validDirectory;
+            all_clusterMatrix{m} = clusterMatrix;
+            all_NClOK{m} = NClOK;
         end
     end
 end
