@@ -1,11 +1,5 @@
-function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups)
-    % Initialize lists to store results
-    animal_ncell_list = [];
-    animal_num_sces_list = [];
-    animal_sce_frequencies = [];
-    avg_active_cell_list = [];
-    ratio_list = [];
-    
+function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups)
+
     num_animals = length(selected_groups);
     animal_group = cell(num_animals, 1);
     colors = lines(num_animals); % Generate distinct colors
@@ -32,14 +26,15 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
         all_TRace = all_TRace_groups{groupIdx};
         all_Race = all_Race_groups{groupIdx};
         all_Raster = all_Raster_groups{groupIdx};
+        all_sces_distances = all_sces_distances{groupIdx};
         current_paths = current_group_paths{groupIdx};
 
         % Reset lists for each animal to prevent overlap
         animal_ncell_list = [];
         animal_num_sces_list = [];
         animal_sce_frequencies = [];
-        animal_avg_active_cell_list = [];
         animal_ratio_list = [];
+        animal_sce_duration_list = [];
         
         % Iterate over directories for the current animal
         for pathIdx = 1:length(current_dates_group)
@@ -70,20 +65,7 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
                 sce_frequency_minutes = sce_frequency_seconds * 60;
                 animal_sce_frequencies = [animal_sce_frequencies; sce_frequency_minutes];
 
-                % Average number of active cells in SCEs
-                if pathIdx <= numel(all_Race)
-                    Race = all_Race{pathIdx}; % Ensure Race is numeric
-                else
-                    error('Index exceeds the number of Race elements.');
-                end
-                if ~isempty(Race) && size(Race, 2) >= num_sces
-                    avg_active_cell_SCEs = mean(sum(Race, 1)); % Average across SCEs
-                    animal_avg_active_cell_list = [animal_avg_active_cell_list; avg_active_cell_SCEs];
-                else
-                    animal_avg_active_cell_list = [animal_avg_active_cell_list; NaN];
-                end
-
-                % Ratio of active cells in SCEs/outside SCEs
+                % Proportion of active cells in SCEs
                 if pathIdx <= numel(all_Raster)
                     Raster = all_Raster{pathIdx}; % Ensure Raster is numeric
                 else
@@ -102,6 +84,25 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
                 end
                 percentage_ratio = ratio * 100;
                 animal_ratio_list = [animal_ratio_list; percentage_ratio];
+                
+                %SCEs duration
+                if pathIdx <= numel(all_sces_distances)
+                    sces_distances = all_sces_distances{pathIdx}; % Ensure Raster is numeric
+                else
+                    sces_distances = NaN;
+                end
+                distances = sces_distances(:, 2);
+                if ~isempty(distances)
+                    % Convertir les distances (en frames) en durées (en ms)
+                    frame_duration_ms = 1000 / sampling_rate; % Durée d'une frame en ms
+                    durations_ms = distances * frame_duration_ms; % Conversion
+                else
+                    durations_ms = NaN; % Si distances est vide, renvoyer NaN
+                end
+
+                avg_duration_ms = mean(durations_ms, 'omitnan'); % Moyenne en ignorant les NaN
+                animal_sce_duration_list = [animal_sce_duration_list; avg_duration_ms];
+
 
             catch ME
                 fprintf('Error in directory %s: %s\n', current_paths{pathIdx}, ME.message);
@@ -109,8 +110,8 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
                 animal_ncell_list = [animal_ncell_list; NaN];
                 animal_num_sces_list = [animal_num_sces_list; NaN];
                 animal_sce_frequencies = [animal_sce_frequencies; NaN];
-                animal_avg_active_cell_list = [animal_avg_active_cell_list; NaN];
                 animal_ratio_list = [animal_ratio_list; NaN];
+                animal_sce_duration_list = [animal_sce_duration_list; NaN];
             end
         end
 
@@ -129,18 +130,19 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
         plot_segments(x_indices, animal_sce_frequencies, colors(groupIdx, :));
 
         subplot(4, 2, 4); hold on;
-        plot_segments(x_indices, animal_avg_active_cell_list, colors(groupIdx, :));
+        plot_segments(x_indices, animal_ratio_list, colors(groupIdx, :));
 
         subplot(4, 2, 5); hold on;
-        plot_segments(x_indices, animal_ratio_list, colors(groupIdx, :));
+        plot_segments(x_indices, animal_sce_duration_list, colors(groupIdx, :));
+        
     end
 
     % Add legends and titles
     subplot(4, 2, 1); legend(legend_entries); title('NCells by age');
     subplot(4, 2, 2); legend(legend_entries); title('Number of SCEs by age');
     subplot(4, 2, 3); legend(legend_entries); title('SCE frequencies by age');
-    subplot(4, 2, 4); legend(legend_entries); title('Avg active cells per SCE by age');
-    subplot(4, 2, 5); legend(legend_entries); title('Active cell ratio by age');
+    subplot(4, 2, 4); legend(legend_entries); title('Proportion of active cell by age (%)');
+    subplot(4, 2, 5); legend(legend_entries); title('Mean SCEs duration by age (ms)');
 
     % Set the overall figure title
     first_animal_group = animal_group{1};

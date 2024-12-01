@@ -1,4 +1,4 @@
-function [sce_n_cells_threshold, TRace, Race, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
+function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
     % select_synchronies processes data from a single folder, detecting synchronies (SCEs),
     % creating raster plots, and saving the results.
     %
@@ -48,6 +48,28 @@ function [sce_n_cells_threshold, TRace, Race, RasterRace] = select_synchronies(d
         NRace = length(TRace);
         disp(['nSCE: ' num2str(NRace)])
 
+         % Calcul des intersections et distances
+        sces_distances = zeros(NRace, 2); % Matrice pour stocker les intersections et distances
+        for i = 1:NRace
+            % Identifiez les frames avant le pic où MAct croise le seuil
+            left_idx = find(MAct(1:TRace(i)) < sce_n_cells_threshold, 1, 'last');
+            if isempty(left_idx)
+                left_idx = 1; % Par sécurité si aucun croisement trouvé
+            end
+            
+            % Identifiez les frames après le pic où MAct croise le seuil
+            right_idx = find(MAct(TRace(i):end) < sce_n_cells_threshold, 1, 'first');
+            if isempty(right_idx)
+                right_idx = Nz - TRace(i); % Par sécurité si aucun croisement trouvé
+            end
+            right_idx = TRace(i) + right_idx - 1;
+
+            % Calculez la distance entre les intersections
+            distance = right_idx - left_idx;
+
+            % Stockez les résultats
+            sces_distances(i, :) = [TRace(i), distance];
+        end
         % Create Race and RasterRace matrices
         Race = zeros(NCell, NRace);
         RasterRace = zeros(NCell, Nz);
@@ -97,7 +119,7 @@ function [sce_n_cells_threshold, TRace, Race, RasterRace] = select_synchronies(d
         close(gcf);
 
         % Save the results to .mat file for the current directory
-        save(fullfile(directory, 'results_SCEs.mat'), 'Race', 'TRace', 'RasterRace', 'sce_n_cells_threshold');
+        save(fullfile(directory, 'results_SCEs.mat'), 'Race', 'TRace', 'sces_distances', 'RasterRace', 'sce_n_cells_threshold');
         
     catch ME
         warning('Error processing folder %s: %s', directory, ME.message);
