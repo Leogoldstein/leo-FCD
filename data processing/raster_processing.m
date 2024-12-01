@@ -1,4 +1,4 @@
-function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, synchronous_frames, directory)
+function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, directory)
     % raster_processing processes data given DF and ops, and saves results for a single directory.
     %
     % Inputs:
@@ -24,7 +24,7 @@ function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops
         [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames);
 
         % Save individual results for the current directory
-        save(fullfile(directory, 'results_raster.mat'), 'MinPeakDistance', 'synchronous_frames', 'DF', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'ops', 'Acttmp2');
+        save(fullfile(directory, 'results_raster.mat'), 'MinPeakDistance', 'sampling_rate', 'synchronous_frames', 'DF', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'ops', 'Acttmp2');
         
     catch ME
         % If there's an error, display a warning
