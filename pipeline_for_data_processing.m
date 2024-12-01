@@ -1,4 +1,4 @@
-function process_data(PathSave, animal_date_list, truedataFolders)
+function pipeline_for_data_processing(PathSave, animal_date_list, truedataFolders)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved

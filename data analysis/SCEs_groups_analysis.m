@@ -26,7 +26,7 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
         all_TRace = all_TRace_groups{groupIdx};
         all_Race = all_Race_groups{groupIdx};
         all_Raster = all_Raster_groups{groupIdx};
-        all_sces_distances = all_sces_distances{groupIdx};
+        all_sces_distances = all_sces_distances_groups{groupIdx};
         current_paths = current_group_paths{groupIdx};
 
         % Reset lists for each animal to prevent overlap
@@ -66,6 +66,17 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
                 animal_sce_frequencies = [animal_sce_frequencies; sce_frequency_minutes];
 
                 % Proportion of active cells in SCEs
+
+                % Average number of active cells in SCEs
+                if pathIdx <= numel(all_Race)
+                    Race = all_Race{pathIdx}; % Ensure Race is numeric
+                else
+                    error('Index exceeds the number of Race elements.');
+                end
+                if ~isempty(Race) && size(Race, 2) >= num_sces
+                    avg_active_cell_SCEs = mean(sum(Race, 1)); % Average across SCEs
+                end
+  
                 if pathIdx <= numel(all_Raster)
                     Raster = all_Raster{pathIdx}; % Ensure Raster is numeric
                 else
