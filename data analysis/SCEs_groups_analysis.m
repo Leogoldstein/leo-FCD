@@ -1,4 +1,4 @@
-function SCEs_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Raster, sampling_rate, animal_date_list)
+function SCEs_groups_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Raster, sampling_rate, current_ages_group)
     % Initialize lists to store results
     animal_ncell_list = [];
     animal_num_sces_list = [];
@@ -24,30 +24,12 @@ function SCEs_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Rast
         animal_group = unique_combined{a};
         disp(['Processing: ', animal_group]) % Debug: display animal group being processed
 
-        % Extract animal name and group
-        parts = regexp(animal_group, ' \(', 'split');
-        animal = parts{1};
-
-        if ~strcmp(type_part{1}, 'jm')
-            group = strrep(parts{2}, ')', '');
-            animal_indices = strcmp(animal_date_list(:, 3), animal) & strcmp(animal_date_list(:, 2), group);
-        else
-            animal_indices = strcmp(animal_date_list(:, 3), animal);
-        end
-
-        % Determine the dates (ages) for the current animal
-        ages_for_animal = find(animal_indices);
-        current_age_labels = animal_date_list(ages_for_animal, 5); % Extract age labels
-        current_ages = cellfun(@(x) str2double(x(2:end)), current_age_labels); % Remove 'P' and convert to number
+        current_ages = cellfun(@(x) str2double(x(2:end)), current_ages_group); % Remove 'P' and convert to number
 
         % Reset lists for each animal to prevent overlap
         animal_ncell_list = [];
         animal_num_sces_list = [];
         animal_sce_frequencies = [];
-        animal_skewness_list = [];
-        elbow_points_list = [];
-        animal_entropy_list = [];  % Reset entropy list
-        animal_mean_pairwise_correlation_list = [];  % Reset mean pairwise correlation list
 
         % Iterate over directories for the current animal
         for k = ages_for_animal'
@@ -69,7 +51,7 @@ function SCEs_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Rast
                 sce_frequency_minutes = sce_frequency_seconds * 60;
                 animal_sce_frequencies = [animal_sce_frequencies; sce_frequency_minutes];
 
-                % Number of cells / SCEs
+                % Proportion of cells / SCEs
                 
                
 
@@ -80,10 +62,6 @@ function SCEs_analysis(unique_animal_group, all_DF, all_data, all_Race, all_Rast
                 animal_ncell_list = [animal_ncell_list; NaN];
                 animal_num_sces_list = [animal_num_sces_list; NaN];
                 animal_sce_frequencies = [animal_sce_frequencies; NaN];
-                animal_skewness_list = [animal_skewness_list; NaN];
-                elbow_points_list = [elbow_points_list; NaN];
-                animal_entropy_list = [animal_entropy_list; NaN];  % Ensure consistency in case of error
-                animal_mean_pairwise_correlation_list = [animal_mean_pairwise_correlation_list; NaN];  % Handle errors for pairwise correlation
             end
         end
 

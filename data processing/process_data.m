@@ -78,16 +78,16 @@ function process_data(PathSave, animal_date_list, truedataFolders)
         current_dates_group = selected_groups(k).dates;
         current_folders_group = selected_groups(k).folders;
         current_ani_path_group = selected_groups(k).path;
-        current_age_group = selected_groups(k).ages;
+        current_ages_group = selected_groups(k).ages;
 
         switch analysis_choice
             case 1
                 disp(['Performing raster plot analysis for ', current_animal_group]);
                 [raster_path, raster_group_paths] = create_base_folders(current_ani_path_group, 'Raster plots', current_dates_group);
 
-                [synchronous_frames, all_DF, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(current_folders_group, raster_group_paths);
+                [sampling_rate, synchronous_frames, all_DF, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(current_folders_group, raster_group_paths);
     
-                build_rasterplots(all_DF, all_isort1, all_MAct, raster_path, current_animal_group, current_dates_group, current_age_group);
+                build_rasterplots(all_DF, all_isort1, all_MAct, raster_path, current_animal_group, current_dates_group, current_ages_group);
            
             case 2
                 disp(['Performing mean images for ', current_animal_group]);
@@ -99,7 +99,9 @@ function process_data(PathSave, animal_date_list, truedataFolders)
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 [sce_path, sce_group_paths] = create_base_folders(current_ani_path_group, 'SCEs', current_dates_group);
     
-                [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
+                [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
+                
+                SCEs_analysis(current_animal_group, all_DF, all_Race, all_Raster, sampling_rate, current_ages_group);
 
             case 4
                 disp(['Performing clusters analysis for ', current_animal_group]);
@@ -113,111 +115,6 @@ function process_data(PathSave, animal_date_list, truedataFolders)
     end
 end
 
-
-% 
-%         % SCE Analysis
-%         elseif analysis_choice == 3
-%             sce_paths = create_base_folders(ani_paths, 'SCEs');
-%             [sce_group_paths, inds_group, dates_group, truedataFolders_group] = create_date_folders(sce_paths, unique_animal_group, animal_group, date_part, truedataFolders);
-% 
-%             raster_paths = create_base_folders(ani_paths, 'Raster plots');
-%             [raster_group_paths, inds_group, dates_group, truedataFolders_group] = create_date_folders(raster_paths, unique_animal_group, animal_group, date_part, truedataFolders);
-%             [synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(truedataFolders_group, raster_group_paths);
-% 
-%             [~, all_Race, ~, ~] = load_or_process_sce_data(sce_group_paths, all_DF, all_MAct, all_Raster, synchronous_frames, animal_group, dates_group);
-% 
-% 
-% 
-%             % % Generate SCE analysis figures
-%             %  for k = 1:length(unique_animal_group)
-%             %     current_animal = unique_animal_group{k};
-%             %     fig_save_path = fullfile(raster_paths{k}, sprintf('%s_synchrony_peaks.png', strrep(current_animal, ' ', '_')));
-%             % 
-%             %     if ~exist(fig_save_path, 'file')
-%             %         fig_save_paths{end+1} = fig_save_path;
-%             %     else
-%             %         disp(['Figures already exist: ' fig_save_path]);
-%             %     end
-%             % end
-%             % 
-%             % if ~isempty(fig_save_paths)
-%             %     SCEs_analysis(unique_animal_group, all_DF, all_Race, all_Raster, sampling_rate, animal_date_list);
-%             end    
-%     % 
-%     %      % Save by date
-%     %      elseif choice == 2
-%     %         for k = 1:size(animal_date_list, 1)
-%     %             % If mTor_part exists, include it in the save path
-%     %             if ~isempty(mTor_part{k})
-%     %                 save_path = fullfile(PathSave, type_part{k}, mTor_part{k}, animal_part{k}, date_part{k});
-%     %             else
-%     %                 save_path = fullfile(PathSave, type_part{k}, animal_part{k}, date_part{k});
-%     %             end
-%     % 
-%     %             if ~exist(save_path, 'dir')
-%     %                 mkdir(save_path);
-%     %                 disp(['Created folder: ' save_path]);
-%     %             end
-%     % 
-%     %             save_paths{end+1} = save_path;
-%     %         end
-%     % 
-%     %         % Raster plot analysis
-%     %         if analysis_choice == 1
-%     %             for k = 1:length(save_paths)
-%     %                 fig_save_path = fullfile(save_paths{k}, sprintf('raster_plots_%s_%s_%s.png', mTor_part{k}, animal_part{k}, age_part{k}));  
-%     % 
-%     %                 if ~exist(fig_save_path, 'file')
-%     %                     fig_save_paths{end+1} = fig_save_path;
-%     %                 else
-%     %                     disp(['Raster plot already exists: ' fig_save_path]);
-%     %                 end
-%     %             end
-%     % 
-%     %             if ~isempty(fig_save_paths)
-%     %                 build_rasterplots(results.raster, fig_save_paths);
-%     %             end
-%     % 
-%     %         % Mean image analysis
-%     %         elseif analysis_choice == 2
-%     %             for k = 1:length(save_paths)
-%     %                 fig_save_path = fullfile(save_paths{k}, sprintf('mean_image_%s_%s_%s.png', mTor_part{k}, animal_part{k}, age_part{k}));
-%     % 
-%     %                 if ~exist(fig_save_path, 'file')
-%     %                     fig_save_paths{end+1} = fig_save_path;
-%     %                 else
-%     %                     disp(['Mean image already exists: ' fig_save_path]);
-%     %                 end    
-%     %             end
-%     % 
-%     %             if ~isempty(fig_save_paths)
-%     %                 save_mean_images(results.ops, fig_save_paths);
-%     %             end 
-%     % 
-%     %         % SCE analysis
-%     %         elseif analysis_choice == 3
-%     %             for k = 1:length(save_paths)
-%     %                 fig_save_path = fullfile(save_paths{k}, sprintf('synchrony_peaks_%s_%s_%s.png', mTor_part{k}, animal_part{k}, age_part{k}));
-%     % 
-%     %                 if ~exist(fig_save_path, 'file')
-%     %                     fig_save_paths{end+1} = fig_save_path;
-%     %                 else
-%     %                     disp(['Synchrony peaks already exist: ' fig_save_path]);
-%     %                 end
-%     %             end
-%     % 
-%     %             if ~isempty(fig_save_paths)
-%     %                 save_SCE_analysis(results.SCEs, fig_save_paths);
-%     %             end
-%     %         else    
-%     %             error('Invalid choice. Please enter 1, 2, or 3.');
-%     %         end
-%     %     else
-%     %         error('Invalid choice. Please enter 1 or 2.');
-%     %     end
-% %     end
-%     end
-% end
 
 
 %% Helper Functions
@@ -249,7 +146,7 @@ function [save_path, date_group_paths] = create_base_folders(base_path, folder_n
 end
 
 
-function [synchronous_frames, all_DF, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(current_folders_group, raster_group_paths)    
+function [sampling_rate, synchronous_frames, all_DF, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(current_folders_group, raster_group_paths)    
     % Initialize cell arrays for outputs
     numFolders = length(raster_group_paths);
     all_DF = cell(numFolders, 1);
@@ -343,7 +240,7 @@ function load_or_process_mean_images(mean_group_paths, current_folders_group, cu
 end
 
 
-function [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths)
+function [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(sce_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -390,7 +287,7 @@ function [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load
         [raster_path, raster_group_paths] = create_base_folders(current_ani_path_group, 'Raster plots', current_dates_group);
 
         % Load or process raster data
-        [synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+        [sampling_rate, synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
             load_or_process_raster_data(current_folders_group, raster_group_paths);
 
         % Process data for missing files and save results
@@ -518,10 +415,10 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
         [sce_path, sce_group_paths] = create_base_folders(current_ani_path_group, 'SCEs', current_dates_group);
 
         % Load or process raster and sce data
-        [synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+        [sampling_rate, synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
             load_or_process_raster_data(current_folders_group, raster_group_paths);
         
-        [all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = ...
+        [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = ...
             load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
 
         % Process data for missing files and save results
