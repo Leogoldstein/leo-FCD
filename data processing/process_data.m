@@ -68,7 +68,8 @@ function process_data(PathSave, animal_date_list, truedataFolders)
         selected_groups(k).folders = truedataFolders(selected_indices);
         selected_groups(k).path = ani_path;
     end
-    
+    assignin('base', 'selected_groups', selected_groups);
+
     % Ask for analysis type after gathering all inputs
     analysis_choice = input('Choose analysis type: raster plot (1), mean images (2), SCEs (3) or clusters analysis (4)? ');
 
@@ -99,9 +100,26 @@ function process_data(PathSave, animal_date_list, truedataFolders)
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 [sce_path, sce_group_paths] = create_base_folders(current_ani_path_group, 'SCEs', current_dates_group);
     
-                [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
+                [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
                 
-                SCEs_analysis(current_animal_group, all_DF, all_Race, all_Raster, sampling_rate, current_ages_group);
+                all_DF_groups{k} = cell(length(sce_group_paths), 1);
+                all_Raster_groups{k} = cell(length(sce_group_paths), 1);
+                all_sampling_rate_groups{k} = cell(length(sce_group_paths), 1);
+                all_Race_groups{k} = cell(length(sce_group_paths), 1);
+                all_TRace_groups{k} = cell(length(sce_group_paths), 1);
+                all_RasterRace_groups{k} = cell(length(sce_group_paths), 1);
+                all_sce_path{k} = sce_path;
+    
+                % Process each path within the current group
+                for pathIdx = 1:length(sce_group_paths)
+              
+                    all_DF_groups{k}{pathIdx} = all_DF;
+                    all_Raster_groups{k}{pathIdx} = all_Raster;
+                    all_sampling_rate_groups{k}{pathIdx} = sampling_rate;
+                    all_Race_groups{k}{pathIdx} = all_Race;
+                    all_TRace_groups{k}{pathIdx} = all_TRace;
+                    all_RasterRace_groups{k}{pathIdx} = all_RasterRace;
+                end
 
             case 4
                 disp(['Performing clusters analysis for ', current_animal_group]);
@@ -112,6 +130,11 @@ function process_data(PathSave, animal_date_list, truedataFolders)
             otherwise
                 disp('Invalid analysis choice. Skipping...');
         end
+    end
+    
+    % Analyses globales après la boucle
+    if analysis_choice == 3
+        SCEs_groups_analysis(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups);
     end
 end
 
@@ -240,7 +263,7 @@ function load_or_process_mean_images(mean_group_paths, current_folders_group, cu
 end
 
 
-function [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths)
+function [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(sce_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -418,7 +441,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
         [sampling_rate, synchronous_frames, all_DF, ~, ~, ~, all_Raster, all_MAct, ~] = ...
             load_or_process_raster_data(current_folders_group, raster_group_paths);
         
-        [all_DF, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = ...
+        [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_RasterRace] = ...
             load_or_process_sce_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, sce_group_paths);
 
         % Process data for missing files and save results
