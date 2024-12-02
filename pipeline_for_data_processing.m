@@ -98,7 +98,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
 
                 [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group);
                 
-               
+                build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
            
             case 2

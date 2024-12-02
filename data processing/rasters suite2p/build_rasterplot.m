@@ -1,11 +1,11 @@
-function build_rasterplot(all_DF, all_isort1, all_MAct, animal_date_list, fig_save_paths)
+function build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
     % build_rasterplot generates and saves raster plots and activity plots.
     %
     % Inputs:
     % - all_DF, all_isort1, all_MAct: Cell arrays containing the data needed for plotting
-    % - animal_date_list: Cell array containing the animal and date parts for naming figures
-    % - save_paths: Cell array of output directories for saving figures
-    % - fig_save_paths: Cell array of figure save paths to avoid re-generating in this function
+    % - date_group_paths: Cell array of output directories for saving figures
+    % - current_animal_group: Names of the unique animal groups
+    % - current_ages_group: Age information associated with each group
 
     % Nested function to calculate scaling based on the 5th and 99.9th percentiles
     function [min_val, max_val] = calculate_scaling(data)
@@ -14,14 +14,22 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, animal_date_list, fig_sa
         max_val = prctile(flattened_data, 99.9); % 99.9th percentile
     end
 
-    % Iterate over each entry in animal_date_list and process the data
-    for k = 1:size(animal_date_list, 1)
+    for m = 1:length(date_group_paths)
         try
             % Extract data from the input cell arrays
-            DF = all_DF{k};
-            isort1 = all_isort1{k};
-            MAct = all_MAct{k};
-            fig_save_path = fig_save_paths{k};
+            DF = all_DF{m};
+            isort1 = all_isort1{m};
+            MAct = all_MAct{m};
+
+            % Create the save path for the figure
+            fig_save_path = fullfile(date_group_paths{m}, sprintf('%s_%s_rastermap.png', ...
+                strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
+
+            % Check if the figure already exists
+            if exist(fig_save_path, 'file')
+                disp(['Figure already exists and was skipped: ' fig_save_path]);
+                continue; % Skip this iteration
+            end
 
             % Filter out neurons with NaN values from DF
             valid_neurons = all(~isnan(DF), 2);  % Check for NaN values in each row (neuron)
@@ -36,9 +44,10 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, animal_date_list, fig_sa
             [NCell, ~] = size(DF);
             prop_MAct = MAct / NCell;
 
-            % Create a new figure for each entry
+            % Create a new figure for the current unique animal group
             figure;
-            set(gcf, 'Position', [100, 100, 1200, 800]);  % Set figure size
+            screen_size = get(0, 'ScreenSize');  % Get screen size
+            set(gcf, 'Position', screen_size);   % Set the figure size to the screen's resolution
 
             % First subplot for the raster plot
             subplot(2, 1, 1);  % 2 rows, 1 column, 1st subplot
@@ -50,7 +59,7 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, animal_date_list, fig_sa
             colorbar;
 
             % Set colormap
-            colormap('hot');
+            % colormap('hot');
 
             % Tight axis
             axis tight;
