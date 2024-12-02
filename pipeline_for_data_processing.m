@@ -43,27 +43,12 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
         
         % Get indices of dates for the current animal group
         date_indices = find(strcmp(animal_group, current_animal_group));
-   
-        % Display all dates for the current animal group
-        disp(['Available dates for ', current_animal_group, ':']);
-        for idx = 1:length(date_indices)
-            disp(['[', num2str(idx), '] ', date_part{date_indices(idx)}]);
-        end
-
-        % Prompt user to select dates
-        use_all_dates = input('Select all dates for this group? Yes (1) / No (0): ');
-        if use_all_dates == 1
-            selected_indices = date_indices; % Use all dates
-        else
-            selected_indices = input('Enter the indices of the dates to select (e.g., [1, 3, 5]): ');
-            selected_indices = date_indices(selected_indices); % Map to actual indices
-        end
 
         % Save the selected dates and folders for this group
         selected_groups(k).animal_group = current_animal_group;
-        selected_groups(k).dates = date_part(selected_indices);
-        selected_groups(k).ages = age_part(selected_indices);
-        selected_groups(k).folders = truedataFolders(selected_indices);
+        selected_groups(k).dates = date_part(date_indices);
+        selected_groups(k).ages = age_part(date_indices);
+        selected_groups(k).folders = truedataFolders(date_indices);
         selected_groups(k).path = ani_path;
 
     end

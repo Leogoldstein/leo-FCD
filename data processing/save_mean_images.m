@@ -1,6 +1,6 @@
 function save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
     % save_mean_images generates and saves mean images based on input data.
-    %
+    % 
     % Inputs:
     % - current_animal_group: Cell array containing information on animals and dates
     % - all_ops: Data used for generating mean images (Python dictionaries or MATLAB structures)
@@ -21,23 +21,26 @@ function save_mean_images(current_animal_group, all_ops, current_dates_group, da
                 meanImg = ops.meanImg;
             end
 
+            % Ensure the path ends with .png for proper file extension
+            png_filename = fullfile(date_group_paths{m}, 'Mean_image.png');
+
             % Check if the file already exists to avoid overwriting
-            if ~isfile(date_group_paths{m})
+            if ~isfile(png_filename)
                 % Display the mean image
                 figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]);  % Set figure size
                 imagesc(meanImg);  % Display the mean image
                 colormap('gray');
                 title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
 
-                % Save the mean image as a .png file
-                saveas(gcf, date_group_paths{m});
-                disp(['Mean image saved in: ' date_group_paths{m}]);
+                % Save the mean image as a .png file with the proper filename
+                saveas(gcf, png_filename);
+                disp(['Mean image saved in: ' png_filename]);
 
                 % Close the figure after saving
                 close(gcf);
             else
                 % Notify that the file already exists and skip saving
-                disp(['File already exists, skipping save: ' date_group_paths{m}]);
+                disp(['File already exists, skipping save: ' png_filename]);
             end
 
         catch ME
