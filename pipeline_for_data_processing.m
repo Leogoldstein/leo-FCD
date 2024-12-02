@@ -13,14 +13,16 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     age_part = animal_date_list(:, 5); 
     
     % Determine unique groups for analysis
-    if isempty(mTor_part)
+    if isempty(mTor_part) || all(cellfun(@isempty, mTor_part))
         % Grouper par animal seulement
+        animal_group = animal_part; 
         unique_animal_group = unique(animal_part);
     else
         % Group by animal and mTor
         animal_group = strcat(animal_part, ' (', mTor_part, ')');
         unique_animal_group = unique(animal_group);
     end
+    disp(unique_animal_group)
 
     % Initialize save paths and selection storage
     ani_paths = cell(length(unique_animal_group), 1);
@@ -40,12 +42,8 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
         ani_paths{k} = ani_path;
         
         % Get indices of dates for the current animal group
-        if isempty(mTor_part)
-            date_indices = find(strcmp(animal_part, current_animal_group));
-        else
-            date_indices = find(strcmp(animal_group, current_animal_group));
-        end
-
+        date_indices = find(strcmp(animal_group, current_animal_group));
+   
         % Display all dates for the current animal group
         disp(['Available dates for ', current_animal_group, ':']);
         for idx = 1:length(date_indices)
@@ -107,9 +105,9 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing mean images for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
                 
-                [sampling_rate, ~, all_DF, all_ops, ~, ~, ~, ~, ~, ~] = load_or_process_raster_data(date_group_paths, current_folders_group);
+                [sampling_rate, ~, ~, all_ops, ~, ~, ~, ~, ~, ~] = load_or_process_raster_data(date_group_paths, current_folders_group);
 
-                save_mean_images(current_animal_group, all_ops, date_group_paths)
+                save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
   
             case 3
                 disp(['Performing SCEs analysis for ', current_animal_group]);

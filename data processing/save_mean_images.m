@@ -1,4 +1,4 @@
-function save_mean_images(current_animal_group, all_ops, date_group_paths)
+function save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
     % save_mean_images generates and saves mean images based on input data.
     %
     % Inputs:
@@ -10,39 +10,34 @@ function save_mean_images(current_animal_group, all_ops, date_group_paths)
     py.importlib.import_module('numpy');
 
     % Loop through each file path in directories
-    for k = 1:size(current_animal_group, 1)
+    for m = 1:length(date_group_paths)
         try
-            % Extract animal and date information from current_animal_group
-            animal_part = current_animal_group{k, 3};
-            date_part = current_animal_group{k, 4};
-            fig_save_path = date_group_paths{k};
-
             % Check if all_ops{k} is a Python dictionary
-            if isa(all_ops{k}, 'py.dict')
-                ops = all_ops{k};  % Python dictionary
+            if isa(all_ops{m}, 'py.dict')
+                ops = all_ops{m};  % Python dictionary
                 meanImg = double(ops{'meanImg'});  % Convert to MATLAB array
             else
-                ops = all_ops{k};  % MATLAB structure
+                ops = all_ops{m};  % MATLAB structure
                 meanImg = ops.meanImg;
             end
 
             % Check if the file already exists to avoid overwriting
-            if ~isfile(fig_save_path)
+            if ~isfile(date_group_paths{m})
                 % Display the mean image
                 figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]);  % Set figure size
                 imagesc(meanImg);  % Display the mean image
                 colormap('gray');
-                title(['Mean Image for ' animal_part ' on ' date_part]);
+                title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
 
                 % Save the mean image as a .png file
-                saveas(gcf, fig_save_path);
-                disp(['Mean image saved in: ' fig_save_path]);
+                saveas(gcf, date_group_paths{m});
+                disp(['Mean image saved in: ' date_group_paths{m}]);
 
                 % Close the figure after saving
                 close(gcf);
             else
                 % Notify that the file already exists and skip saving
-                disp(['File already exists, skipping save: ' fig_save_path]);
+                disp(['File already exists, skipping save: ' date_group_paths{m}]);
             end
 
         catch ME
