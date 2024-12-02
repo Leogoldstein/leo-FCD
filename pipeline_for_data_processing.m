@@ -13,8 +13,8 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     age_part = animal_date_list(:, 5); 
     
     % Determine unique groups for analysis
-    if strcmp(type_part{1}, 'jm')
-        % Group by animal only
+    if isempty(mTor_part)
+        % Grouper par animal seulement
         unique_animal_group = unique(animal_part);
     else
         % Group by animal and mTor
@@ -40,7 +40,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
         ani_paths{k} = ani_path;
         
         % Get indices of dates for the current animal group
-        if strcmp(type_part{1}, 'jm')
+        if isempty(mTor_part)
             date_indices = find(strcmp(animal_part, current_animal_group));
         else
             date_indices = find(strcmp(animal_group, current_animal_group));
@@ -115,7 +115,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
+                [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
                 
                 % Initialiser les cellules pour ce groupe
                 all_DF_groups{k} = all_DF;
@@ -254,7 +254,7 @@ function [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_is
 end
 
 
-function [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
+function [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -430,7 +430,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
         [sampling_rate, synchronous_frames, all_DF, all_ops, ~, ~, ~, all_Raster, all_MAct, ~] = ...
             load_or_process_raster_data(date_group_paths, current_folders_group);
         
-        [all_Raster, sampling_rate, all_DF, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
+        [all_DF, all_Raster, sampling_rate, all_DF, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
             load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
 
         % Process data for missing files and save results

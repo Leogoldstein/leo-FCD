@@ -113,8 +113,6 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
 
                 avg_duration_ms = mean(durations_ms, 'omitnan'); % Moyenne en ignorant les NaN
                 animal_sce_duration_list = [animal_sce_duration_list; avg_duration_ms];
-
-
             catch ME
                 fprintf('Error in directory %s: %s\n', current_paths{pathIdx}, ME.message);
                 % Append NaN for each list if an error occurs
@@ -129,23 +127,22 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
         % Map the current ages to x positions
         [~, x_indices] = ismember(current_ages, age_values);
 
-        % Plot the data for the current animal
+        % Plot the data for the current animal using barplots
         subplot(4, 2, 1); hold on;
-        plot_segments(x_indices, animal_ncell_list, colors(groupIdx, :));
+        bar(x_indices, animal_ncell_list, 'FaceColor', colors(groupIdx, :), 'BarWidth', 0.8);
         legend_entries{groupIdx} = current_animal_group;
 
         subplot(4, 2, 2); hold on;
-        plot_segments(x_indices, animal_num_sces_list, colors(groupIdx, :));
+        bar(x_indices, animal_num_sces_list, 'FaceColor', colors(groupIdx, :), 'BarWidth', 0.8);
 
         subplot(4, 2, 3); hold on;
-        plot_segments(x_indices, animal_sce_frequencies, colors(groupIdx, :));
+        bar(x_indices, animal_sce_frequencies, 'FaceColor', colors(groupIdx, :), 'BarWidth', 0.8);
 
         subplot(4, 2, 4); hold on;
-        plot_segments(x_indices, animal_ratio_list, colors(groupIdx, :));
+        bar(x_indices, animal_ratio_list, 'FaceColor', colors(groupIdx, :), 'BarWidth', 0.8);
 
         subplot(4, 2, 5); hold on;
-        plot_segments(x_indices, animal_sce_duration_list, colors(groupIdx, :));
-        
+        bar(x_indices, animal_sce_duration_list, 'FaceColor', colors(groupIdx, :), 'BarWidth', 0.8);
     end
 
     % Adjust the x-axis limits and ticks for all subplots
@@ -193,24 +190,4 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
     save_path = fullfile(PathSave, [fig_name, '.png']);
     saveas(gcf, save_path);
     close(gcf);
-end
-
-function plot_segments(x, y, color)
-    % Helper function to plot data with gaps for missing values
-    % Check where there are gaps in the data
-    gaps = find(diff(x) > 1); 
-    segment_starts = [1; gaps + 1];
-    segment_ends = [gaps; length(x)];
-    
-    % Plot each continuous segment separately
-    for i = 1:length(segment_starts)
-        range = segment_starts(i):segment_ends(i);
-        plot(x(range), y(range), 'o-', 'Color', color);
-    end
-    
-    % Set x-axis limits with a margin
-    x_min = min(x);
-    x_max = max(x);
-    margin = 0.5; % Adjust this value to change the margin size
-    xlim([x_min - margin, x_max + margin]);
 end
