@@ -1,4 +1,4 @@
-function [truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, iscell_list] = pipeline_for_data_preprocessing()
+function [truedataFolders, animal_date_list] = pipeline_for_data_preprocessing()
     % pipeline_for_data_preprocessing : Fonction pour traiter les données
     % selon le choix de l'utilisateur.
     %
@@ -25,11 +25,6 @@ function [truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, 
     % Initialisation des sorties
     truedataFolders = [];
     animal_date_list = [];
-    F = [];
-    DF = [];
-    ops = [];
-    stat = [];
-    iscell = [];
 
     % Demander à l'utilisateur de choisir un dossier
     disp('Veuillez choisir un dossier à traiter :');
@@ -46,7 +41,6 @@ function [truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, 
             dataFolders = select_folders(jm_folder);
             [statPaths, FPaths, iscellPaths, opsPaths, ~] = find_npy_folders(dataFolders);
             [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, destinationFolder);
-            [all_F, all_DF, all_ops, stat_list, iscell_list] = load_and_preprocess_data(truedataFolders, newFPaths, newStatPaths, newIscellPaths, newOpsPaths);
             disp('Traitement JM terminé.');
 
         case 2
@@ -55,7 +49,6 @@ function [truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, 
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             [truedataFolders, ~] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
-            [all_F, all_DF, all_ops, stat_list, iscell_list] = load_and_preprocess_data(truedataFolders);
             disp('Traitement FCD terminé.');
 
         case 3
@@ -64,7 +57,6 @@ function [truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, 
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             [truedataFolders, ~] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
-            [all_F, all_DF, all_ops, stat_list, iscell_list] = load_and_preprocess_data(truedataFolders);
             disp('Traitement CTRL terminé.');
 
         otherwise

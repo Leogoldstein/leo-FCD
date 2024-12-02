@@ -12,7 +12,7 @@ function animal_date_list = create_animal_date_list(dataFolders)
     animal_date_list = cell(length(dataFolders), 4); % {type, group, animal, date}
 
     % Définition des patterns pour extraire les informations
-    pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
     pattern_ani = 'D:\\imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
     pattern_jm = 'D:\\imaging\\jm\\([^\\]+)\\([^\\]+)';
 
@@ -24,7 +24,7 @@ function animal_date_list = create_animal_date_list(dataFolders)
         % Essayer de faire correspondre chaque pattern
         tokens = regexp(file_path, pattern_mTOR, 'tokens');
         if ~isempty(tokens)
-            type_part = 'mTOR';
+            type_part = 'FCD';
             group_part = tokens{1}{1}; % Exemple : mTor12
             animal_part = tokens{1}{2}; % Exemple : ani7
             date_part = tokens{1}{3}; % Exemple : 2024-07-06

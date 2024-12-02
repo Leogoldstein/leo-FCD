@@ -8,9 +8,9 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
-[truedataFolders, animal_date_list, all_F, all_DF, all_ops, stat_list, iscell_list] = pipeline_for_data_preprocessing();
+[truedataFolders, animal_date_list] = pipeline_for_data_preprocessing();
 
 %% Preprocessing and analysis
 
 PathSave = 'D:\after_processing';
-pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list, all_DF, all_ops)
+pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list)

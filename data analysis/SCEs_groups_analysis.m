@@ -148,6 +148,33 @@ function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_group
         
     end
 
+    % Adjust the x-axis limits and ticks for all subplots
+    for i = 1:5
+        subplot(4, 2, i);
+        
+        % Set x-axis limits and ticks
+        xlim([1, numel(age_labels)]);
+        xticks(1:numel(age_labels));
+        xticklabels(age_labels);
+        xlabel('Age');
+    
+        % Get current data for y-axis adjustment
+        data = get(gca, 'Children');
+        yData = arrayfun(@(h) get(h, 'YData'), data, 'UniformOutput', false);
+        yData = cell2mat(yData');
+        
+        % Calculate min and max with a margin
+        if ~isempty(yData)
+            yMin = min(yData);
+            yMax = max(yData);
+            yRange = yMax - yMin;
+            yMargin = yRange * 0.1;  % 10% margin
+    
+            % Adjust the y-axis limits
+            ylim([yMin - yMargin, yMax + yMargin]);
+        end
+    end
+
     % Add legends and titles
     subplot(4, 2, 1); legend(legend_entries); title('NCells by age');
     subplot(4, 2, 2); legend(legend_entries); title('Number of SCEs by age');
@@ -170,6 +197,7 @@ end
 
 function plot_segments(x, y, color)
     % Helper function to plot data with gaps for missing values
+    % Check where there are gaps in the data
     gaps = find(diff(x) > 1); 
     segment_starts = [1; gaps + 1];
     segment_ends = [gaps; length(x)];
@@ -179,4 +207,10 @@ function plot_segments(x, y, color)
         range = segment_starts(i):segment_ends(i);
         plot(x(range), y(range), 'o-', 'Color', color);
     end
+    
+    % Set x-axis limits with a margin
+    x_min = min(x);
+    x_max = max(x);
+    margin = 0.5; % Adjust this value to change the margin size
+    xlim([x_min - margin, x_max + margin]);
 end

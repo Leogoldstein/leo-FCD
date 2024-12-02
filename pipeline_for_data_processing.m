@@ -1,4 +1,4 @@
-function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list, all_DF, all_ops)
+function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved
@@ -25,9 +25,6 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     % Initialize save paths and selection storage
     ani_paths = cell(length(unique_animal_group), 1);
     selected_groups = struct();
-
-    all_DF_groups = cell(length(unique_animal_group), 1);
-    all_ops_groups = cell(length(unique_animal_group), 1);
     
     for k = 1:length(unique_animal_group)
         current_animal_group = unique_animal_group{k};
@@ -70,10 +67,6 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
         selected_groups(k).ages = age_part(selected_indices);
         selected_groups(k).folders = truedataFolders(selected_indices);
         selected_groups(k).path = ani_path;
-        
-        % Load preprocess data
-        all_DF_groups{k} = all_DF(selected_indices);
-        all_ops_groups{k} = all_ops(selected_indices);
 
     end
     assignin('base', 'selected_groups', selected_groups);
@@ -83,6 +76,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     
     % Pre-allocate variables for global analysis
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
+    all_DF_groups = cell(num_groups, 1);
     all_Raster_groups = cell(num_groups, 1);
     %all_sampling_rate_groups = cell(num_groups, 1);
     all_Race_groups = cell(num_groups, 1);
@@ -98,17 +92,13 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
         current_folders_group = selected_groups(k).folders;
         current_ani_path_group = selected_groups(k).path;
         current_ages_group = selected_groups(k).ages;
-        
-        % Load preprocessed datas
-        all_DF = all_DF_groups{k};
-        all_ops = all_ops_groups{k};
 
         switch analysis_choice
             case 1
                 disp(['Performing raster plot analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
 
-                [sampling_rate, synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, all_DF, all_ops);
+                [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group);
                 
                
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
@@ -117,15 +107,18 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing mean images for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
                 
+                [sampling_rate, ~, all_DF, all_ops, ~, ~, ~, ~, ~, ~] = load_or_process_raster_data(date_group_paths, current_folders_group);
+
                 save_mean_images(current_animal_group, all_ops, date_group_paths)
   
             case 3
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_dates_group, date_group_paths, all_DF, all_ops);
+                [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
                 
                 % Initialiser les cellules pour ce groupe
+                all_DF_groups{k} = all_DF;
                 all_Raster_groups{k} = all_Raster;
                 all_Race_groups{k} = all_Race;
                 all_TRace_groups{k} = all_TRace;
@@ -137,7 +130,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, date_group_paths, all_DF, all_ops);
+                [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_folders_group, current_animal_group, current_dates_group, date_group_paths);
 
             otherwise
                 disp('Invalid analysis choice. Skipping...');
@@ -176,9 +169,11 @@ function date_group_paths = create_base_folders(base_path, current_dates_group)
 end
 
 
-function [sampling_rate, synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, all_DF, all_ops)    
+function [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group)    
     % Initialize cell arrays for outputs
     numFolders = length(date_group_paths);
+    all_DF = cell(numFolders, 1);
+    all_ops = cell(numFolders, 1);
     all_isort1 = cell(numFolders, 1);
     all_isort2 = cell(numFolders, 1);
     all_Sm = cell(numFolders, 1);
@@ -198,6 +193,12 @@ function [sampling_rate, synchronous_frames, all_isort1, all_isort2, all_Sm, all
             data = load(filePath);
             
             % Assign the relevant fields to the output variables
+            if isfield(data, 'DF')
+                all_DF{m} = data.DF;
+            end
+            if isfield(data, 'ops')
+                all_ops{m} = data.ops;
+            end
             if isfield(data, 'isort1')
                 all_isort1{m} = data.isort1;
             end
@@ -224,14 +225,18 @@ function [sampling_rate, synchronous_frames, all_isort1, all_isort2, all_Sm, all
             end
             
         else
+            [~, DF, ops, ~, ~] = load_and_preprocess_data(current_folders_group{m});
+
             MinPeakDistance = 5;
             sampling_rate = 29.87373388;  % Example value, replace with actual if needed
             synchronous_frames = round(0.2 * sampling_rate);  % Example: 0.2s of data
             
             % Call raster_processing function to process the data and get the results
-            [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(all_DF{m}, all_ops{m}, MinPeakDistance, sampling_rate, synchronous_frames, date_group_paths{m});
+            [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, date_group_paths{m});
 
             % Store the results in the respective cell arrays
+            all_DF{m} = DF;
+            all_ops{m} = ops;
             all_isort1{m} = isort1;
             all_isort2{m} = isort2;
             all_Sm{m} = Sm;
@@ -249,7 +254,7 @@ function [sampling_rate, synchronous_frames, all_isort1, all_isort2, all_Sm, all
 end
 
 
-function [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_dates_group, date_group_paths, all_DF, all_ops)
+function [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -259,8 +264,8 @@ function [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TR
     all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
-    [sampling_rate, synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = ...
-        load_or_process_raster_data(date_group_paths, all_DF, all_ops);
+    [sampling_rate, synchronous_frames, all_DF, ~, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+        load_or_process_raster_data(date_group_paths, current_folders_group); 
 
     % Initialize a flag to track if processing is needed
     process_needed = false;
@@ -336,7 +341,7 @@ function [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TR
 end
 
 
-function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_ani_path_group, current_folders_group, current_animal_group, current_dates_group, clusters_group_paths, all_DF, all_ops)
+function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_animal_group, current_dates_group, clusters_group_paths)
     
     % Initialize output cell arrays to store results for each directory
     numFolders = length(clusters_group_paths);  % Number of groups
@@ -422,11 +427,11 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
         disp('Processing missing files...');
 
         % Load or process raster and sce data
-        [sampling_rate, synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = ...
-            load_or_process_raster_data(date_group_paths, all_DF, all_ops);
+        [sampling_rate, synchronous_frames, all_DF, all_ops, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+            load_or_process_raster_data(date_group_paths, current_folders_group);
         
-        [all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
-            load_or_process_sce_data(current_animal_group, current_dates_group, date_group_paths, all_DF, all_ops);
+        [all_Raster, sampling_rate, all_DF, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
+            load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
 
         % Process data for missing files and save results
         for m = 1:numFolders
