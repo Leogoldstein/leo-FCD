@@ -21,20 +21,20 @@ function [F, DF, ops, stat, iscell] = load_and_preprocess_data(workingFolder)
     if ~isempty(files)
 
         % Unpack .npy file paths
-        newFPaths = fullfile(workingFolder, 'F.npy');
-        newStatPaths = fullfile(workingFolder, 'stat.npy');
-        newIscellPaths = fullfile(workingFolder, 'iscell.npy');
-        newOpsPaths = fullfile(workingFolder, 'ops.npy');
+        newFPath = fullfile(workingFolder, 'F.npy');
+        newStatPath = fullfile(workingFolder, 'stat.npy');
+        newIscellPath = fullfile(workingFolder, 'iscell.npy');
+        newOpsPath = fullfile(workingFolder, 'ops.npy');
 
         % Load .npy files
-        F = readNPY(newFPaths{1});  % Assuming only one folder, so the 1st entry is used
-        iscell = readNPY(newIscellPaths{1});
+        F = readNPY(newFPath);  % Assuming only one folder, so the 1st entry is used
+        iscell = readNPY(newIscellPath);
 
         % Call the Python function to load stats and ops
         try
             mod = py.importlib.import_module('python_function');
-            stat = mod.read_npy_file(newStatPaths{1});
-            ops = mod.read_npy_file(newOpsPaths{1});
+            stat = mod.read_npy_file(newStatPath);
+            ops = mod.read_npy_file(newOpsPath);
         catch ME
             error('Failed to call Python function: %s', ME.message);
         end

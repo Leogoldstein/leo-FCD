@@ -122,7 +122,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     
     % % Analyses globales après la boucle
     if analysis_choice == 3
-        SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups);
+        SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups);
     end
 end
 
@@ -232,7 +232,7 @@ function [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_is
     %Assign all_DF to the workspace
     % assignin('base', 'all_Raster', all_Raster);
     % assignin('base', 'all_MAct', all_MAct);
-    % assignin('base', 'all_isort1', all_isort1);
+    assignin('base', 'all_ops', all_ops);
     
 end
 
