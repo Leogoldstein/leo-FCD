@@ -94,7 +94,7 @@ function [validDirectory, clusterMatrix, NClOK, assemblystat] = cluster_synchron
         % Save clustering results to a .mat file
         save(fullfile(directory, 'results_clustering.mat'), ...
              'IDX2', 'sCl', 'M', 'S', 'R', 'CellScore', 'CellScoreN', ...
-             'CellCl', 'NClOK', 'RaceOK', 'clusterMatrix', 'validDirectory');
+             'CellCl', 'NClOK', 'RaceOK', 'clusterMatrix', 'validDirectory', 'assemblystat');
         disp(['Clustering results saved for directory: ' directory]);
 
     catch ME
