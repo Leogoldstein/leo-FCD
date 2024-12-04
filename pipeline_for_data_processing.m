@@ -98,7 +98,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
+                [all_DF, all_Raster, all_ops, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
                 
                 % Initialiser les cellules pour ce groupe
                 all_DF_groups{k} = all_DF;
@@ -113,7 +113,9 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_folders_group, current_animal_group, current_dates_group, date_group_paths);
+               [validDirectories, all_clusterMatrix, all_NClOK, all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group);
+
+               plot_assemblies(current_folders_group, all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, validDirectories);
 
             otherwise
                 disp('Invalid analysis choice. Skipping...');
@@ -237,7 +239,7 @@ function [sampling_rate, synchronous_frames, all_DF, all_ops, all_isort1, all_is
 end
 
 
-function [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
+function [all_DF, all_Raster, all_ops, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -247,7 +249,7 @@ function [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race
     all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
-    [sampling_rate, synchronous_frames, all_DF, ~, ~, ~, ~, all_Raster, all_MAct, ~] = ...
+    [sampling_rate, synchronous_frames, all_DF, all_ops, ~, ~, ~, all_Raster, all_MAct, ~] = ...
         load_or_process_raster_data(date_group_paths, current_folders_group); 
 
     % Initialize a flag to track if processing is needed
@@ -324,10 +326,10 @@ function [all_DF, all_Raster, sampling_rate, all_sce_n_cells_threshold, all_Race
 end
 
 
-function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clusters_data(current_animal_group, current_dates_group, clusters_group_paths)
+function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_ops, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group)
     
     % Initialize output cell arrays to store results for each directory
-    numFolders = length(clusters_group_paths);  % Number of groups
+    numFolders = length(date_group_paths);  % Number of groups
     % Initialize all output variables
     all_IDX2 = cell(numFolders, 1);
     all_sCl = cell(numFolders, 1);
@@ -343,6 +345,10 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
     all_assemblystat = cell(numFolders, 1);
     all_RaceOK = cell(numFolders, 1);
     all_clusterMatrix = cell(numFolders, 1);
+    
+    all_outline_gcampx = cell(numFolders, 1);
+    all_outline_gcampy = cell(numFolders, 1);
+    all_meandistance_assembly = cell(numFolders, 1);
 
     % Initialize a flag to track if processing is needed
     process_needed = false;
@@ -350,7 +356,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
     % First loop: Check if results exist and load them
     for m = 1:numFolders
         % Create the full file path for results_SCEs.mat
-        filePath = fullfile(clusters_group_paths{m}, 'results_clustering.mat');
+        filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
 
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
@@ -399,6 +405,19 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
             if isfield(data, 'clusterMatrix')
                 all_clusterMatrix{k} = data.clusterMatrix;
             end
+            if isfield(data, 'ops')
+                all_ops{m} = data.ops;
+            end
+            if isfield(data, 'outline_gcampx')
+               all_outline_gcampx{k} = data.outline_gcampx;
+            end
+            if isfield(data, 'outline_gcampy')
+               all_outline_gcampy{k} = data.outline_gcampy;
+            end
+            if isfield(data, 'meandistance_assembly')
+                all_meandistance_assembly{k} = data.meandistance_assembly;
+            end
+
         else
             % If at least one file is missing, mark that processing is needed
             process_needed = true;
@@ -409,17 +428,15 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
     if process_needed
         disp('Processing missing files...');
 
-        % Load or process raster and sce data
-        [sampling_rate, synchronous_frames, all_DF, all_ops, ~, ~, ~, all_Raster, all_MAct, ~] = ...
-            load_or_process_raster_data(date_group_paths, current_folders_group);
+        % Load or process sce data
         
-        [all_DF, all_Raster, sampling_rate, all_DF, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
+        [all_DF, all_Raster, all_ops, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = ...
             load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
-
+     
         % Process data for missing files and save results
         for m = 1:numFolders
-            % Create the full file path for results_SCEs.mat
-            filePath = fullfile(clusters_group_paths{m}, 'results_clustering.mat');
+            % Create the full file path for results_clustering.mat
+            filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
 
             % Skip already loaded files
             if exist(filePath, 'file') == 2
@@ -427,24 +444,42 @@ function [validDirectories, all_clusterMatrix, all_NClOK] = load_or_process_clus
             end
 
             % Process and save the missing results
-            disp(['Processing folder: ', clusters_group_paths{m}]);
+            disp(['Processing folder: ', date_group_paths{m}]);
 
             % Extract relevant data for the current folder
-            Raster = all_Raster{m};
-            MAct = all_MAct{m};
             Race = all_Race{m};
+            ops = all_ops{m};
 
             kmean_iter = 100;
             kmeans_surrogate = 100;
 
             % Call the processing function
-            [validDirectory, clusterMatrix, NClOK] = ...
-                cluster_synchronies(clusters_group_paths{m}, all_DF{m}, MAct, Raster, Race, kmean_iter, kmeans_surrogate);
+            [validDirectory, clusterMatrix, NClOK, assemblystat] = ...
+                cluster_synchronies(date_group_paths{m}, Race, kmean_iter, kmeans_surrogate);
+
+            % Distances between assemblies
+            [stat, iscell] = load_data_mat_npy(current_folders_group{m});
+
+            % Load calcium mask from suite2p (from Fall.mat) or npy files
+            [outline_gcampx, outline_gcampy, neuropil, Coomasqx, Coomasqy] = load_calcium_mask(iscell, stat);
+            
+            % generation of poly2mask (binary mask) for using regionprops and measure area and centroid
+            gcamp_props = process_poly2mask(iscell, stat, ops, outline_gcampx, outline_gcampy, validDirectory);
+
+            % Taille du pixel pour les calculs de distance
+            size_pixel = 705 / 512;
+
+            [meandistance_gcamp, meandistance_assembly, mean_mean_distance_assembly] = distance_btw_centroid(size_pixel, gcamp_props, assembly_stat, validDirectory);
 
             % Store results in output variables
             validDirectories{m} = validDirectory;
             all_clusterMatrix{m} = clusterMatrix;
             all_NClOK{m} = NClOK;
+            all_assemblystat{m} = assemblystat;
+            all_outline_gcampx{m} = outline_gcampx;
+            all_outline_gcampy{m} = outline_gcampy;
+            all_meandistance_assembly{m} = meandistance_assembly;
+
         end
     end
 end

@@ -1,4 +1,4 @@
-function [validDirectory, clusterMatrix, NClOK] = cluster_synchronies(directory, DF, MAct, Raster, Race, kmean_iter, kmeans_surrogate)
+function [validDirectory, clusterMatrix, NClOK, assemblystat] = cluster_synchronies(directory, Race, kmean_iter, kmeans_surrogate)
     % cluster_synchronies performs clustering on synchrony data for a single directory and saves the results.
     %
     % Inputs:
