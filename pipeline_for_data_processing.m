@@ -100,7 +100,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     
                 [all_DF, all_Raster, all_ops, sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
                 
-                plot_threshold_sce_evolution(all_DF, date_group_paths, current_animal_group, current_dates_group, all_sce_n_cells_threshold, all_TRace)
+                plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
 
                 % Initialiser les cellules pour ce groupe
                 all_DF_groups{k} = all_DF;
