@@ -100,7 +100,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
+                [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
                 
                 plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
 
@@ -209,17 +209,17 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
                 all_Acttmp2{m} = data.Acttmp2;
             end
             if isfield(data, 'sampling_rate')
-                all_sampling_rate = data.sampling_rate;
+                all_sampling_rate{m} = data.sampling_rate;
             end
             if isfield(data, 'synchronous_frames')
-                all_synchronous_frames = data.synchronous_frames;
+                all_synchronous_frames{m} = data.synchronous_frames;
             end
             
         else
             [~, DF, ops, ~, ~] = load_and_preprocess_data(current_folders_group{m});
 
             MinPeakDistance = 5;
-            sampling_rate = find_framerate(current_env_group{m});  % Find actual framerate
+            sampling_rate = find_key_value(current_env_group{m}, 'framerate');  % Find actual framerate
             synchronous_frames = round(0.2 * sampling_rate);  % Example: 0.2s of data
             
             % Call raster_processing function to process the data and get the results
@@ -247,7 +247,7 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
 end
 
 
-function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths)
+function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -315,13 +315,14 @@ function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_thresh
             % Extract relevant data for the current folder
             Raster = all_Raster{m};
             MAct = all_MAct{m};
+            synchronous_frames = all_synchronous_frames{m};
 
             MinPeakDistancesce=3;
             WinActive=[];%find(speed>1);
 
             % Call the processing function
             [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = ...
-                select_synchronies(date_group_paths{m}, all_synchronous_frames{m}, WinActive, all_DF{m}, MAct, MinPeakDistancesce, Raster, current_animal_group, current_dates_group{m});
+                select_synchronies(date_group_paths{m}, synchronous_frames, WinActive, all_DF{m}, MAct, MinPeakDistancesce, Raster, current_animal_group, current_dates_group{m});
 
             % Store results in output variables
             all_sce_n_cells_threshold{m} = sce_n_cells_threshold;
@@ -362,7 +363,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_
     
     % Load Race in prevision of clustering
     [~, ~, all_ops, all_sampling_rate, ~, all_Race, ~, ~, ~] = ...
-        load_or_process_sce_data(current_animal_group, current_folders_group, current_dates_group, date_group_paths);
+        load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
 
     % First loop: Check if results exist and load them
     for m = 1:numFolders
