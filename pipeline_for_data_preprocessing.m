@@ -1,4 +1,4 @@
-function [truedataFolders, animal_date_list] = pipeline_for_data_preprocessing()
+function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_preprocessing()
     % pipeline_for_data_preprocessing : Fonction pour traiter les données
     % selon le choix de l'utilisateur.
     %
@@ -48,7 +48,7 @@ function [truedataFolders, animal_date_list] = pipeline_for_data_preprocessing()
             disp('Traitement des données FCD...');
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
-            [truedataFolders, ~] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, ~, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement FCD terminé.');
 
         case 3
@@ -56,7 +56,7 @@ function [truedataFolders, animal_date_list] = pipeline_for_data_preprocessing()
             disp('Traitement des données CTRL...');
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
-            [truedataFolders, ~] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, ~, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement CTRL terminé.');
 
         otherwise

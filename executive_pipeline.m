@@ -8,7 +8,7 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
-[truedataFolders, animal_date_list] = pipeline_for_data_preprocessing();
+[truedataFolders, animal_date_list, env_paths] = pipeline_for_data_preprocessing();
 
 %% Processing and analysis
 
