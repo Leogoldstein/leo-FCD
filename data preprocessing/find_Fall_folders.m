@@ -1,8 +1,7 @@
-function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selectedFolders)
+function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
     % Initialize cell arrays to store paths and canceled indices
     truedataFolders = {};  
     env_paths = {};
-    canceledIndices = []; % To keep track of canceled selections
 
     % Loop through each selected folder
     for idx = 1:length(selectedFolders)
@@ -14,7 +13,6 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
         % Handle cases based on the number of TSeries folders found
         if isempty(TSeriesFolders)
             disp('No TSeries folders found. Skipping this folder.');
-            canceledIndices = [canceledIndices, idx]; % Record the canceled index
             continue;  % Skip to the next iteration if none found
         elseif isscalar(TSeriesFolders) && TSeriesFolders(1).isdir
             % If there is only one 'TSeries' folder, select it automatically
@@ -28,7 +26,6 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
                 selectedFolder = suite2pFolder;
             else
                 disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
-                canceledIndices = [canceledIndices, idx]; % Record the canceled index
                 continue;  % Skip to the next iteration of the loop
             end
         else
@@ -39,7 +36,6 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
             % Check if the user canceled the selection
             if isequal(TSeriesPath, 0)
                 disp(['User clicked Cancel for folder index: ' num2str(idx)]);
-                canceledIndices = [canceledIndices, idx]; % Record the canceled index
                 continue; % Skip to the next iteration of the loop
             end
             
@@ -51,7 +47,6 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
                 selectedFolder = suite2pFolder;
             else
                 disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
-                canceledIndices = [canceledIndices, idx];
                 continue;  % Skip to the next iteration of the loop
             end
         end
@@ -71,11 +66,10 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
             % Check if the user canceled the selection
             if isequal(selectedFolder, 0)
                 disp(['User clicked Cancel for folder index: ' num2str(idx)]);
-                canceledIndices = [canceledIndices, idx]; % Record the canceled index
                 continue; % Skip to the next iteration of the loop
             end
         end
-        
+
         % Construct the path to the .env file
         env_file = dir(fullfile(TSeriesPath, '*.env'));
         %if isscalar(env_file) % Check if exactly one .env file is found
@@ -94,7 +88,6 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
         truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
     else
         % If Fall.mat does not exist, display an error message
-        canceledIndices = [canceledIndices, idx];
         disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
     end
 
@@ -103,9 +96,4 @@ function [truedataFolders, canceledIndices, env_paths] = find_Fall_folders(selec
     for i = 1:length(truedataFolders)
         disp(truedataFolders{i});
     end
-    
-    disp('Directories with .env file:');
-    for i = 1:length(env_paths)
-        disp(env_paths{i});
-    end 
 end

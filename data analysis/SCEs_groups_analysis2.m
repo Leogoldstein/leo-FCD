@@ -1,4 +1,4 @@
-function SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups)
+function SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups)
 
     num_animals = length(selected_groups);
     animal_group = cell(num_animals, 1);
@@ -32,6 +32,7 @@ function SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, 
         all_Race = all_Race_groups{groupIdx};
         all_Raster = all_Raster_groups{groupIdx};
         all_sces_distances = all_sces_distances_groups{groupIdx};
+        all_sampling_rate = all_sampling_rate_groups{groupIdx};
 
         % Iterate over directories for the current animal
         for pathIdx = 1:length(current_dates_group)
@@ -50,6 +51,7 @@ function SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, 
                     error('Index exceeds the number of TRace elements.');
                 end
                 
+                sampling_rate = all_sampling_rate{pathIdx};
                 nb_seconds = Nz / sampling_rate;
                 sce_frequency_seconds = num_sces / nb_seconds;
                 sce_frequency_minutes = sce_frequency_seconds * 60;
@@ -82,7 +84,7 @@ function SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, 
                 data_by_age.SCEFreq(x_indices(pathIdx), groupIdx) = sce_frequency_minutes;
                 data_by_age.AvgActiveSCE(x_indices(pathIdx), groupIdx) = avg_active_cell_SCEs;
                 data_by_age.SCEDuration(x_indices(pathIdx), groupIdx) = avg_duration_ms;
-                data_by_age.Ratio(x_indices(pathIdx), groupIdx) = ratio * 100;
+                data_by_age.Ratio(x_indices(pathIdx), groupIdx) = ratio;
 
             catch ME
                 fprintf('Error in group %s, path %d: %s\n', current_animal_group, pathIdx, ME.message);

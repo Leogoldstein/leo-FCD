@@ -39,7 +39,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             % Traitement JM (Jure's data)
             disp('Traitement des données JM...');
             dataFolders = select_folders(jm_folder);
-            [statPaths, FPaths, iscellPaths, opsPaths, ~] = find_npy_folders(dataFolders);
+            [env_paths, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(dataFolders);
             [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, destinationFolder);
             disp('Traitement JM terminé.');
 
@@ -48,7 +48,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             disp('Traitement des données FCD...');
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
-            [truedataFolders, ~, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement FCD terminé.');
 
         case 3
@@ -56,7 +56,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             disp('Traitement des données CTRL...');
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
-            [truedataFolders, ~, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement CTRL terminé.');
 
         otherwise

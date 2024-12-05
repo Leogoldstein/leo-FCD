@@ -3,8 +3,9 @@ function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops
     %
     % Inputs:
     % - DF: Data matrix (dF/F) for the single directory
-    % - ops: ops structure for the single directory
+    % - ops: ops structure or Python dictionary for the single directory
     % - MinPeakDistance: Minimum distance between peaks in frames
+    % - sampling_rate: Sampling rate of the data
     % - synchronous_frames: Number of synchronous frames for activity calculation
     % - directory: Directory to save individual results
     %
@@ -17,17 +18,22 @@ function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops
     % - Acttmp2: Temporary activity data for the single directory
 
     try
+        % Check if 'ops' is a Python dictionary
+        if isa(ops, 'py.dict')
+            % Convert Python dictionary to MATLAB structure
+            ops = dictionary(ops);
+        end
+        
         % Process raster plots
         [isort1, isort2, Sm] = processRasterPlots(DF, ops);
         
         % Call Sumactivity to get raster and activity data
         [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames);
         
-        % Convert Python Dictionary to MATLAB Dictionary or Structure
-        %ops = dictionary(ops);
-
         % Save individual results for the current directory
-        save(fullfile(directory, 'results_raster.mat'), 'MinPeakDistance', 'sampling_rate', 'synchronous_frames', 'DF', 'ops', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2');
+        save(fullfile(directory, 'results_raster.mat'), ...
+            'MinPeakDistance', 'sampling_rate', 'synchronous_frames', 'DF', ...
+            'ops', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2');
         
     catch ME
         % If there's an error, display a warning

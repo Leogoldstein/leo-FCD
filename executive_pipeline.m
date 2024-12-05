@@ -13,4 +13,4 @@ end
 %% Processing and analysis
 
 PathSave = 'D:\after_processing';
-pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list)
+pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list, env_paths)

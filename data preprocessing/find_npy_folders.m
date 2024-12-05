@@ -1,64 +1,50 @@
-function [statPaths, FPaths, iscellPaths, opsPaths, canceledIndices] = find_npy_folders(selectedFolders)
+function [env_paths, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
+    env_paths = {};
     statPaths = {};
     FPaths = {};
     iscellPaths = {};
     opsPaths = {};
-    canceledIndices = []; % Initialize an empty array to store indices where the user canceled
 
     for idx = 1:length(selectedFolders)
         selectedFolder = selectedFolders{idx};
         
-        % Check if the selected folder contains suite2p folder
-        suite2pFolder = fullfile(selectedFolder, 'suite2p');
-
-        if exist(suite2pFolder, 'dir') == 7
-           selectedFolder = suite2pFolder;
+        TSeriesFolder = dir(fullfile(selectedFolder, 'TSeries*'));
         
-        else 
-            % Check if the selected folder contains 'TSeries'
-            if ~contains(selectedFolder, 'TSeries')
+        if isscalar(TSeriesFolder) && TSeriesFolder(1).isdir
+            % If there is only one 'TSeries' folder, automatically select it
+            TSeriesPath = fullfile(selectedFolder, TSeriesFolder(1).name);
+            
+            suite2pFolder = fullfile(selectedFolder, 'suite2p');
+            
+            % If 'suite2p' subfolder exists, append it to the selected folder
+            if exist(suite2pFolder, 'dir') == 7
+                selectedFolder = suite2pFolder;
+            else
+                disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
+                continue;
+            end
+        else
+            % If there are multiple 'TSeries' folders or none, prompt the user to select one
+            TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
+            
+            % Check if the user canceled the selection
+            if isequal(TSeriesPath, 0)
+                disp('User clicked Cancel. Skipping this folder.');
+                continue;
+            end
+            
+            % Check if the selected folder contains 'suite2p'
+            if ~endsWith(TSeriesPath, 'suite2p')
                 
-                TSeriesFolder = dir(fullfile(selectedFolder, 'TSeries*'));
+                suite2pFolder = fullfile(selectedFolder, 'suite2p');
                 
-                if isscalar(TSeriesFolder) && TSeriesFolder(1).isdir
-                    % If there is only one 'TSeries' folder, automatically select it
-                    selectedFolder = fullfile(selectedFolder, TSeriesFolder(1).name);
-                    
-                    suite2pFolder = fullfile(selectedFolder, 'suite2p');
-                    
-                    % If 'suite2p' subfolder exists, append it to the selected folder
-                    if exist(suite2pFolder, 'dir') == 7
-                        selectedFolder = suite2pFolder;
-                    else
-                        disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
-                        continue;
-                    end
+                % If 'suite2p' subfolder exists, append it to the selected folder
+                if exist(suite2pFolder, 'dir') == 7
+                    selectedFolder = suite2pFolder;
                 else
-                    % If there are multiple 'TSeries' folders or none, prompt the user to select one
-                    selectedFolder = uigetdir(selectedFolder, 'Select a TSeries folder');
-                    
-                    % Check if the user canceled the selection
-                    if isequal(selectedFolder, 0)
-                        disp('User clicked Cancel. Skipping this folder.');
-                        canceledIndices(end+1) = idx; % Store the index of the canceled selection
-                        disp(canceledIndices)
-                        continue;
-                    end
-                    
-                    % Check if the selected folder contains 'suite2p'
-                    if ~endsWith(selectedFolder, 'suite2p')
-                        
-                        suite2pFolder = fullfile(selectedFolder, 'suite2p');
-                        
-                        % If 'suite2p' subfolder exists, append it to the selected folder
-                        if exist(suite2pFolder, 'dir') == 7
-                            selectedFolder = suite2pFolder;
-                        else
-                            disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
-                            continue;  % Skip to the next iteration of the loop
-                        end
-                    end
+                    disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
+                    continue;  % Skip to the next iteration of the loop
                 end
             end
         end
@@ -76,10 +62,18 @@ function [statPaths, FPaths, iscellPaths, opsPaths, canceledIndices] = find_npy_
             % Check if the user canceled the selection
             if isequal(selectedFolder, 0)
                 disp('User clicked Cancel. Skipping this folder.');
-                canceledIndices(end+1) = idx; % Store the index of the canceled selection
                 continue;
             end
         end
+        
+        % Construct the path to the .env file
+        env_file = dir(fullfile(TSeriesPath, '*.env'));
+        %if isscalar(env_file) % Check if exactly one .env file is found
+            env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
+        %else
+         %   env_path = ''; % Set to empty if no .env file is found or multiple files exist
+        %end
+        env_paths{end+1} = env_path;
 
         % Construct file paths
         stat_path = fullfile(selectedFolder, 'stat.npy');
