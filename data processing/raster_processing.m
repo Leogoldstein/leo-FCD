@@ -17,13 +17,7 @@ function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops
     % - MAct: MAct vector for the single directory
     % - Acttmp2: Temporary activity data for the single directory
 
-    try
-        % Check if 'ops' is a Python dictionary
-        if isa(ops, 'py.dict')
-            % Convert Python dictionary to MATLAB structure
-            ops = dictionary(ops);
-        end
-        
+    try 
         % Process raster plots
         [isort1, isort2, Sm] = processRasterPlots(DF, ops);
         

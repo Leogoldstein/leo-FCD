@@ -78,19 +78,19 @@ function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
          %   env_path = ''; % Set to empty if no .env file is found or multiple files exist
         %end
         env_paths{end+1} = env_path;
-    end
-    
-    % Construct the path to Fall.mat
-    file_path = fullfile(selectedFolder, 'Fall.mat');
-    
-    % Check if Fall.mat exists
-    if exist(file_path, 'file') == 2
-        truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
-    else
-        % If Fall.mat does not exist, display an error message
-        disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
-    end
 
+        % Construct the path to Fall.mat
+        file_path = fullfile(selectedFolder, 'Fall.mat');
+        
+        % Check if Fall.mat exists
+        if exist(file_path, 'file') == 2
+            truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
+        else
+            % If Fall.mat does not exist, display an error message
+            disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
+        end
+    end
+    
     % Display the directories with Fall.mat files
     disp('Directories with Fall.mat files:');
     for i = 1:length(truedataFolders)

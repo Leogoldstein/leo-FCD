@@ -56,7 +56,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     assignin('base', 'selected_groups', selected_groups);
 
     % Ask for analysis type after gathering all inputs
-    analysis_choice = input('Choose analysis type: raster plot (1), mean images (2), SCEs (3) or clusters analysis (4)? ');
+    analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), SCEs (3) or clusters analysis (4)? ');
     
     % Pre-allocate variables for global analysis (btw animals for all dates)
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
@@ -80,6 +80,14 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
 
         switch analysis_choice
             case 1
+                disp(['Performing mean images for ', current_animal_group]);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                
+                [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+
+                save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
+
+            case 2
                 disp(['Performing raster plot analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
 
@@ -87,14 +95,6 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 
                 build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-           
-            case 2
-                disp(['Performing mean images for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
-                
-                [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
-
-                save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
   
             case 3
                 disp(['Performing SCEs analysis for ', current_animal_group]);

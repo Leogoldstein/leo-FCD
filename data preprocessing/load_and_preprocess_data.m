@@ -35,6 +35,7 @@ function [F, DF, ops, stat, iscell] = load_and_preprocess_data(workingFolder)
             mod = py.importlib.import_module('python_function');
             stat = mod.read_npy_file(newStatPath);
             ops = mod.read_npy_file(newOpsPath);
+            ops = dictionary(ops);
         catch ME
             error('Failed to call Python function: %s', ME.message);
         end

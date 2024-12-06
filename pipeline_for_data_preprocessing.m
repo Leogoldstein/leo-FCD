@@ -19,7 +19,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
     % Définir les chemins de base
     jm_folder = '\\10.51.106.5\data\Data\jm\'; % Dossiers pour JM
     destinationFolder = 'D:/imaging/jm/'; % Destination des fichiers JM
-    fcd_folder = 'D:\imaging\FCD'; % Dossiers pour FCD
+    fcd_folder = %'D:\imaging\FCD'; % Dossiers pour FCD
     ctrl_folder = 'D:\imaging\CTRL'; % Dossiers pour CTRL
 
     % Initialisation des sorties
