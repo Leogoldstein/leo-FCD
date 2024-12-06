@@ -48,6 +48,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             disp('Traitement des données FCD...');
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
+            dataFolders = organize_data_by_animal(dataFolders);
             [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement FCD terminé.');
 
@@ -56,6 +57,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             disp('Traitement des données CTRL...');
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
+            dataFolders = organize_data_by_animal(dataFolders);
             [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement CTRL terminé.');
 
