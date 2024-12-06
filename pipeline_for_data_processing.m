@@ -95,7 +95,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 
                 build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-  
+
             case 3
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
@@ -112,7 +112,6 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
                 all_TRace_groups{k} = all_TRace;
                 all_sces_distances_groups{k} = all_sces_distances;
                 all_RasterRace_groups{k} = all_RasterRace;
-                current_group_paths{k} = date_group_paths;
 
             case 4
                 disp(['Performing clusters analysis for ', current_animal_group]);
@@ -125,15 +124,20 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
             otherwise
                 disp('Invalid analysis choice. Skipping...');
         end
+        current_group_paths{k} = date_group_paths;
     end
     
     % % Analyses globales après la boucle
     if analysis_choice == 3
         SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     end
+
+    % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
+    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
+    if strcmpi(create_ppt, 'y')
+        create_ppt_from_figs(current_group_paths)
+    end
 end
-
-
 
 %% Helper Functions
 

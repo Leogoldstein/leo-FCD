@@ -1,4 +1,4 @@
-function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_preprocessing()
+function [dataFolders, truedataFolders, animal_date_list, env_paths, env_paths_all] = pipeline_for_data_preprocessing()
     % pipeline_for_data_preprocessing : Fonction pour traiter les données
     % selon le choix de l'utilisateur.
     %
@@ -19,7 +19,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
     % Définir les chemins de base
     jm_folder = '\\10.51.106.5\data\Data\jm\'; % Dossiers pour JM
     destinationFolder = 'D:/imaging/jm/'; % Destination des fichiers JM
-    fcd_folder = %'D:\imaging\FCD'; % Dossiers pour FCD
+    fcd_folder = 'D:\imaging\FCD\to processed'; % Dossiers pour FCD
     ctrl_folder = 'D:\imaging\CTRL'; % Dossiers pour CTRL
 
     % Initialisation des sorties
@@ -49,7 +49,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement FCD terminé.');
 
         case 3
@@ -58,7 +58,7 @@ function [truedataFolders, animal_date_list, env_paths] = pipeline_for_data_prep
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [truedataFolders, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
             disp('Traitement CTRL terminé.');
 
         otherwise

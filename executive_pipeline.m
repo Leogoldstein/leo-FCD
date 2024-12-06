@@ -8,9 +8,16 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
-[truedataFolders, animal_date_list, env_paths] = pipeline_for_data_preprocessing();
+[dataFolders, truedataFolders, animal_date_list, env_paths, env_paths_all] = pipeline_for_data_preprocessing();
+
+%%
+for idx = 1:length(dataFolders)
+        dataFolder = dataFolders{idx};
+        sampling_rate = find_key_value(env_paths_all{idx}, 'framerate');
+        disp(sampling_rate)
+end
 
 %% Processing and analysis
 
 PathSave = 'D:\after_processing';
-pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list, env_paths)
+pipeline_for_data_processing(PathSave, truedataFolders, animal_date_list, env_paths);

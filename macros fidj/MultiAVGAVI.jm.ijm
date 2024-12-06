@@ -55,7 +55,7 @@ var list = getFileList(dir);
 setBatchMode(true);
 
 // Définir le répertoire de sauvegarde
-var PathSave = "D:/after_processing/registered movies/";
+var PathSave = "D:/after_processing/";
 
 // Parcourir chaque dossier ou fichier dans la liste
 for (var i = 0; i < list.length; i++) {

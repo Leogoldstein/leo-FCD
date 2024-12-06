@@ -1,7 +1,8 @@
-function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
+function [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(selectedFolders)
     % Initialize cell arrays to store paths and canceled indices
     truedataFolders = {};  
     env_paths = {};
+    env_paths_all = {};
 
     % Loop through each selected folder
     for idx = 1:length(selectedFolders)
@@ -17,17 +18,6 @@ function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
         elseif isscalar(TSeriesFolders) && TSeriesFolders(1).isdir
             % If there is only one 'TSeries' folder, select it automatically
             TSeriesPath = fullfile(selectedFolder, TSeriesFolders(1).name);
-            
-            % Check for the 'suite2p' folder inside the TSeries folder
-            suite2pFolder = fullfile(TSeriesPath, 'suite2p');
-            
-            % If 'suite2p' subfolder exists, use it
-            if exist(suite2pFolder, 'dir') == 7
-                selectedFolder = suite2pFolder;
-            else
-                disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
-                continue;  % Skip to the next iteration of the loop
-            end
         else
             % If there are multiple 'TSeries' folders, prompt the user to select one
             TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
@@ -38,17 +28,28 @@ function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
                 disp(['User clicked Cancel for folder index: ' num2str(idx)]);
                 continue; % Skip to the next iteration of the loop
             end
-            
-            % Check for the 'suite2p' folder inside the selected TSeries folder
-            suite2pFolder = fullfile(TSeriesPath, 'suite2p');
-            
-            % If 'suite2p' subfolder exists, use it
-            if exist(suite2pFolder, 'dir') == 7
-                selectedFolder = suite2pFolder;
-            else
-                disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping this folder.');
-                continue;  % Skip to the next iteration of the loop
-            end
+        end
+
+        % Always process the .env file if it exists, even if no suite2p folder is found
+        env_file = dir(fullfile(TSeriesPath, '*.env'));
+        if ~isempty(env_file)
+            % If a .env file exists, construct its full path
+            env_path = fullfile(TSeriesPath, env_file(1).name); 
+            env_paths_all{end+1} = env_path; % Add to env_paths
+        else
+            disp(['Warning: No .env file found in TSeries folder: ' TSeriesPath]);
+            env_paths_all{end+1} = ''; % Add an empty entry for consistency
+        end
+
+        % Check for the 'suite2p' folder inside the TSeries folder
+        suite2pFolder = fullfile(TSeriesPath, 'suite2p');
+        
+        % If 'suite2p' subfolder exists, use it
+        if exist(suite2pFolder, 'dir') == 7
+            selectedFolder = suite2pFolder;
+        else
+            disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping Fall.mat processing.');
+            continue;  % Skip to the next iteration of the loop, but .env is already processed
         end
     
         disp(selectedFolder)
@@ -70,21 +71,13 @@ function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
             end
         end
 
-        % Construct the path to the .env file
-        env_file = dir(fullfile(TSeriesPath, '*.env'));
-        %if isscalar(env_file) % Check if exactly one .env file is found
-            env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
-        %else
-         %   env_path = ''; % Set to empty if no .env file is found or multiple files exist
-        %end
-        env_paths{end+1} = env_path;
-
         % Construct the path to Fall.mat
         file_path = fullfile(selectedFolder, 'Fall.mat');
         
         % Check if Fall.mat exists
         if exist(file_path, 'file') == 2
             truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
+            env_paths{end+1} = env_path;
         else
             % If Fall.mat does not exist, display an error message
             disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
@@ -95,5 +88,11 @@ function [truedataFolders, env_paths] = find_Fall_folders(selectedFolders)
     disp('Directories with Fall.mat files:');
     for i = 1:length(truedataFolders)
         disp(truedataFolders{i});
+    end
+    
+    % Display the .env file paths
+    disp('Paths to .env files:');
+    for i = 1:length(env_paths)
+        disp(env_paths{i});
     end
 end
