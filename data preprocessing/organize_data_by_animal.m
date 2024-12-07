@@ -19,7 +19,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
         
         % Si le chemin correspond déjà, l'ajouter à newdataFolders et passer au suivant
         if is_mTOR || is_ani
-            disp(['Folder already matches a pattern: ' file_path]);
+            %disp(['Folder already matches a pattern: ' file_path]);
             newdataFolders{end+1} = file_path;
             continue;
         end

@@ -12,8 +12,9 @@ function animal_date_list = create_animal_date_list(dataFolders)
     animal_date_list = cell(length(dataFolders), 4); % {type, group, animal, date}
 
     % Définition des patterns pour extraire les informations
-    pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
-    pattern_ani = 'D:\\imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    % Modification des patterns pour rendre "to processed" facultatif (?:\\to processed)?
+    pattern_mTOR = 'D:\\imaging\\FCD(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    pattern_ani = 'D:\\imaging\\(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
     pattern_jm = 'D:\\imaging\\jm\\([^\\]+)\\([^\\]+)';
 
     % Parcourir les chemins des fichiers

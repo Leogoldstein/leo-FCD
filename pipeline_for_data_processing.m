@@ -10,19 +10,19 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     mTor_part = animal_date_list(:, 2);
     animal_part = animal_date_list(:, 3);
     date_part = animal_date_list(:, 4);
-    age_part = animal_date_list(:, 5); 
+    %age_part = animal_date_list(:, 5); 
     
     % Determine unique groups for analysis
     if isempty(mTor_part) || all(cellfun(@isempty, mTor_part))
-        % Grouper par animal seulement
+        % Group by animal only
         animal_group = animal_part; 
         unique_animal_group = unique(animal_part);
     else
         % Group by animal and mTor
-        animal_group = strcat(animal_part, ' (', mTor_part, ')');
+        % Concatenate animal and mTor into a single string for unique grouping
+        animal_group = strcat(animal_part, '_', mTor_part);
         unique_animal_group = unique(animal_group);
     end
-    disp(unique_animal_group)
 
     % Initialize save paths and selection storage
     ani_paths = cell(length(unique_animal_group), 1);
@@ -30,8 +30,18 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     
     for k = 1:length(unique_animal_group)
         current_animal_group = unique_animal_group{k};
-        ani_path = fullfile(PathSave, type_part{1}, current_animal_group);
-       
+        if isempty(mTor_part) || all(cellfun(@isempty, mTor_part))
+            % When mTor_part is empty or all values are empty, group by animal only
+            ani_path = fullfile(PathSave, type_part{1}, current_animal_group);
+        else
+            % Split the current animal group into animal and mTor
+            parts = strsplit(current_animal_group, '_');
+            current_animal = parts{1};
+            current_mTor = parts{2};
+            
+            % Construct path using both animal and mTor
+            ani_path = fullfile(PathSave, type_part{1}, current_mTor, current_animal);
+        end
         % Create directory if it does not exist
         if ~exist(ani_path, 'dir')
             mkdir(ani_path);

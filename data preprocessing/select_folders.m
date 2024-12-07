@@ -74,37 +74,44 @@ function processedFolders = process_folder(folderPath)
     % Get the name of the last part of the path
     [~, folderName] = fileparts(folderPath);
 
-    % Check if the folder name does NOT resemble a date format
-    if ~is_date_format(folderName)
-        % Get subfolders, assuming they are dates
-        subFolders = dir(folderPath);
-        % Flag to check if any valid date subfolder was found
-        hasDateSubfolder = false;
+    % Check if the folder name resembles a date format
+    if is_date_format(folderName)
+        processedFolders{end+1} = [folderPath, filesep];
+        return; % Return early if it's a date format
+    end
+
+    % Get all subfolders (1st level and deeper)
+    subFolders = dir(folderPath);
     
-        for j = 1:length(subFolders)
-            % Get the name and path of the subfolder
-            subFolderName = subFolders(j).name;
-    
-            % Check if it is a directory and not '.' or '..'
-            if subFolders(j).isdir && ~strcmp(subFolderName, '.') && ~strcmp(subFolderName, '..')
-                if is_date_format(subFolderName)
-                    subFolderPath = fullfile(folderPath, subFolderName);
-                    % Append this subfolder path (assuming it's a date) to the list
-                    processedFolders{end+1} = [subFolderPath, filesep];
-                    hasDateSubfolder = true; % Set the flag to true if a date subfolder is found
+    for j = 1:length(subFolders)
+        subFolderName = subFolders(j).name;
+        
+        % Skip '.' and '..' directories
+        if subFolders(j).isdir && ~ismember(subFolderName, {'.', '..'})
+            subFolderPath = fullfile(folderPath, subFolderName);
+
+            % Check second-level subfolders if the name contains 'mTor'
+            if contains(folderName, 'mTor')
+                secondLevelSubFolders = dir(subFolderPath);
+                for k = 1:length(secondLevelSubFolders)
+                    if secondLevelSubFolders(k).isdir && ~ismember(secondLevelSubFolders(k).name, {'.', '..'}) && is_date_format(secondLevelSubFolders(k).name)
+                        processedFolders{end+1} = fullfile(subFolderPath, secondLevelSubFolders(k).name, filesep);
+                    end
                 end
+            % Otherwise, check if the subfolder name matches a date format
+            elseif is_date_format(subFolderName)
+                processedFolders{end+1} = [subFolderPath, filesep];
             end
         end
+    end
     
-        % Add the main folder only if no date subfolder was found
-        if ~hasDateSubfolder
-            processedFolders{end+1} = [folderPath, filesep];
-        end
-    else
-        % If the folder name resembles a date format, add it directly
+    % If no date-formatted subfolder is found, add the main folder
+    if isempty(processedFolders)
         processedFolders{end+1} = [folderPath, filesep];
     end
 end
+
+
 
 function isDate = is_date_format(folderName)
     % Check if the folder name follows the 'YYYY-MM-DD' or 'YYYY-MM-DD_a' pattern
