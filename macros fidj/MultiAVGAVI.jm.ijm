@@ -18,7 +18,7 @@ function addSlicesToMakeMultipleOfTen() {
 
 // Fonction pour extraire les chiffres d'une chaîne et retourner un tableau
 function extract_digits(a) {
-    var arr2 = newArray(); // tableau de retour contenant les nombres extraits
+    var arr2 = newArray(); // Tableau de retour contenant les nombres extraits
     for (var i = 0; i < a.length; i++) {
         var str = a[i];
         var digits = "";
@@ -42,163 +42,165 @@ function createDirectory(path) {
     if (!File.isDirectory(path)) {
         var rc = File.makeDirectory(path);
         if (rc) {
-            print("Créé le répertoire : " + path);
+            print("Répertoire créé : " + path);
         } else {
             print("Erreur lors de la création du répertoire : " + path);
         }
     }
 }
 
-// Sélectionnez le répertoire source
+var PathSave = "D:/after_processing/";
+
+// Sélectionner le répertoire source
 var dir = getDirectory("Choose Source Directory ");
 var list = getFileList(dir);
 setBatchMode(true);
-
-// Définir le répertoire de sauvegarde
-var PathSave = "D:/after_processing/";
 
 // Parcourir chaque dossier ou fichier dans la liste
 for (var i = 0; i < list.length; i++) {
     showProgress(i + 1, list.length);
     var filename = dir + list[i];
-    print(filename);
+    print("Traitement du fichier : " + filename);
     
     // Récupérer le nom du fichier
     var name = File.getName(filename);
+         
+    if (name.startsWith("mTor")) {
+        // Récupérer la liste des sous-dossiers
+        var subDirList = getFileList(filename);
+    
+        // Extraire le nom de base pour "mTor"
+        var mTorName = name; // Si nécessaire, nettoyez ou modifiez ce nom
+        var mTorDir = PathSave + "FCD/" + mTorName + '/';
+            createDirectory(mTorDir);
+    
+        for (var j = 0; j < subDirList.length; j++) {    
+            print("Vérification du sous-dossier : " + subDirList[j]);
+            var subDir = filename + "/" + subDirList[j];
  
-	var indexAnimal = name.indexOf("ani");
-    if (indexAnimal != -1) {
-        // Extraire le nom de l'animal
-        var animal = name.substring(indexAnimal);
-    }
-    // Extraire la date jusqu'au troisième tiret
-    var dateEndIndex = name.indexOf("-", 10);
-    var date = name.substring(0, dateEndIndex); // "2024-10-21"
+            var aniDir = mTorDir + subDirList[j];
+            createDirectory(aniDir);
 
-     // Vérifier la présence de "mTor" et l'extraire si trouvé
-     var mTorIndex = name.indexOf("mTor");
-     if (mTorIndex != -1) {
-         var mTorEndIndex = name.indexOf("-", mTorIndex);
-         var mTorName = name.substring(mTorIndex, mTorEndIndex);
-         var baseDir = PathSave + "FCD/" + mTorName + "/" ;
-         createDirectory(baseDir);
-      } else {
-         // Sinon, sauvegarder dans le dossier CTRL
-         var baseDir = PathSave + "CTRL/" ;
-      }
-    
-    var animalDir = baseDir + animal + "/";
-    createDirectory(animalDir);
-   
-    // Créer le répertoire de sauvegarde pour l'animal et la date
-    var saveDir = animalDir + date + "/";
-    createDirectory(saveDir);
-
-    // Afficher les résultats
-    print("Date : " + date);
-    print("Animal : " + animal);
-    print("Dossier de sauvegarde : " + saveDir);
-
-    // Lister le contenu du dossier actuel
-    tseriesFoldersList = getFileList(filename);
-    tseriesFolderFound = false;
-    var tseriesFolders = newArray();
-    
-    for (var j = 0; j < tseriesFoldersList.length; j++) {
-        if (startsWith(tseriesFoldersList[j], "TSeries") && File.isDirectory(filename + tseriesFoldersList[j])) {
-            tseriesFolderFound = true;
-            tseriesFolders = Array.concat(tseriesFolders, filename + tseriesFoldersList[j]);
-        }
-    }
-    
-    if (!tseriesFolderFound) {
-        print("No 'TSeries' folder found in '" + tseriesFoldersList + "'. Exiting macro.");
-        continue;
-    }
-    
-    // Itérer sur les dossiers 'TSeries'
-    for (tseriesFolderIndex = 0; tseriesFolderIndex < tseriesFolders.length; tseriesFolderIndex++) {
-        tseriesFolder = tseriesFolders[tseriesFolderIndex];
-        print(tseriesFolder);
-        
-        // Vérifier si le sous-dossier 'suite2p' existe
-        suite2pFolder = tseriesFolder + "suite2p/";
-        
-        if (!File.isDirectory(suite2pFolder)) {
-            print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
-            continue; 
-        }
-        
-        // Lister les dossiers 'plane' dans suite2pFolder
-        planeFolders = getFileList(suite2pFolder);
-        var validPlaneFolders = newArray();
-        
-        for (var k = 0; k < planeFolders.length; k++) {
-            if (startsWith(planeFolders[k], "plane") && File.isDirectory(suite2pFolder + planeFolders[k])) {
-                validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + planeFolders[k] + "/");
-            }
-        }
-        
-        if (validPlaneFolders.length == 0) {
-            print("Skipping " + suite2pFolder + ": No 'plane' folders found.");
-            continue;
-        }
-        
-        // Itérer sur les dossiers 'plane'
-        for (var planeFolderIndex = 0; planeFolderIndex < validPlaneFolders.length; planeFolderIndex++) {
-            planeFolder = validPlaneFolders[planeFolderIndex];
-            
-            // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
-            regTifFolder = planeFolder + "reg_tif/";
-            if (File.isDirectory(regTifFolder)) {
-                tifFiles = getFileList(regTifFolder);
-                arr_num = extract_digits(tifFiles);
-                Array.sort(arr_num, tifFiles);
+            if (File.isDirectory(subDir)) {
+                var subSubDirList = getFileList(subDir);
                 
-                var filesToConcatenate = newArray();
-                var hasTifFiles = false;
-                
-                for (var l = 0; l < tifFiles.length; l++) {
-                    file = regTifFolder + tifFiles[l];
-                    open(file);
-                    // print("Opening file: " + file);
-                    
-                    // Ajouter des tranches vides pour faire en sorte que la taille de la pile soit un multiple de dix
-                    addSlicesToMakeMultipleOfTen();
-                    
-                    filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
-                    hasTifFiles = true;
+                if (subSubDirList.length > 0) {
+                    for (var k = 0; k < subSubDirList.length; k++) {
+                        // Vérification de l'existence de l'élément avant d'y accéder
+                        var subSubDir = subDir + subSubDirList[k];
+                        print("Sous-dossier trouvé : " + subSubDir);
+                        
+                        var saveDir = aniDir + subSubDirList[k];
+                        createDirectory(saveDir);
+                        
+                        var aviFileName = "AVG_concat.avi";  // Nom du fichier AVI à enregistrer
+                        var fullPathAvi = saveDir + aviFileName;
+
+                        // Vérifier si le fichier AVI existe déjà
+                        if (File.exists(fullPathAvi)) {
+                            print("Le fichier AVI existe déjà : " + fullPathAvi);
+                            continue; // Passer à l'itération suivante sans faire de calculs supplémentaires
+                        }
+
+                        var tseriesFoldersList = getFileList(subSubDir);
+                        var tseriesFolders = newArray();
+                        var tseriesFolderFound = false;
+    
+                        for (var l = 0; l < tseriesFoldersList.length; l++) {
+                            if (startsWith(tseriesFoldersList[l], "TSeries") && File.isDirectory(subSubDir + "/" + tseriesFoldersList[l])) {
+                                tseriesFolderFound = true;
+                                tseriesFolders = Array.concat(tseriesFolders, subSubDir + "/" + tseriesFoldersList[l]);
+                            }
+                        }
+    
+                        if (!tseriesFolderFound) {
+                            print("No 'TSeries' folder found in '" + subSubDir + "'. Skipping this subSubDir.");
+                            continue; // Passer au subSubDir suivant
+                        }
+    
+                        // Itérer sur les dossiers 'TSeries'
+                        for (tseriesFolderIndex = 0; tseriesFolderIndex < tseriesFolders.length; tseriesFolderIndex++) {
+                            tseriesFolder = tseriesFolders[tseriesFolderIndex];
+                            print("TSeries folder found: " + tseriesFolder);
+                            
+
+                            // Vérifier si le sous-dossier 'suite2p' existe
+                            suite2pFolder = tseriesFolder + "/suite2p/";                            
+                            if (!File.isDirectory(suite2pFolder)) {
+                                print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
+                                continue; 
+                            }
+                            
+                            // Lister les dossiers 'plane' dans suite2pFolder
+                            planeFolders = getFileList(suite2pFolder);
+                            var validPlaneFolders = newArray();
+                            
+                            for (var m = 0; m < planeFolders.length; m++) {
+                                if (startsWith(planeFolders[m], "plane") && File.isDirectory(suite2pFolder + "/" + planeFolders[m])) {
+                                    validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + "/" + planeFolders[m] + "/");
+                                }
+                            }
+                            
+                            if (validPlaneFolders.length == 0) {
+                                print("Skipping " + suite2pFolder + ": No 'plane' folders found.");
+                                continue;
+                            }
+                            
+
+                            // Itérer sur les dossiers 'plane'
+                            for (var planeFolderIndex = 0; planeFolderIndex < validPlaneFolders.length; planeFolderIndex++) {
+                                planeFolder = validPlaneFolders[planeFolderIndex];
+                                
+                                // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
+                                regTifFolder = planeFolder + "/reg_tif/";
+                                if (File.isDirectory(regTifFolder)) {
+                                    tifFiles = getFileList(regTifFolder);
+                                    arr_num = extract_digits(tifFiles);
+                                    Array.sort(arr_num, tifFiles);	                    
+
+                                    var filesToConcatenate = newArray();
+                                    var hasTifFiles = false;
+
+                                    for (var n = 0; n < tifFiles.length; n++) {
+                                        file = regTifFolder + "/" + tifFiles[n];
+                                        open(file);
+                                        
+                                        // Ajouter des tranches vides pour faire en sorte que la taille de la pile soit un multiple de dix
+                                        addSlicesToMakeMultipleOfTen();
+                                      
+                                        filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
+                                        hasTifFiles = true;
+                                    }
+                                    
+                                    // Concaténer les piles
+                                    if (hasTifFiles) {
+                                        concatenateTiffFiles(filesToConcatenate);
+                                      
+                                        // Appliquer une projection Z groupée
+                                        run("Grouped Z Project...", "projection=[Average Intensity] group=10");
+                                        run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
+                                        run("Animation Options...", "speed=30 first=1 last=" + nSlices);
+
+                                        // Sauvegarder les résultats
+                                        saveAs("AVI", fullPathAvi);
+                                        print("Saved AVI file: " + fullPathAvi);
+    
+                                        // Fermer toutes les images
+                                        run("Close All");
+    
+                                    } else {
+                                        print("Aucun fichier .tif trouvé dans " + regTifFolder);
+                                    }
+                                } else {
+                                    print("Aucun dossier 'reg_tif' trouvé dans " + planeFolder);
+                                }
+                            }
+                        }
+                    }
                 }
-                
-                // Concaténer les piles
-                if (hasTifFiles) {
-                    concatenateTiffFiles(filesToConcatenate);
-                    
-                    // Appliquer une projection Z groupée
-                    run("Grouped Z Project...", "projection=[Average Intensity] group=10");
-		    		run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
-		    		run("Animation Options...", "speed=30 first=1 last=" + nSlices);
-
-                    // Sauvegarder l'image concaténée au format TIFF
-                    var tiffFileName = "AVG_concat.tif";
-                    fullPathTiff = regTifFolder + tiffFileName;
-                    saveAs("Tiff", fullPathTiff);
-                    
-                    // Sauvegarder au format AVI dans le nouveau répertoire
-                    var aviFileName = "AVG_concat.avi";
-                    fullPathAvi = saveDir + aviFileName;
-                    saveAs("AVI", fullPathAvi);
-                    
-                    print("Saved AVI file: " + fullPathAvi);
-                    
-                    // Fermer toutes les images
-                    run("Close All");
-                } else {
-                    print("No .tif files found in " + regTifFolder + ".");
-                }
-            } else {
-                print("No 'reg_tif' folder found in " + planeFolder + ".");
             }
         }
     }
 }
+
+setBatchMode(false);
