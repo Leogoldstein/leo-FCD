@@ -70,5 +70,5 @@ function [dataFolders, truedataFolders, animal_date_list, env_paths, env_paths_a
     animal_date_list = create_animal_date_list(truedataFolders);
 
     % Associer les âges aux animaux
-    %animal_date_list = assign_age_to_animals(animal_date_list);
+    animal_date_list = assign_age_to_animals(animal_date_list);
 end

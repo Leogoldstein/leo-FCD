@@ -10,12 +10,6 @@ end
 
 [dataFolders, truedataFolders, animal_date_list, env_paths, env_paths_all] = pipeline_for_data_preprocessing();
 
-%%
-for idx = 1:length(dataFolders)
-        dataFolder = dataFolders{idx};
-        sampling_rate = find_key_value(env_paths_all{idx}, 'framerate');
-        disp(sampling_rate)
-end
 
 %% Processing and analysis
 

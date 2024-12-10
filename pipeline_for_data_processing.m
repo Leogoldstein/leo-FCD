@@ -10,7 +10,7 @@ function pipeline_for_data_processing(PathSave, truedataFolders, animal_date_lis
     mTor_part = animal_date_list(:, 2);
     animal_part = animal_date_list(:, 3);
     date_part = animal_date_list(:, 4);
-    %age_part = animal_date_list(:, 5); 
+    age_part = animal_date_list(:, 5); 
     
     % Determine unique groups for analysis
     if isempty(mTor_part) || all(cellfun(@isempty, mTor_part))
