@@ -210,8 +210,12 @@ for (var i = 0; i < list.length; i++) {
     print("Traitement du fichier : " + filename);
     
     var name = File.getName(filename);
+    
+    var parentFolder = File.getParent(filename); 
+    var type = parentFolder.substring(parentFolder.lastIndexOf("\\") + 1);
+    
     var subDirList = getFileList(filename);
-    var rootDir = PathSave + "FCD/" + name + '/';
+    var rootDir = PathSave + type + '/' + name + '/';
     createDirectory(rootDir);
     
     // Pour chaque élément de subDirList
@@ -251,7 +255,7 @@ for (var i = 0; i < list.length; i++) {
         }
         
         // Si le nom commence par "ani", traitement des sous-dossiers niveau 1
-        else if (name.startsWith("ani")) {
+        else if (name.startsWith("an")) {
             var saveDir = rootDir + subDirList[j];
             createDirectory(saveDir);
         
