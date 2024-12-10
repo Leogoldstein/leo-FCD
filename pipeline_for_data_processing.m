@@ -78,9 +78,9 @@ function pipeline_for_data_processing(selected_groups, env_paths)
     end
     
     % % Analyses globales après la boucle
-    if analysis_choice == 3
-        SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
-    end
+    % if analysis_choice == 3
+    %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
+    % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
     create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
