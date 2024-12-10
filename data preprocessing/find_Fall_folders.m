@@ -21,8 +21,7 @@ function [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(selecte
         else
             % If there are multiple 'TSeries' folders, prompt the user to select one
             TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
-            disp(TSeriesPath)
-            
+
             % Check if the user canceled the selection
             if isequal(TSeriesPath, 0)
                 disp(['User clicked Cancel for folder index: ' num2str(idx)]);
@@ -51,8 +50,6 @@ function [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(selecte
             disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping Fall.mat processing.');
             continue;  % Skip to the next iteration of the loop, but .env is already processed
         end
-    
-        disp(selectedFolder)
     
         % List 'plane' folders in suite2pFolder
         planeFolders = dir(fullfile(selectedFolder, 'plane*'));
@@ -91,8 +88,8 @@ function [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(selecte
     end
     
     % Display the .env file paths
-    disp('Paths to .env files:');
-    for i = 1:length(env_paths)
-        disp(env_paths{i});
-    end
+    % disp('Paths to .env files:');
+    % for i = 1:length(env_paths)
+    %     disp(env_paths{i});
+    % end
 end
