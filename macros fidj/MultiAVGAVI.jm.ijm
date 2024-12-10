@@ -1,67 +1,3 @@
-// Fonction pour traiter les sous-dossiers pour mTor (niveau 2 de sous-dossiers)
-function processMTorSubDir(subDir, subDirList, rootDir) {
-        for (var j = 0; j < subDirList.length; j++) {    
-
-	        var subDir = filename + "/" + subDirList[j];
-	        var aniDir = rootDir + subDirList[j];
-	        createDirectory(aniDir);
-	
-	        if (File.isDirectory(subDir)) {
-	            var subSubDirList = getFileList(subDir);
-	            
-		        if (subSubDirList.length > 0) {
-	                for (var k = 0; k < subSubDirList.length; k++) {
-	                    var subSubDir = subDir + subSubDirList[k];
-	                    print("Sous-dossier trouvé : " + subSubDir); 
-            
-				        var saveDir = aniDir + subSubDirList[k];
-				        createDirectory(saveDir);
-				        
-				        var saveSingleImDir = saveDir + "Single images/";
-				        createDirectory(saveSingleImDir);
-				        
-				        var saveRegisVidDir = saveDir + "Registered AVI/";
-				        createDirectory(saveRegisVidDir);
-				
-				        // Traiter les dossiers "SingleImage" dans subSubDir
-				        handleSingleImages(subSubDir, saveSingleImDir);
-				        
-				        // Vérifier et créer l'AVI enregistré
-				        handleTSeriesAndAvi(subSubDir, saveRegisVidDir);
-			        }
-		        }
-	        }    
-	    }
-	}
-
-
-// Fonction pour traiter les sous-dossiers pour ani (niveau 1 de sous-dossiers)
-function processAniSubDir(subDir, subDirList, rootDir) {
-        for (var j = 0; j < subDirList.length; j++) {    
-
-	        var subDir = filename + "/" + subDirList[j];
-
-	        if (File.isDirectory(subDir)) {
-	        	
-		        var saveDir = rootDir + subDirList[j];
-		        createDirectory(saveDir);
-		
-		        var saveSingleImDir = saveDir + "Single images/";
-		        createDirectory(saveSingleImDir);
-		
-		        var saveRegisVidDir = saveDir + "Registered AVI/";
-		        createDirectory(saveRegisVidDir);
-		
-		        // Traiter les dossiers "SingleImage" dans subDir
-		        handleSingleImages(subDir, saveSingleImDir);
-		        
-		        // Vérifier et créer l'AVI enregistré
-		        handleTSeriesAndAvi(subDir, saveRegisVidDir);
-	        }
-    	}
-	}
-
-
 // Fonction pour gérer les images dans "SingleImage"
 function handleSingleImages(subDir, saveSingleImDir) {
     var SubFolders = getFileList(subDir);
@@ -270,7 +206,6 @@ var list = getFileList(dir);
 setBatchMode(true);
 
 for (var i = 0; i < list.length; i++) {
-    showProgress(i + 1, list.length);
     var filename = dir + list[i];
     print("Traitement du fichier : " + filename);
     
@@ -278,14 +213,62 @@ for (var i = 0; i < list.length; i++) {
     var subDirList = getFileList(filename);
     var rootDir = PathSave + "FCD/" + name + '/';
     createDirectory(rootDir);
+    
+    // Pour chaque élément de subDirList
+    for (var j = 0; j < subDirList.length; j++) {
+        var subDir = filename + "/" + subDirList[j];
+        
+        // Si le nom commence par "mTor", traitement des sous-dossiers niveau 2
+        if (name.startsWith("mTor")) {
+            var aniDir = rootDir + subDirList[j];
+            createDirectory(aniDir);
 
-    if (name.startsWith("mTor")) {
-        // Traitement pour mTor (sous-dossiers niveau 2)
-        processMTorSubDir(filename, subDirList, rootDir);
-    } else if (name.startsWith("ani")) {
-        // Traitement pour ani (sous-dossiers niveau 1)
-        processAniSubDir(filename, subDirList, rootDir);
+            if (File.isDirectory(subDir)) {
+                var subSubDirList = getFileList(subDir);
+                
+                if (subSubDirList.length > 0) {
+                    for (var k = 0; k < subSubDirList.length; k++) {
+                        var subSubDir = subDir + "/" + subSubDirList[k];
+                        print("Sous-dossier trouvé : " + subSubDir); 
+
+                        var saveDir = aniDir + "/" + subSubDirList[k];
+                        createDirectory(saveDir);
+                        
+                        var saveSingleImDir = saveDir + "/Single images/";
+                        createDirectory(saveSingleImDir);
+                        
+                        var saveRegisVidDir = saveDir + "/Registered AVI/";
+                        createDirectory(saveRegisVidDir);
+                    
+                        // Traiter les dossiers "SingleImage" dans subSubDir
+                        handleSingleImages(subSubDir, saveSingleImDir);
+                        
+                        // Vérifier et créer l'AVI enregistré
+                        handleTSeriesAndAvi(subSubDir, saveRegisVidDir);
+                    }
+                }
+            }    
+        }
+        
+        // Si le nom commence par "ani", traitement des sous-dossiers niveau 1
+        else if (name.startsWith("ani")) {
+            var saveDir = rootDir + subDirList[j];
+            createDirectory(saveDir);
+        
+            var saveSingleImDir = saveDir + "/Single images/";
+            createDirectory(saveSingleImDir);
+        
+            var saveRegisVidDir = saveDir + "/Registered AVI/";
+            createDirectory(saveRegisVidDir);
+        
+            // Traiter les dossiers "SingleImage" dans subDir
+            handleSingleImages(subDir, saveSingleImDir);
+            
+            // Vérifier et créer l'AVI enregistré
+            handleTSeriesAndAvi(subDir, saveRegisVidDir);
+        }
     }
 }
+
 setBatchMode(false);
 
