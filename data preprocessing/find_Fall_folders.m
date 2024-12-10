@@ -1,4 +1,4 @@
-function [truedataFolders, env_paths_all, env_paths] = find_Fall_folders(selectedFolders)
+function [truedataFolders, env_paths, env_paths_all] = find_Fall_folders(selectedFolders)
     % Initialize cell arrays to store paths and canceled indices
     truedataFolders = {};  
     env_paths = {};

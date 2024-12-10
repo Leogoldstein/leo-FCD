@@ -1,6 +1,7 @@
-function [env_paths, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(selectedFolders)
+function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
     env_paths = {};
+    env_paths_all = {};
     statPaths = {};
     FPaths = {};
     iscellPaths = {};
@@ -70,9 +71,11 @@ function [env_paths, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folder
         env_file = dir(fullfile(TSeriesPath, '*.env'));
         %if isscalar(env_file) % Check if exactly one .env file is found
             env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
-        %else
-         %   env_path = ''; % Set to empty if no .env file is found or multiple files exist
-        %end
+            env_paths_all{end+1} = env_path; % Add to env_paths
+        else
+           env_path = ''; % Set to empty if no .env file is found or multiple files exist
+           env_paths_all{end+1} = ''; % Add an empty entry for consistency
+        end
         env_paths{end+1} = env_path;
 
         % Construct file paths
