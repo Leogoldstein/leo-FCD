@@ -26,23 +26,23 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
         tokens = regexp(file_path, pattern_mTOR, 'tokens');
         if ~isempty(tokens)
             type_part = 'FCD';
-            group_part = tokens{1}{1}; % Exemple : mTor12
-            animal_part = tokens{1}{2}; % Exemple : ani7
-            date_part = tokens{1}{3}; % Exemple : 2024-07-06
+            group_part = tokens{1}{1}; % Exemple : mTor13
+            animal_part = tokens{1}{2}; % Exemple : ani2
+            date_part = tokens{1}{3}; % Exemple : 2024-06-27
         else
             tokens = regexp(file_path, pattern_ani, 'tokens');
             if ~isempty(tokens)
                 type_part = tokens{1}{1}; % Exemple : CTRL
                 group_part = ''; % Vide pour pattern_ani
-                animal_part = tokens{1}{2}; % Exemple : ani7
-                date_part = tokens{1}{3}; % Exemple : 2024-07-06
+                animal_part = tokens{1}{2}; % Exemple : ani2
+                date_part = tokens{1}{3}; % Exemple : 2024-06-27
             else
                 tokens = regexp(file_path, pattern_jm, 'tokens');
                 if ~isempty(tokens)
                     type_part = 'jm';
                     group_part = ''; % Vide pour pattern_jm
                     animal_part = tokens{1}{1}; % Exemple : jm040
-                    date_part = tokens{1}{2}; % Exemple : 2024-05-06
+                    date_part = tokens{1}{2}; % Exemple : 2024-06-27
                 end
             end
         end
@@ -114,62 +114,54 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             animal_group = unique_animals_in_group{a};
             animal_indices = strcmp(animal_date_list(:, 3), animal_group) & group_indices;
     
-            % Vérifier si l'animal a déjà un âge assigné
-            if ismember(animal_group, animals_with_assigned_ages)
-                continue; % Passer si l'âge a déjà été assigné
-            end
-    
-            % **Conversion en types cohérents**
-            for i = 1:size(animal_date_list, 1)
-                if isempty(animal_date_list{i, 5}) || ~ischar(animal_date_list{i, 5})
-                    animal_date_list{i, 5} = NaN;
-                end
-            end
-    
             % Trouver les indices des lignes où l'âge est NaN
             nan_indices = find(cellfun(@(x) isnumeric(x) && isnan(x), animal_date_list(:, 5)));
     
             % Parcourir les dates associées à cet animal et demander l'âge
             for i = nan_indices'
-                fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list{i, 3}, animal_date_list{i, 2});
-                disp(animal_date_list(animal_indices, 4));
-    
-                % Si l'animal a déjà un âge, ne pas redemander
-                if ~isnan(animal_date_list{i, 5})  % Si l'âge est déjà assigné
-                    fprintf('Age already assigned for animal "%s". Skipping age assignment.\n', animal_group);
-                    continue;
-                end
-    
-                % Demander l'âge si nécessaire
-                age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list{i, 3}), 's');
-    
-                % Traiter l'entrée utilisateur
-                if contains(age_input, ':')
-                    age_range = str2double(strsplit(age_input, ':'));
-                    age_list = num2cell(age_range(1):age_range(2));
-                else
-                    age_list = num2cell(str2double(strsplit(age_input)));
-                end
-    
-                % Assigner les âges
-                for j = 1:length(age_list)
-                    if i + j - 1 <= size(animal_date_list, 1)
-                        animal_date_list{i + j - 1, 5} = sprintf('P%d', age_list{j});
-                    else
-                        animal_date_list{i + j - 1, 5} = NaN; % Placeholder si nécessaire
+                if strcmp(animal_date_list{i, 3}, animal_group) && strcmp(animal_date_list{i, 2}, group)
+                    % Vérifier si un âge a déjà été assigné pour cet animal
+                    if ~isnan(animal_date_list{i, 5})
+                        % Si un âge est déjà assigné, passer à la prochaine itération
+                        continue;
                     end
-                end
+
+                    % Afficher les dates uniquement si l'âge n'est pas encore attribué
+                    fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list{i, 3}, animal_date_list{i, 2});
+                    disp(animal_date_list(animal_indices, 4)); % Afficher les dates associées à cet animal uniquement
+                    
+                    % Demander l'âge si nécessaire
+                    age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list{i, 3}), 's');
     
-                % Ajouter l'animal à la liste des animaux traités
-                animals_with_assigned_ages = [animals_with_assigned_ages, animal_group];
+                    % Traiter l'entrée utilisateur
+                    if contains(age_input, ':')
+                        age_range = str2double(strsplit(age_input, ':'));
+                        age_list = num2cell(age_range(1):age_range(2));
+                    else
+                        age_list = num2cell(str2double(strsplit(age_input)));
+                    end
+    
+                    % Assigner les âges
+                    for j = 1:length(age_list)
+                        if isnan(age_list{j})
+                            continue; % Skip if age is NaN
+                        else
+                            if i + j - 1 <= size(animal_date_list, 1)
+                                animal_date_list{i + j - 1, 5} = sprintf('P%d', age_list{j});
+                            else
+                                animal_date_list{i + j - 1, 5} = NaN; % Placeholder si nécessaire
+                            end
+                        end
+                    end
+    
+                    % Ajouter l'animal à la liste des animaux traités
+                    animals_with_assigned_ages = [animals_with_assigned_ages, animal_group];
+                end
             end
         end
     end
 
-    % Fusionner les données existantes avec les nouvelles données
-    combined_data = [existing_data; animal_date_list]; % Ajouter les nouvelles entrées aux anciennes
-
     % Sauvegarder les données combinées dans le fichier .mat
-    save(type_save_path, 'combined_data');
+    save(type_save_path, 'animal_date_list');
     fprintf('Data saved to "%s".\n', type_save_path);
 end
