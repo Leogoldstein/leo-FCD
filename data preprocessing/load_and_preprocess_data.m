@@ -25,6 +25,7 @@ function [F, DF, ops, stat, iscell] = load_and_preprocess_data(workingFolder)
         newStatPath = fullfile(workingFolder, 'stat.npy');
         newIscellPath = fullfile(workingFolder, 'iscell.npy');
         newOpsPath = fullfile(workingFolder, 'ops.npy');
+        newSpksPath = fullfile(workingFolder, 'spks.npy');
 
         % Load .npy files
         F = readNPY(newFPath);  % Assuming only one folder, so the 1st entry is used

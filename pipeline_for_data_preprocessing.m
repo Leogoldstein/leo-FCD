@@ -40,8 +40,8 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             % Traitement JM (Jure's data)
             disp('Traitement des données JM...');
             dataFolders = select_folders(jm_folder);
-            [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(dataFolders);
-            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, destinationFolder);
+            [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
             disp('Traitement JM terminé.');
 
         case 2

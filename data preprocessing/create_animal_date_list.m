@@ -64,7 +64,8 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
     animals_with_assigned_ages = {};
 
     % Charger les données existantes si le fichier .mat existe
-    save_folder = fullfile(PathSave, 'FCD');
+    type_part = animal_date_list(:, 1);
+    save_folder = fullfile(PathSave, type_part{1});
     save_file = 'animal_date_list.mat';
     type_save_path = fullfile(save_folder, save_file);
 

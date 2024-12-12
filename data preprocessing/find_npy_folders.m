@@ -1,4 +1,4 @@
-function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = find_npy_folders(selectedFolders)
+function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
     env_paths = {};
     env_paths_all = {};
@@ -6,6 +6,7 @@ function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = 
     FPaths = {};
     iscellPaths = {};
     opsPaths = {};
+    spksPaths = {};
 
     for idx = 1:length(selectedFolders)
         selectedFolder = selectedFolders{idx};
@@ -69,7 +70,7 @@ function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = 
         
         % Construct the path to the .env file
         env_file = dir(fullfile(TSeriesPath, '*.env'));
-        %if isscalar(env_file) % Check if exactly one .env file is found
+        if isscalar(env_file) % Check if exactly one .env file is found
             env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
             env_paths_all{end+1} = env_path; % Add to env_paths
         else
@@ -83,9 +84,10 @@ function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = 
         F_path = fullfile(selectedFolder, 'F.npy');
         iscell_path = fullfile(selectedFolder, 'iscell.npy');
         ops_path = fullfile(selectedFolder, 'ops.npy');
+        spks_path = fullfile(selectedFolder, 'spks.npy');
 
         % Create a list of all file paths
-        filePaths = {stat_path, F_path, iscell_path, ops_path};
+        filePaths = {stat_path, F_path, iscell_path, ops_path, spks_path};
         
         % Check the existence of each file in the list
         for i = 1:length(filePaths)
@@ -95,6 +97,7 @@ function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths] = 
                 FPaths{end+1} = filePaths{2};
                 iscellPaths{end+1} = filePaths{3};
                 opsPaths{end+1} = filePaths{4};
+                spksPaths{end+1} = filePaths{5};
                 break
             end
         end

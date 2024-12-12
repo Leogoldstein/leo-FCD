@@ -1,4 +1,4 @@
-function pipeline_for_data_processing(selected_groups, env_paths)
+function pipeline_for_data_processing(selected_groups)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved
@@ -70,6 +70,8 @@ function pipeline_for_data_processing(selected_groups, env_paths)
                [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_ops, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group);
 
                plot_assemblies(all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, validDirectories);
+
+               plot_clusters_metrics(validDirectories, animal_date_list, all_sce_n_cells_threshold, synchronous_frames)
 
             otherwise
                 disp('Invalid analysis choice. Skipping...');
