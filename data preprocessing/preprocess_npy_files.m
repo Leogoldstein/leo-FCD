@@ -1,6 +1,6 @@
-function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpkPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spkPaths, destinationFolder)
+function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder)
     % Store all path variables in a cell array
-    allPaths = {FPaths, statPaths, iscellPaths, opsPaths, spkPaths};
+    allPaths = {FPaths, statPaths, iscellPaths, opsPaths, spksPaths};  % Added spksPaths
 
     % Initialize a cell array to store the paths of directories (both new and existing)
     allFolders = {};
@@ -10,7 +10,7 @@ function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpkPaths, tru
     newStatPaths = cell(size(statPaths));
     newIscellPaths = cell(size(iscellPaths));
     newOpsPaths = cell(size(opsPaths));
-    newSpkPaths = cell(size(spkPaths));
+    newSpksPaths = cell(size(spksPaths));  % Added newSpksPaths
 
     % Loop through each set of paths
     for setIdx = 1:length(allPaths)
@@ -27,8 +27,8 @@ function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpkPaths, tru
                 newPaths = newIscellPaths;
             case 4
                 newPaths = newOpsPaths;
-            case 5
-                newPaths = newSpkPaths;
+            case 5  % Added case for spksPaths
+                newPaths = newSpksPaths;
         end
 
         % Loop through each file path in the current set
@@ -80,8 +80,8 @@ function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpkPaths, tru
                 newIscellPaths = newPaths;
             case 4
                 newOpsPaths = newPaths;
-            case 5
-                newSpkPaths = newPaths;
+            case 5  % Save the updated paths for newSpksPaths
+                newSpksPaths = newPaths;
         end
     end
 

@@ -33,15 +33,15 @@ function pipeline_for_data_processing(selected_groups)
                 disp(['Performing mean images for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
                 
-                [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
-
+                all_ops = load_ops(current_folders_group);
+                assignin('base', 'all_ops', all_ops);
                 save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
 
             case 2
                 disp(['Performing raster plot analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
 
-                [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+                [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
                 
                 build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
@@ -50,7 +50,7 @@ function pipeline_for_data_processing(selected_groups)
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-                [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
+                [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
                 
                 plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
 
@@ -67,11 +67,12 @@ function pipeline_for_data_processing(selected_groups)
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-               [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_ops, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group);
-
+               [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
+            
+               all_ops = load_ops(current_folders_group);
                plot_assemblies(all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, validDirectories);
 
-               plot_clusters_metrics(validDirectories, animal_date_list, all_sce_n_cells_threshold, synchronous_frames)
+               plot_clusters_metrics(validDirectories, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
 
             otherwise
                 disp('Invalid analysis choice. Skipping...');
@@ -115,11 +116,10 @@ function date_group_paths = create_base_folders(base_path, current_dates_group)
 end
 
 
-function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group)    
+function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group)    
     % Initialize cell arrays for outputs
     numFolders = length(date_group_paths);
     all_DF = cell(numFolders, 1);
-    all_ops = cell(numFolders, 1);
     all_sampling_rate = cell(numFolders, 1);
     all_isort1 = cell(numFolders, 1);
     all_isort2 = cell(numFolders, 1);
@@ -142,9 +142,6 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
             % Assign the relevant fields to the output variables
             if isfield(data, 'DF')
                 all_DF{m} = data.DF;
-            end
-            if isfield(data, 'ops')
-                all_ops{m} = data.ops;
             end
             if isfield(data, 'isort1')
                 all_isort1{m} = data.isort1;
@@ -172,7 +169,8 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
             end
             
         else
-            [~, DF, ops, ~, ~] = load_and_preprocess_data(current_folders_group{m});
+            [F, ops, ~, iscell] = load_data(current_folders_group{m});
+            DF = DF_processing(F, iscell);
 
             MinPeakDistance = 5;
             sampling_rate = find_key_value(current_env_group{m}, 'framerate');  % Find actual framerate
@@ -183,7 +181,6 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
 
             % Store the results in the respective cell arrays
             all_DF{m} = DF;
-            all_ops{m} = ops;
             all_sampling_rate{m} = sampling_rate;
             all_synchronous_frames{m} = synchronous_frames;
             all_isort1{m} = isort1;
@@ -198,12 +195,11 @@ function [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1
     %Assign all_DF to the workspace
     % assignin('base', 'all_Raster', all_Raster);
     % assignin('base', 'all_MAct', all_MAct);
-    assignin('base', 'all_ops', all_ops);
     
 end
 
 
-function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths)
+function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
@@ -213,7 +209,7 @@ function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_thresh
     all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
-    [all_DF, all_ops, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = ...
+    [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = ...
         load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group); 
 
     % Initialize a flag to track if processing is needed
@@ -291,7 +287,7 @@ function [all_DF, all_Raster, all_ops, all_sampling_rate, all_sce_n_cells_thresh
 end
 
 
-function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_ops, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group)
+function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group)
     
     % Initialize output cell arrays to store results for each directory
     numFolders = length(date_group_paths);  % Number of groups
@@ -304,6 +300,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_
     % all_CellScore = cell(numFolders, 1);
     % all_CellScoreN = cell(numFolders, 1);
     % all_CellCl = cell(numFolders, 1);
+    all_IDX2 = cell(numFolders, 1);
     all_NClOK = cell(numFolders, 1);
     validDirectories = cell(numFolders, 1);
     all_assemblystat = cell(numFolders, 1);
@@ -318,7 +315,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_
     further_process_needed = false;
     
     % Load Race in prevision of clustering
-    [~, ~, all_ops, all_sampling_rate, ~, all_Race, ~, ~, ~] = ...
+    [~, all_Raster, ~, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, ~, ~, ~] = ...
         load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
 
     % First loop: Check if results exist and load them
@@ -338,6 +335,7 @@ function [validDirectories, all_clusterMatrix, all_NClOK, all_assemblystat, all_
     
             if hasAllRequiredFields
                 % Charger les données nécessaires
+                all_IDX2{m} = data.IDX2;
                 all_NClOK{m} = data.NClOK;
                 validDirectories{m} = data.validDirectory;
                 all_assemblystat{m} = data.assemblystat;

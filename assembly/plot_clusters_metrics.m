@@ -1,72 +1,34 @@
-function plot_valid_directories(validDirectories, animal_date_list, all_sce_n_cells_thresholdsynchronous_frames)
+function plot_clusters_metrics(validDirectories, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
     % process_valid_directories processes clustering results for directories and generates figures.
     %
     % Inputs:
     % - validDirectories: Cell array of directories with valid clustering results
-    % - save_directory: Directory to save the generated figures
+    % - all_NClOK: Number of clusters
+    % - all_RaceOK: Data corresponding to RaceOK (presumably cell data)
+    % - all_IDX2: Vector containing indices of the data
+    % - all_clusterMatrix: Clustering information (with clusters per data points)
+    % - all_Raster: Raster data for cells
+    % - all_sce_n_cells_threshold: Threshold for the sum of cell activity to highlight in the raster plot
     % - synchronous_frames: Number of frames to consider for synchronous events
-    % - sce_n_cells_threshold: Threshold for the sum of cell activity to highlight in the raster plot
 
     % Loop through each valid directory
     for k = 1:numel(validDirectories)
         try
-            % Construct the path to the necessary files
-            file_to_load1 = fullfile(validDirectories{k}, 'results_clustering.mat');
-            file_to_load2 = fullfile(validDirectories{k}, 'results_SCEs.mat');
-            file_to_load3 = fullfile(validDirectories{k}, 'results_raster.mat'); 
-            
-            % Check and load 'NClustersOK.mat'
-            if exist(file_to_load1, 'file') == 2
-                load(file_to_load1, 'NClOK');
-            else
-                error('File not found: %s', file_to_load1);
-            end
-            
-            % Check and load 'Race.mat'
-            if exist(file_to_load2, 'file') == 2
-                load(file_to_load2, 'Race');
-            else
-                error('File not found: %s', file_to_load2);
-            end
-
-            % Check and load 'RaceOK.mat'
-            if exist(file_to_load1, 'file') == 2
-                load(file_to_load1, 'RaceOK');
-            else
-                error('File not found: %s', file_to_load1);
-            end
-            
-            if exist(file_to_load1, 'file') == 2
-                load(file_to_load1, 'IDX2');
-            else
-                error('File not found: %s', file_to_load1);
-            end
-            
-	        % Check and load 'clusterMatrix'
-            if exist(file_to_load1, 'file') == 2
-                load(file_to_load1, 'clusterMatrix');
-            else
-                error('File not found: %s', file_to_load1);
-            end
-
-            % Check and load 'Raster'
-            if exist(file_to_load3, 'file') == 2
-                load(file_to_load3, 'Raster');
-            else
-                error('File not found: %s', file_to_load3);
-            end
-            
-            
-            %  % Display the value of NClOK
-            disp(['NClOK for directory ', validDirectories{k}, ': ', num2str(NClOK)]);
-            [NCellOK, NRace] = size(RaceOK);
-
+            % Access data for the current directory
+            RaceOK = all_RaceOK{k};
+            clusterMatrix = all_clusterMatrix{k};
+            Raster = all_Raster{k};
+            NClOK = all_NClOK(k);
+            IDX2 = all_IDX2{k};
+            sce_n_cells_threshold = all_sce_n_cells_threshold{k};
+            synchronous_frames = all_synchronous_frames{k};
+    
             % Reorganize RaceOK using indices
-            [~, sortIdx] = sort(clusterMatrix(:,1));
+            [~, sortIdx] = sort(clusterMatrix(:, 1));
             sortedRaceOK = RaceOK(clusterMatrix(sortIdx, 1), :);
 
             % Sort IDX2 vector and rearrange M matrix
-            M = CovarM(Race);
+            M = CovarM(RaceOK);  % Assuming CovarM is a function that takes RaceOK and returns a covariance matrix
             [~, x2] = sort(IDX2);
             MSort = M(x2, x2); % Rearrange the rows and columns of the covariance matrix M to reflect the clustering structure in IDX2
 
@@ -87,7 +49,7 @@ function plot_valid_directories(validDirectories, animal_date_list, all_sce_n_ce
             colors = lines(NClOK);  % or any other colormap of your choice
             hold on;
 
-            for i = 1:size(sortIdx,1)
+            for i = 1:size(sortIdx, 1)
                 cluster = clusterMatrix(i, 2); % Cluster number from column 2 of clusterMatrix
                 color = colors(cluster, :);  % Get color for the cluster
                 plot(find(sortedRaceOK(i, :)), i, '.', 'Color', color);
@@ -135,12 +97,7 @@ function plot_valid_directories(validDirectories, animal_date_list, all_sce_n_ce
             axis tight;
             hold off;
 
-
-	    % Generate the figure name using animal_part and date_part
-            animal_part = animal_date_list{k, 1};
-            date_part = animal_date_list{k, 2};
-            fig_name = sprintf('Raster_plot_of_Race_data_according_to_cluster_id of_%s_%s', animal_part, date_part);
-
+            fig_name = sprintf('Raster_plot_of_Race_data_according_to_cluster_id_of_%s_%s', current_animal_group, current_dates_group{k});
 
             % Save the figure
             save_path = fullfile(validDirectories{k}, [fig_name, '.png']);
@@ -148,66 +105,63 @@ function plot_valid_directories(validDirectories, animal_date_list, all_sce_n_ce
             close(gcf);
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%
-            
             % Plot Raster according to cluster identity
             sortedRaster = Raster(clusterMatrix(sortIdx, 1), :);
             [NCellOK, Nz] = size(sortedRaster);
-    
+
             fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]); % Full screen
-    
+
             % Define colors for each cluster
             colors = lines(NClOK);
-    
+
             % First subplot: RasterPlot
             subplot(2, 1, 1);  % 2 rows, 1 column, first subplot
             hold on;
-    
-            for i = 1:size(sortIdx,1)
+
+            for i = 1:size(sortIdx, 1)
                 cluster = clusterMatrix(i, 2); % Cluster number from column 2 of clusterMatrix
                 color = colors(cluster, :);  % Get color for the cluster
                 plot(find(sortedRaster(i, :)), i, '.', 'Color', color);
             end
-    
+
             hold off;
             xlabel('Time');
             ylabel('Cell');
             title('Raster Plot of Raster data according to cluster identity');
             xlim([1 size(sortedRaster, 2)]);
             ylim([1 size(sortedRaster, 1)]);
-    
 
             % Second subplot: MActRaster
-	    MActRaster = zeros(NClOK, Nz-synchronous_frames); % MAct = Sum active cells
-	    subplot(2, 1, 2);  
+            MActRaster = zeros(NClOK, Nz - synchronous_frames); % MAct = Sum active cells
+            subplot(2, 1, 2);  
             hold on;
-    
+
             for cluster = 1:NClOK
                 cellsInCluster = find(clusterMatrix(:, 2) == cluster);
-    
-                for i = 1:Nz-synchronous_frames
-                    MActRaster(cluster, i) = sum(max(sortedRaster(cellsInCluster, i:i+synchronous_frames), [], 2));
+
+                for i = 1:Nz - synchronous_frames
+                    MActRaster(cluster, i) = sum(max(sortedRaster(cellsInCluster, i:i + synchronous_frames), [], 2));
                 end
-    
+
                 plot(MActRaster(cluster, :), 'Color', colors(cluster, :), 'LineWidth', 2, 'DisplayName', ['Cluster ' num2str(cluster)]);
             end
-    
+
             xlabel('Time frames');
             ylabel('Sum of cell activity');
-	    sce_n_cells_threshold = all_sce_n_cells_threshold{k};
             yline(sce_n_cells_threshold, '--r', 'LineWidth', 2); % Change sce_n_cells_threshold as needed
-    
+
             grid on;
             box off;
             axis tight;
             hold off;
 
-            fig_name = sprintf('Raster_plot_of_RasterRace_data_according_to_cluster_id of_%s_%s', animal_part, date_part);
+            fig_name = sprintf('Raster_plot_of_RasterRace_data_according_to_cluster_id_of_%s_%s', current_animal_group, current_dates_group{k});
 
             % Save the figure
             save_path = fullfile(validDirectories{k}, [fig_name, '.png']);
             saveas(gcf, save_path);
             close(gcf);
-    
+
         catch ME
             warning('Error processing directory %s: %s', validDirectories{k}, ME.message);
         end

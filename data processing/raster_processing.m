@@ -23,11 +23,11 @@ function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops
         
         % Call Sumactivity to get raster and activity data
         [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames);
-        
+                
         % Save individual results for the current directory
         save(fullfile(directory, 'results_raster.mat'), ...
             'MinPeakDistance', 'sampling_rate', 'synchronous_frames', 'DF', ...
-            'ops', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2');
+            'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2');
         
     catch ME
         % If there's an error, display a warning
