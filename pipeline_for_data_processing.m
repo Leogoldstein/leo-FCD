@@ -34,7 +34,6 @@ function pipeline_for_data_processing(selected_groups)
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
                 
                 all_ops = load_ops(current_folders_group);
-                assignin('base', 'all_ops', all_ops);
                 save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
 
             case 2
@@ -67,13 +66,13 @@ function pipeline_for_data_processing(selected_groups)
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
-               [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
+                [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
             
-               all_ops = load_ops(current_folders_group);
-               plot_assemblies(all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, validDirectories);
+                %all_ops = load_ops(current_folders_group);
+                %plot_assemblies(all_ops, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, validDirectories);
 
-               plot_clusters_metrics(validDirectories, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
-
+                plot_clusters_metrics(date_group_paths, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
+               
             otherwise
                 disp('Invalid analysis choice. Skipping...');
         end
@@ -86,10 +85,10 @@ function pipeline_for_data_processing(selected_groups)
     % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
-    if strcmpi(create_ppt, 'y')
-        create_ppt_from_figs(current_group_paths)
-    end
+    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
+    % if strcmpi(create_ppt, 'y')
+    %     create_ppt_from_figs(current_group_paths)
+    % end
 end
 
 %% Helper Functions
@@ -386,8 +385,6 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
         for m = 1:numFolders
             % Create the full file path for results_SCEs.mat
             filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
-
-            disp(['Processing clusters map for folder: ', date_group_paths{m}]);
 
             assemblystat = all_assemblystat{m};
 
