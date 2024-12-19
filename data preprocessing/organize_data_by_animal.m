@@ -3,7 +3,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
     % Patterns pour identifier les chemins
     pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
     pattern_ani = 'D:\\imaging\\CTRL\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
-    pattern_general = '(\d{4}-\d{2}-\d{2})-(mTor\d+)?-(ani\d+)';
+    pattern_general = '(\d{4}-\d{2}-\d{2})-(mtor\d+)?-(ani\d+)';
     
     % Initialiser la liste des nouveaux dossiers
     newdataFolders = {};
@@ -19,13 +19,19 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
         
         % Si le chemin correspond déjà, l'ajouter à newdataFolders et passer au suivant
         if is_mTOR || is_ani
-            %disp(['Folder already matches a pattern: ' file_path]);
             newdataFolders{end+1} = file_path;
             continue;
         end
         
-        % Extraire les tokens depuis le pattern général (date, mTor, ani)
-        tokens = regexp(file_path, pattern_general, 'tokens');
+        % Normaliser le chemin pour éviter les erreurs dues aux backslashes finaux
+        normalized_path = regexprep(file_path, '\\$', '');
+        
+        % Extraire le nom du dossier
+        [~, folder_name, ~] = fileparts(normalized_path);
+        disp(['Extracted folder name: ' folder_name]);
+        
+        % Appliquer le pattern général sur le nom du dossier
+        tokens = regexp(folder_name, pattern_general, 'tokens');
         
         if ~isempty(tokens)
             % Extraire les sous-parties
@@ -33,7 +39,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
             mTor_part = tokens{1}{2}; % mTor (peut être vide)
             animal_part = tokens{1}{3}; % Animal
             
-            disp(['Original folder: ' file_path]);
+            disp(['Matched: Date = ' date_part ', mTor = ' mTor_part ', Animal = ' animal_part]);
             
             % Construire le dossier cible
             targetFolder = getTargetFolder(mTor_part, animal_part, date_part);
@@ -41,7 +47,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
             % Créer le dossier cible s'il n'existe pas
             if ~exist(targetFolder, 'dir')
                 mkdir(targetFolder);
-                disp(['Created new target folder: ' targetFolder]);
+                disp(['Created target folder: ' targetFolder]);
             end
             
             % Déplacer les fichiers
@@ -69,7 +75,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
             % Stocker le chemin final
             newdataFolders{end+1} = targetFolder;
         else
-            warning(['Folder name does not match the expected pattern: ' file_path]);
+            warning(['Folder name does not match the expected pattern: ' folder_name]);
         end
     end
 end
