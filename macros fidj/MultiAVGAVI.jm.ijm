@@ -8,7 +8,7 @@ function handleSingleImages(subDir, saveSingleImDir) {
             for (var n = 0; n < tifFiles.length; n++) {
                 if (endsWith(tifFiles[n], ".ome.tif")) {
                     var tifFilePath = SingleImageFolder + tifFiles[n];
-                    print("tifFilePath : " + tifFilePath);
+                    //print("tifFilePath : " + tifFilePath);
                     processTifFile(tifFilePath, saveSingleImDir);
                 }
             }
@@ -183,16 +183,32 @@ function processTifFile(tifFilePath, saveDir) {
         var channel = values[2];
         
         if (channel == "Ch2") {
-            open(tifFilePath);
-            run("Green");
-            saveAs("Jpeg", saveDir + "/" + tifFileName);
-        } else if (channel == "Ch1") {
-            open(tifFilePath);
-            run("Red");
-            saveAs("Jpeg", saveDir + "/" + tifFileName);
-        } else {
-            print("No specific filter for channel: " + channel);
-        }
+		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
+		        print("L'image verte existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
+		    }
+		    open(tifFilePath);
+		    run("Green");
+		    saveAs("Jpeg", saveDir + "/" + tifFileName);
+		} else if (channel == "Ch1") {
+		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
+		        print("L'image rouge existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
+		    }
+		    open(tifFilePath);
+		    run("Red");
+		    saveAs("Jpeg", saveDir + "/" + tifFileName);
+		} else if (channel == "Ch3") {
+		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
+		        print("L'image bleue existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
+		    }
+		    open(tifFilePath);
+		    run("Blue");
+		    saveAs("Jpeg", saveDir + "/" + tifFileName);
+		} else {
+		    print("No specific filter for channel: " + channel);
+		}
     } else {
         print("Filename does not match the expected pattern: " + tifFileName);
     }
