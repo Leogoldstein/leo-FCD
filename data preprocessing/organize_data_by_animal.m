@@ -11,7 +11,6 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
     % Parcourir chaque dossier
     for k = 1:length(SelectedFolders)
         file_path = SelectedFolders{k};
-        disp(['Selected folder: ' file_path]);
         
         % Vérifier si le chemin correspond déjà à l'un des patterns existants
         is_mTOR = ~isempty(regexp(file_path, pattern_mTOR, 'once'));

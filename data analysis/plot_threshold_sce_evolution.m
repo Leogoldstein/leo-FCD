@@ -1,4 +1,4 @@
-function plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
+function all_num_sces = plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
     % Function to plot thresholds for SCEs based on pre-computed data
     %
     % Inputs:

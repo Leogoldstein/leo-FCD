@@ -5,8 +5,12 @@ function pipeline_for_data_processing(selected_groups)
     % - animal_date_list: Cell array containing animal information (type, group, animal, date, etc.)
     % - truedataFolders: List of paths to the true data folders
     
+    PathSave = 'D:\after_processing\Presentations\';
+    pathexcel=[PathSave 'analysis.xlsx'];
+
+    
     % Ask for analysis type after gathering all inputs
-    analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), SCEs (3) or clusters analysis (4)? ');
+    analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), global analysis of activity (3), SCEs (4) or clusters analysis (5)? ');
     
     % Pre-allocate variables for global analysis (btw animals for all dates)
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
@@ -46,12 +50,26 @@ function pipeline_for_data_processing(selected_groups)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
             case 3
+                disp(['Performing Global analysis of activity for ', current_animal_group]);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+
+                [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+
+                [mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
+
+                export_data(current_animal_group, current_dates_group, analysis_choice, pathexcel, ...
+                    all_sampling_rate, all_synchronous_frames, mean_frequency_per_minute_all, std_frequency_per_minute_all);
+
+            case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
                 [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
                 
-                plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace)
+                all_num_sces = plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
+               
+                export_data(current_animal_group, current_dates_group, analysis_choice, pathexcel, ...
+                   all_sce_n_cells_threshold);
 
                 % Initialiser les cellules pour ce groupe
                 all_DF_groups{k} = all_DF;
@@ -62,7 +80,7 @@ function pipeline_for_data_processing(selected_groups)
                 all_sces_distances_groups{k} = all_sces_distances;
                 all_RasterRace_groups{k} = all_RasterRace;
 
-            case 4
+            case 5
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
@@ -76,9 +94,10 @@ function pipeline_for_data_processing(selected_groups)
                 disp('Invalid analysis choice. Skipping...');
         end
         current_group_paths{k} = date_group_paths;
+
     end
     
-    % % Analyses globales après la boucle
+    % % Analyses globales après la boucle (une meme mesure pour plusieurs animaux)
     % if analysis_choice == 3
     %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     % end
