@@ -55,21 +55,22 @@ function pipeline_for_data_processing(selected_groups)
 
                 [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
 
-                [mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
+                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
 
-                export_data(current_animal_group, current_dates_group, analysis_choice, pathexcel, ...
-                    all_sampling_rate, all_synchronous_frames, mean_frequency_per_minute_all, std_frequency_per_minute_all);
+                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, ...
+                    all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all);
 
             case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
                 date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
     
                 [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
-                
-                all_num_sces = plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
+                %plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
                
-                export_data(current_animal_group, current_dates_group, analysis_choice, pathexcel, ...
-                   all_sce_n_cells_threshold);
+                [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, date_group_paths);
+
+                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, ...
+                   all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
 
                 % Initialiser les cellules pour ce groupe
                 all_DF_groups{k} = all_DF;

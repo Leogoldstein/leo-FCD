@@ -1,6 +1,7 @@
-function [mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate)
+function [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate)
 
     % Variables pour stocker les résultats
+    NCell_all = zeros(length(date_group_paths), 1);
     mean_frequency_per_minute_all = zeros(length(date_group_paths), 1);  % Moyenne de la fréquence par minute pour chaque groupe
     std_frequency_per_minute_all = zeros(length(date_group_paths), 1);   % Ecart-type de la fréquence par minute pour chaque groupe
     
@@ -18,6 +19,7 @@ function [mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_m
     
             % Get dimensions of DF
             [NCell, Nframes] = size(Raster);
+            NCell_all(m) = NCell;
     
             % Calculate the activity frequency per minute for each neuron
             mean_activity = mean(Raster, 2);  % Mean activity for each neuron
@@ -107,15 +109,7 @@ function [mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_m
             fprintf('Error processing group %d: %s\n', m, ME.message);
         end
     end
-    
-    % After the loop, create a new figure for the bar plots
-    % Mean max correlations for each group
-    figure;
-    bar(mean_max_corr_all);
-    title('Moyenne des corrélations maximales');
-    xlabel('Animaux', 'FontSize', 12);
-    ylabel('Corrélation maximale moyenne', 'FontSize', 12);
-    
+
     % Returning mean frequency per minute and its standard deviation
     return;
 end

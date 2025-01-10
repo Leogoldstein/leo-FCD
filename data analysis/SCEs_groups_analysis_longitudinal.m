@@ -1,4 +1,4 @@
-function SCEs_groups_analysis(selected_groups, current_group_paths, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups)
+function SCEs_groups_analysis_longitudinal(selected_groups, current_group_paths, all_DF_groups, all_Race_groups, all_TRace_groups, sampling_rate, all_Raster_groups, all_sces_distances_groups)
 
     num_animals = length(selected_groups);
     animal_group = cell(num_animals, 1);
