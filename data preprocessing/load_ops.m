@@ -6,7 +6,6 @@ function all_ops = load_ops(current_folders_group)
 
     % Loop through each working folder
     for m = 1:numFolders
-        disp(m)
         current_folder = current_folders_group{m};
 
         % Determine file extension and check for .npy files

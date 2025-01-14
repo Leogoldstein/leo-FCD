@@ -26,6 +26,7 @@ function pipeline_for_data_processing(selected_groups)
     % Perform analyses
     for k = 1:length(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
+        current_animal_type = selected_groups(k).animal_type;
         current_dates_group = selected_groups(k).dates;
         current_folders_group = selected_groups(k).folders;
         current_ani_path_group = selected_groups(k).path;
@@ -35,14 +36,14 @@ function pipeline_for_data_processing(selected_groups)
         switch analysis_choice
             case 1
                 disp(['Performing mean images for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
                 
                 all_ops = load_ops(current_folders_group);
                 save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
 
             case 2
                 disp(['Performing raster plot analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
 
                 [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
                 
@@ -51,25 +52,25 @@ function pipeline_for_data_processing(selected_groups)
 
             case 3
                 disp(['Performing Global analysis of activity for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
 
                 [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
 
-                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
+                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
 
-                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, ...
-                    all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all);
+                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
+                    all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all);
 
             case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
                 [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
                 %plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
                
                 [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, date_group_paths);
 
-                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, ...
+                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                    all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
 
                 % Initialiser les cellules pour ce groupe
@@ -83,7 +84,7 @@ function pipeline_for_data_processing(selected_groups)
 
             case 5
                 disp(['Performing clusters analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group);
+                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
                 [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
             
@@ -113,15 +114,20 @@ end
 %% Helper Functions
 
 % Create subfolders for analysis
-function date_group_paths = create_base_folders(base_path, current_dates_group)
+function date_group_paths = create_base_folders(base_path, current_dates_group, current_env_group)
 
     date_group_paths = cell(length(current_dates_group), 1);  % Chemins regroupés par date
     
     for k = 1:length(current_dates_group)
+
+         % Extraire la dernière partie du chemin (le nom du fichier avec son extension)
+        [~, name, ~] = fileparts(current_env_group{k});            
+        tseries_folder = name(1:end-4); % Supprime les 4 derniers caractères ('.env')
+
         % Crée le chemin complet pour chaque date
-        date_path = fullfile(base_path, current_dates_group{k});
-        
-        % Vérifie si le dossier existe déjà
+        date_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
+
+         % Vérifie si le dossier existe déjà
         if ~exist(date_path, 'dir')
             % Crée le dossier s'il n'existe pas
             mkdir(date_path);
@@ -191,7 +197,7 @@ function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_iso
             DF = DF_processing(F, iscell);
 
             MinPeakDistance = 5;
-            sampling_rate = find_key_value(current_env_group{m}, 'framerate');  % Find actual framerate
+            [~, sampling_rate, ~] = find_key_value(current_env_group{m});  % Find actual framerate
             synchronous_frames = round(0.2 * sampling_rate);  % Example: 0.2s of data
             
             % Call raster_processing function to process the data and get the results

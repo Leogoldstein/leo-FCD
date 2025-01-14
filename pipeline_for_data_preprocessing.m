@@ -68,12 +68,16 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
         % Créer une liste des animaux et des dates
         animal_date_list = create_animal_date_list(truedataFolders, PathSave);
     
-        % Extract parts from the animal_date_list
+        % Ensure all parts are strings, replace empty values with empty strings
         type_part = animal_date_list(:, 1);
-        mTor_part = animal_date_list(:, 2);
-        animal_part = animal_date_list(:, 3);
+        animal_part = cellfun(@(x) char(x), animal_date_list(:, 3), 'UniformOutput', false);
+        mTor_part = cellfun(@(x) char(x), animal_date_list(:, 2), 'UniformOutput', false);
         date_part = animal_date_list(:, 4);
         age_part = animal_date_list(:, 5);
+        
+        % Replace empty arrays with empty strings
+        mTor_part(cellfun(@isempty, mTor_part)) = {''};  % Replace empty mTor entries with empty strings
+        animal_part(cellfun(@isempty, animal_part)) = {''};  % Ensure animal_part is not empty
     
         % Determine unique groups for analysis
         if isempty(mTor_part) || all(cellfun(@isempty, mTor_part))
@@ -119,6 +123,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
     
             % Save the selected dates and folders for this group
             selected_groups(k).animal_group = current_animal_group;
+            selected_groups(k).animal_type = unique(type_part(date_indices)); % Save unique types
             selected_groups(k).dates = date_part(date_indices);
             selected_groups(k).folders = truedataFolders(date_indices);
             selected_groups(k).env = env_paths(date_indices);

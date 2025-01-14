@@ -11,9 +11,13 @@ end
 [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_preprocessing();
 
 %%
+%%
 for idx = 1:length(env_paths_all)
-    sampling_rate = find_key_value(env_paths_all{idx}, 'framerate');
-    disp(sampling_rate)
+    [recording_time, sampling_rate, optical_zoom] = find_key_value(env_paths_all{idx});
+    %disp(sampling_rate)
+    %disp(tseries_folder)
+    %disp(tseries_numbers)
+    disp(recording_time)
 end
 
 %% Processing and analysis
