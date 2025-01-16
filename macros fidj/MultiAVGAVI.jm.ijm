@@ -20,14 +20,6 @@ function handleSingleImages(subDir, saveSingleImDir) {
 
 // Fonction pour gérer les TSeries et l'AVI enregistré
 function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
-    var aviFileName = "AVG_concat.avi";  // Nom du fichier AVI à enregistrer
-    var fullPathAvi = saveRegisVidDir + aviFileName;
-
-    // Vérifier si le fichier AVI existe déjà
-    if (File.exists(fullPathAvi)) {
-        print("Le fichier AVI existe déjà : " + fullPathAvi);
-        return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
-    }
 
     var tseriesFoldersList = getFileList(subDir);
     var tseriesFolders = newArray();
@@ -49,7 +41,19 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
     for (var tseriesFolderIndex = 0; tseriesFolderIndex < tseriesFolders.length; tseriesFolderIndex++) {
         var tseriesFolder = tseriesFolders[tseriesFolderIndex];
         print("TSeries folder found: " + tseriesFolder);
-
+        
+        // Sauvegarder les résultats
+        var tseriesFolderName = File.getName(tseriesFolder);
+        var aviFileName = "AVG_concat.avi";  // Nom du fichier AVI à enregistrer
+        var fullPath = saveRegisVidDir + tseriesFolderName + "/";
+        createDirectory(fullPath);
+        
+        var fullPathAvi = fullPath + aviFileName;
+		if (File.exists(fullPathAvi)) {
+			print("Le fichier AVI existe déjà : " + fullPathAvi);
+			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
+		 }
+		 
         // Vérifier si le sous-dossier 'suite2p' existe
         var suite2pFolder = tseriesFolder + "/suite2p/";                            
         if (!File.isDirectory(suite2pFolder)) {
@@ -106,7 +110,6 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
                     run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
                     run("Animation Options...", "speed=30 first=1 last=" + nSlices);
 
-                    // Sauvegarder les résultats
                     saveAs("AVI", fullPathAvi);
                     print("Saved AVI file: " + fullPathAvi);
 
@@ -257,7 +260,7 @@ for (var i = 0; i < list.length; i++) {
                         var saveSingleImDir = saveDir + "/Single images/";
                         createDirectory(saveSingleImDir);
                         
-                        var saveRegisVidDir = saveDir + "/Registered AVI/";
+                        var saveRegisVidDir = saveDir + "/";
                         createDirectory(saveRegisVidDir);
                     
                         // Traiter les dossiers "SingleImage" dans subSubDir
@@ -278,7 +281,7 @@ for (var i = 0; i < list.length; i++) {
             var saveSingleImDir = saveDir + "/Single images/";
             createDirectory(saveSingleImDir);
         
-            var saveRegisVidDir = saveDir + "/Registered AVI/";
+            var saveRegisVidDir = saveDir + "/";
             createDirectory(saveRegisVidDir);
         
             // Traiter les dossiers "SingleImage" dans subDir

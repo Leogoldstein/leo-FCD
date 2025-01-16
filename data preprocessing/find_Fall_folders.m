@@ -1,7 +1,7 @@
-function [truedataFolders, env_paths, env_paths_all] = find_Fall_folders(selectedFolders)
+function [truedataFolders, true_env_paths, env_paths_all] = find_Fall_folders(selectedFolders)
     % Initialize cell arrays to store paths and canceled indices
     truedataFolders = {};  
-    env_paths = {};
+    true_env_paths = {};
     env_paths_all = {};
 
     % Loop through each selected folder
@@ -74,7 +74,7 @@ function [truedataFolders, env_paths, env_paths_all] = find_Fall_folders(selecte
         % Check if Fall.mat exists
         if exist(file_path, 'file') == 2
             truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
-            env_paths{end+1} = env_path;
+            true_env_paths{end+1} = env_path;
         else
             % If Fall.mat does not exist, display an error message
             disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
@@ -89,7 +89,7 @@ function [truedataFolders, env_paths, env_paths_all] = find_Fall_folders(selecte
     
     % Display the .env file paths
     % disp('Paths to .env files:');
-    % for i = 1:length(env_paths)
-    %     disp(env_paths{i});
+    % for i = 1:length(true_env_paths)
+    %     disp(true_env_paths{i});
     % end
 end

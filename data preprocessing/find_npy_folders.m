@@ -1,6 +1,6 @@
-function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
+function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
-    env_paths = {};
+    true_env_paths = {};
     env_paths_all = {};
     statPaths = {};
     FPaths = {};
@@ -77,7 +77,7 @@ function [env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, sp
            env_path = ''; % Set to empty if no .env file is found or multiple files exist
            env_paths_all{end+1} = ''; % Add an empty entry for consistency
         end
-        env_paths{end+1} = env_path;
+        true_env_paths{end+1} = env_path;
 
         % Construct file paths
         stat_path = fullfile(selectedFolder, 'stat.npy');

@@ -7,8 +7,7 @@ function pipeline_for_data_processing(selected_groups)
     
     PathSave = 'D:\after_processing\Presentations\';
     pathexcel=[PathSave 'analysis.xlsx'];
-
-    
+ 
     % Ask for analysis type after gathering all inputs
     analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), global analysis of activity (3), SCEs (4) or clusters analysis (5)? ');
     
@@ -36,41 +35,43 @@ function pipeline_for_data_processing(selected_groups)
         switch analysis_choice
             case 1
                 disp(['Performing mean images for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
                 
                 all_ops = load_ops(current_folders_group);
                 save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
 
             case 2
                 disp(['Performing raster plot analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
 
-                [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+                [all_DF, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
                 
                 build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
             case 3
                 disp(['Performing Global analysis of activity for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [all_recording_time, all_optical_zoom] = find_recording_infos(date_group_paths,current_env_group);
 
-                [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
-
+                [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+                 
                 [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
-
-                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
-                    all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all);
+                
+                export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
+                     all_recording_time, all_optical_zoom, ...
+                     all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all);
 
             case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
-                [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
+                [all_DF, all_Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
                 %plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
                
                 [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, date_group_paths);
 
-                export_data(current_animal_group, current_dates_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
+                export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                    all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
 
                 % Initialiser les cellules pour ce groupe
@@ -84,9 +85,9 @@ function pipeline_for_data_processing(selected_groups)
 
             case 5
                 disp(['Performing clusters analysis for ', current_animal_group]);
-                date_group_paths = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
-                [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
+                [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, ~, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
             
                 plot_assemblies(all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, current_folders_group);
 
@@ -105,24 +106,24 @@ function pipeline_for_data_processing(selected_groups)
     % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
-    % if strcmpi(create_ppt, 'y')
-    %     create_ppt_from_figs(current_group_paths)
-    % end
+    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
+    if strcmpi(create_ppt, 'y')
+        create_ppt_from_figs(current_group_paths)
+    end
 end
 
 %% Helper Functions
 
 % Create subfolders for analysis
-function date_group_paths = create_base_folders(base_path, current_dates_group, current_env_group)
+function [tseries_folders, date_group_paths] = create_base_folders(base_path, current_dates_group, current_env_group)
 
     date_group_paths = cell(length(current_dates_group), 1);  % Chemins regroupés par date
+    tseries_folders = cell(length(current_dates_group), 1);
     
     for k = 1:length(current_dates_group)
 
          % Extraire la dernière partie du chemin (le nom du fichier avec son extension)
-        [~, name, ~] = fileparts(current_env_group{k});            
-        tseries_folder = name(1:end-4); % Supprime les 4 derniers caractères ('.env')
+        [~, tseries_folder, ~] = fileparts(current_env_group{k});
 
         % Crée le chemin complet pour chaque date
         date_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
@@ -135,9 +136,22 @@ function date_group_paths = create_base_folders(base_path, current_dates_group, 
         end
         
         % Assigner le chemin du dossier créé dans la cellule
+        tseries_folders{k} = tseries_folder;
         date_group_paths{k} = date_path;
     end
 end
+
+function [all_recording_time, all_optical_zoom] = find_recording_infos(date_group_paths,current_env_group)
+    numFolders = length(date_group_paths);
+    all_recording_time = cell(numFolders, 1);
+    all_optical_zoom = cell(numFolders, 1);
+
+        for m = 1:length(date_group_paths)
+            [recording_time, ~, optical_zoom] = find_key_value(current_env_group{m});
+            all_recording_time{m} = recording_time;
+            all_optical_zoom{m} = optical_zoom;
+        end
+    end
 
 
 function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group)    
@@ -233,7 +247,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
     all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
-    [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = ...
+    [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = ...
         load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group); 
 
     % Initialize a flag to track if processing is needed
@@ -415,7 +429,7 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
 
             % Charger les fichiers nécessaires pour les distances
             [stat, iscell] = load_data_mat_npy(current_folders_group{m});
-            [outline_gcampx, outline_gcampy, neuropil, Coomasqx, Coomasqy] = load_calcium_mask(iscell, stat);
+            [outline_gcampx, outline_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
     
             % Créer poly2mask et obtenir les propriétés gcamp
             gcamp_props = process_poly2mask(iscell, stat, outline_gcampx, outline_gcampy);
@@ -424,7 +438,7 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
             size_pixel = 705 / 512;
     
             % Calculer les distances
-            [meandistance_gcamp, meandistance_assembly, mean_mean_distance_assembly] = ...
+            [~, meandistance_assembly, ~] = ...
                 distance_btw_centroid(size_pixel, gcamp_props, assemblystat);
     
             % Sauvegarder les résultats dans le fichier results_clustering.mat
