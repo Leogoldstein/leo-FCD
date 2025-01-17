@@ -52,15 +52,16 @@ function pipeline_for_data_processing(selected_groups)
             case 3
                 disp(['Performing Global analysis of activity for ', current_animal_group]);
                 [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
-                [all_recording_time, all_optical_zoom] = find_recording_infos(date_group_paths,current_env_group);
+                [all_recording_time, all_optical_zoom, all_position] = find_recording_infos(date_group_paths,current_env_group);
 
                 [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
-                 
-                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate);
+                [~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+
+                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate, all_imageHeight, all_imageWidth);
                 
                 export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
-                     all_recording_time, all_optical_zoom, ...
-                     all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all);
+                     all_recording_time, all_optical_zoom, all_position, ...
+                     all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all);
 
             case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
@@ -106,10 +107,10 @@ function pipeline_for_data_processing(selected_groups)
     % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
-    if strcmpi(create_ppt, 'y')
-        create_ppt_from_figs(current_group_paths)
-    end
+    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
+    % if strcmpi(create_ppt, 'y')
+    %     create_ppt_from_figs(current_group_paths)
+    % end
 end
 
 %% Helper Functions
@@ -141,15 +142,17 @@ function [tseries_folders, date_group_paths] = create_base_folders(base_path, cu
     end
 end
 
-function [all_recording_time, all_optical_zoom] = find_recording_infos(date_group_paths,current_env_group)
+function [all_recording_time, all_optical_zoom, all_position] = find_recording_infos(date_group_paths,current_env_group)
     numFolders = length(date_group_paths);
     all_recording_time = cell(numFolders, 1);
     all_optical_zoom = cell(numFolders, 1);
+    all_position = cell(numFolders, 1);
 
         for m = 1:length(date_group_paths)
-            [recording_time, ~, optical_zoom] = find_key_value(current_env_group{m});
+            [recording_time, ~, optical_zoom, position] = find_key_value(current_env_group{m});
             all_recording_time{m} = recording_time;
             all_optical_zoom{m} = optical_zoom;
+            all_position{m} = position;
         end
     end
 
@@ -344,9 +347,7 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
     all_assemblystat = cell(numFolders, 1);
     all_RaceOK = cell(numFolders, 1);
     all_clusterMatrix = cell(numFolders, 1);
-    
-    all_outline_gcampx = cell(numFolders, 1);
-    all_outline_gcampy = cell(numFolders, 1);
+
     all_meandistance_assembly = cell(numFolders, 1);
     
     % Initialize a flag to track if processing is needed
@@ -381,12 +382,6 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
                 all_clusterMatrix{m} = data.clusterMatrix;
     
                 % Charger les informations supplémentaires pour les distances
-                if isfield(data, 'outline_gcampx')
-                    all_outline_gcampx{m} = data.outline_gcampx;
-                end
-                if isfield(data, 'outline_gcampy')
-                    all_outline_gcampy{m} = data.outline_gcampy;
-                end
                 if isfield(data, 'meandistance_assembly')
                     all_meandistance_assembly{m} = data.meandistance_assembly;
                 end
@@ -420,20 +415,17 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
     
     % Si des traitements sont nécessaires pour des fichiers manquants
     if further_process_needed
-        % Process data for missing files and save results
+        % Charger les fichiers nécessaires pour les distances
+        [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+
         for m = 1:numFolders
             % Create the full file path for results_SCEs.mat
             filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
 
             assemblystat = all_assemblystat{m};
 
-            % Charger les fichiers nécessaires pour les distances
-            [stat, iscell] = load_data_mat_npy(current_folders_group{m});
-            [outline_gcampx, outline_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
-    
             % Créer poly2mask et obtenir les propriétés gcamp
-            gcamp_props = process_poly2mask(iscell, stat, outline_gcampx, outline_gcampy);
-    
+            gcamp_props = all_gcamp_props{m};
             % Taille du pixel
             size_pixel = 705 / 512;
     
@@ -442,12 +434,71 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
                 distance_btw_centroid(size_pixel, gcamp_props, assemblystat);
     
             % Sauvegarder les résultats dans le fichier results_clustering.mat
-            save(filePath, 'outline_gcampx', 'outline_gcampy', 'meandistance_assembly', '-append');
+            save(filePath, 'meandistance_assembly', '-append');
     
-            all_outline_gcampx{m} = outline_gcampx;
-            all_outline_gcampy{m} = outline_gcampy;
             all_meandistance_assembly{m} = meandistance_assembly;
 
+        end
+    end
+end
+
+
+function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group)
+    numFolders = length(date_group_paths);
+    % Initialiser les cellules pour stocker les données
+    all_outline_gcampx = cell(numFolders, 1);
+    all_outline_gcampy = cell(numFolders, 1);
+    all_gcamp_mask = cell(numFolders, 1);
+    all_gcamp_props = cell(numFolders, 1);
+    all_imageHeight = cell(numFolders, 1);
+    all_imageWidth = cell(numFolders, 1);
+
+    for m = 1:numFolders
+        % Définir le chemin du fichier à charger ou sauvegarder
+        filePath = fullfile(date_group_paths{m}, 'results_image.mat'); 
+
+        if exist(filePath, 'file') == 2 
+            disp(['Loading file: ', filePath]);
+            % Charger les données existantes
+            data = load(filePath); 
+
+            if isfield(data, 'outline_gcampx') 
+                all_outline_gcampx{m} = data.outline_gcampx;
+            end
+            if isfield(data, 'outline_gcampy') 
+                all_outline_gcampy{m} = data.outline_gcampy; 
+            end
+            if isfield(data, 'gcamp_mask') 
+                all_gcamp_mask{m} = data.gcamp_mask;
+            end
+            if isfield(data, 'gcamp_props') 
+                all_gcamp_props{m} = data.gcamp_props;
+            end
+            if isfield(data, 'imageHeight') 
+                all_imageHeight{m} = data.imageHeight;
+            end
+            if isfield(data, 'imageWidth') 
+                all_imageWidth{m} = data.imageWidth;
+            end
+
+        else
+            % Charger les fichiers nécessaires pour les distances
+            [stat, iscell] = load_data_mat_npy(current_folders_group{m});
+            [outline_gcampx, outline_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+
+            % Créer poly2mask et obtenir les propriétés gcamp
+            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(iscell, stat, outline_gcampx, outline_gcampy); 
+
+            % Sauvegarder les résultats dans le fichier results_distance.mat
+            save(filePath, 'outline_gcampx', 'outline_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth');
+
+            % Stocker les résultats dans les variables de sortie
+            all_outline_gcampx{m} = outline_gcampx;
+            all_outline_gcampy{m} = outline_gcampy;
+            all_gcamp_mask{m} = gcamp_mask;
+            all_gcamp_props{m} = gcamp_props;
+            all_imageHeight{m} = imageHeight;
+            all_imageWidth{m} = imageWidth;
         end
     end
 end

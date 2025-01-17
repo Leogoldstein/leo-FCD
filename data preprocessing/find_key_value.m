@@ -1,4 +1,4 @@
-function [recording_time, sampling_rate, optical_zoom] = find_key_value(path)
+function [recording_time, sampling_rate, optical_zoom, position] = find_key_value(path)
     % Fonction pour extraire l'heure d'enregistrement, la framerate (sampling rate),
     % et la valeur de l'opticalZoom dans un fichier XML.
     % Arguments :
@@ -14,7 +14,6 @@ function [recording_time, sampling_rate, optical_zoom] = find_key_value(path)
 
         % === Partie 1 : Extraire uniquement l'heure d'enregistrement ===
         envNode = xmlDoc.getElementsByTagName('Environment').item(0);
-        recording_time = '';
         if ~isempty(envNode) && envNode.hasAttribute('date')
             full_date = char(envNode.getAttribute('date')); % Exemple : "5/6/2024 11:33:38 AM"
             split_date = split(full_date); % Séparer la chaîne en date et heure
@@ -27,7 +26,6 @@ function [recording_time, sampling_rate, optical_zoom] = find_key_value(path)
         end
 
         % === Partie 2 : Extraire la valeur associée à 'framerate' ===
-        sampling_rate = NaN; % Valeur par défaut
         pvNodes = xmlDoc.getElementsByTagName('PVStateValue');
         
         for i = 0:pvNodes.getLength-1
@@ -43,28 +41,34 @@ function [recording_time, sampling_rate, optical_zoom] = find_key_value(path)
             if strcmp(currentNode.getAttribute('key'), 'opticalZoom')
                 optical_zoom = str2double(char(currentNode.getAttribute('value')));
             end
+       
+            if strcmp(currentNode.getAttribute('key'), 'positionCurrent')
+                % Chercher dans les sous-nœuds <SubindexedValues>
+                subindexedValuesNodes = currentNode.getElementsByTagName('SubindexedValues');
+                
+                for j = 0:subindexedValuesNodes.getLength-1
+                    subindexedNode = subindexedValuesNodes.item(j);
+                    % Vérifier si l'index est "ZAxis"
+                    if strcmp(subindexedNode.getAttribute('index'), 'ZAxis')
+                        % Chercher la balise <SubindexedValue> correspondante
+                        subindexedValueNode = subindexedNode.getElementsByTagName('SubindexedValue').item(0);
+                        if ~isempty(subindexedValueNode)
+                            % Extraire la valeur de "value"
+                            valueStr = char(subindexedValueNode.getAttribute('value'));
+                            position = str2double(valueStr); % Assigner la position
+                            break;
+                        end
+                    end
+                end               
+            end
         end
 
-        % Si optical_zoom n'a pas été trouvé, initialiser à NaN
-        if ~exist('optical_zoom', 'var')
-            optical_zoom = NaN;
-        end
-
-        % Gestion des avertissements si des valeurs sont manquantes
-        if isempty(recording_time)
-            warning('Aucune valeur d''heure d''enregistrement trouvée dans le fichier XML.');
-        end
-        if isnan(sampling_rate)
-            warning('La clé "framerate" est introuvable ou invalide.');
-        end
-        if isnan(optical_zoom)
-            warning('La clé "opticalZoom" est introuvable ou invalide.');
-        end
     catch ME
         % Gestion des erreurs
         fprintf('Erreur lors de la lecture du fichier : %s\n', ME.message);
         recording_time = '';
         sampling_rate = NaN;
         optical_zoom = NaN;
+        position = NaN;
     end
 end

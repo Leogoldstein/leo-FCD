@@ -1,4 +1,4 @@
-function plot_threshold_sce_evolution2(gcamp_mask, all_DF, all_MAct, animal_date_list, fractions, sce_n_cells_threshold, num_samples, field_width_microm, synchronous_frames, MinPeakDistance, MinPeakDistancesce, directories)
+function plot_threshold_sce_evolution2(gcamp_mask, all_DF, all_MAct, fractions, sce_n_cells_threshold, num_samples, field_width_microm, synchronous_frames, MinPeakDistance, MinPeakDistancesce, directories)
     % Fonction pour visualiser l'évolution des seuils et du nombre de SCEs en fonction de la taille du champ
 
     % Initialiser les variables pour stocker les résultats

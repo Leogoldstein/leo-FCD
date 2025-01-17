@@ -3,8 +3,8 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
     animal_type = current_animal_type{1}; % Par exemple, 'FCD'
 
     % Charger ou créer les en-têtes nécessaires
-    headers_general = {'Identifier', 'TseriesFolder', 'Age', 'RecordingTime', 'OpticalZoom'};
-    headers_case_3 = {'SamplingRate', 'SynchronousFrames', 'NumberCells', 'MeanFrequencyMinutes', 'StdFrequencyMinutes', 'MeanMaxPairwiseCorr'};
+    headers_general = {'Identifier', 'TseriesFolder', 'Age', 'RecordingTime', 'OpticalZoom','Depth(μm)'};
+    headers_case_3 = {'SamplingRate', 'SynchronousFrames', 'NumberCells', 'MeanFrequencyMinutes', 'StdFrequencyMinutes', 'CellDensity(/μm2)', 'MeanMaxPairwiseCorr'};
     headers_case_4 = {'SCEsThreshold', 'SCEsNumber', 'SCEsFrequency(Hz)', 'MeanActiveCellsSCEsNumber', 'ProportionActiveCellsSCEs', 'MeanSCEsduration(ms)'};
     all_headers = [headers_general, headers_case_3, headers_case_4];
 
@@ -36,9 +36,9 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
             if row_to_update ~= -1
                 switch analysis_choice
                     case 3
-                        existing_data(row_to_update, 4:11) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}(m), varargin{6}(m), varargin{7}(m), varargin{8}(m)};
+                        existing_data(row_to_update, 4:13) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}(m), varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m)};
                     case 4
-                        existing_data(row_to_update, 12:17) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
+                        existing_data(row_to_update, 14:19) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
                 end
             else
                 % Si aucune ligne correspondante n'existe, ajouter une nouvelle ligne complète
@@ -46,9 +46,9 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
                 new_row(1:3) = {identifier, tseries_folders{m}, ages{m}}; % Identifier, Date, Age
                 switch analysis_choice
                     case 3
-                        new_row(4:11) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}(m), varargin{6}(m), varargin{7}(m), varargin{8}(m)};
+                        new_row(4:13) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}(m), varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m)};
                     case 4
-                        new_row(12:17) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
+                        new_row(14:19) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
                 end
                 existing_data = [existing_data; new_row];
             end

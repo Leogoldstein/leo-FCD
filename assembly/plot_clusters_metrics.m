@@ -1,11 +1,11 @@
-function plot_clusters_metrics(validDirectories, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
+function plot_clusters_metrics(current_folders_group, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
     % plot_clusters_metrics processes clustering results for directories and generates figures.
 
     % Loop through each valid directory
-    for k = 1:numel(validDirectories)
+    for k = 1:numel(current_folders_group)
         try
             % Access data for the current directory with checks for cell arrays vs. numeric arrays
-            disp(['Processing directory: ', validDirectories{k}]);
+            disp(['Processing directory: ', current_folders_group{k}]);
 
             RaceOK = all_RaceOK{k};  % Already numeric
             clusterMatrix = all_clusterMatrix{k};  % Already numeric
@@ -181,12 +181,12 @@ function plot_clusters_metrics(validDirectories, all_NClOK, all_RaceOK, all_IDX2
             date_part = current_dates_group{k};
             fig_name = sprintf('Cluster_plot_%s_%s', animal_part, date_part);
 
-            save_path = fullfile(validDirectories{k}, [fig_name, '.png']);
+            save_path = fullfile(current_folders_group{k}, [fig_name, '.png']);
             saveas(gcf, save_path);
             close(gcf);
 
         catch ME
-            fprintf('Error processing directory %s: %s\n', validDirectories{k}, ME.message);
+            fprintf('Error processing directory %s: %s\n', current_folders_group{k}, ME.message);
         end
     end
 end

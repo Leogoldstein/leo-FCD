@@ -1,10 +1,11 @@
-function [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate)
+function [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate, all_imageHeight, all_imageWidth)
 
     % Initialisation des variables pour stocker les résultats
     NCell_all = zeros(length(date_group_paths), 1);
     mean_frequency_per_minute_all = zeros(length(date_group_paths), 1);
     std_frequency_per_minute_all = zeros(length(date_group_paths), 1);
     mean_max_corr_all = zeros(length(date_group_paths), 1);
+    cell_density_per_microm2_all = zeros(length(date_group_paths), 1);
 
     for m = 1:length(date_group_paths)
         try
@@ -40,7 +41,23 @@ function [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all
             % Moyenne et écart-type des fréquences pour ce groupe
             mean_frequency_per_minute_all(m) = mean(frequency_per_minute, 'omitnan');  % Moyenne des fréquences
             std_frequency_per_minute_all(m) = std(frequency_per_minute, 'omitnan');   % Écart-type des fréquences
+            
+            % Densité cellulaire
+            imgHeight = all_imageHeight{m};
+            imgWidth = all_imageWidth{m};
 
+            % Largeur du champ en micromètres
+            field_width_microm = 750;
+
+            % Calculer la taille du pixel en micromètres
+            pixel_size_microm = field_width_microm / imgWidth;
+            
+            % Calculer l'aire totale de l'image en micromètres carrés
+            areas_microm2 = pixel_size_microm^2 * imgHeight * imgWidth;
+
+            % Calculer la densité cellulaire (NCell / aire en micromètres carrés)
+            cell_density_per_microm2_all(m) = num_cells / areas_microm2;
+            
             % % Création d'une figure pour ce groupe
             % figure;
             % screen_size = get(0, 'ScreenSize');  % Taille de l'écran
