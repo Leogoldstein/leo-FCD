@@ -1,4 +1,4 @@
-function [recording_time, sampling_rate, optical_zoom, position] = find_key_value(path)
+function [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(path)
     % Fonction pour extraire l'heure d'enregistrement, la framerate (sampling rate),
     % et la valeur de l'opticalZoom dans un fichier XML.
     % Arguments :
@@ -51,7 +51,7 @@ function [recording_time, sampling_rate, optical_zoom, position] = find_key_valu
                     % Vérifier si l'index est "ZAxis"
                     if strcmp(subindexedNode.getAttribute('index'), 'ZAxis')
                         % Chercher la balise <SubindexedValue> correspondante
-                        subindexedValueNode = subindexedNode.getElementsByTagName('SubindexedValue').item(0);
+                        subindexedValueNode = subindexedNode.getElementsByTagName('SubindexedValue').item(0); % change item to 1 if Optotune ETL was used
                         if ~isempty(subindexedValueNode)
                             % Extraire la valeur de "value"
                             valueStr = char(subindexedValueNode.getAttribute('value'));
@@ -62,6 +62,16 @@ function [recording_time, sampling_rate, optical_zoom, position] = find_key_valu
                 end               
             end
         end
+  
+      % === Partie 3 : Extraire la valeur associée à 'Time' et convertir en minutes ===
+      % Rechercher le nœud <Segments>
+      segmentsNode = xmlDoc.getElementsByTagName('Segments').item(0);
+    
+      % Vérifier si le nœud <Segments> existe et possède l'attribut "Time"
+      if ~isempty(segmentsNode) && segmentsNode.hasAttribute('Time')
+           time = str2double(char(segmentsNode.getAttribute('Time')));
+           time_minutes = time / 60;
+      end
 
     catch ME
         % Gestion des erreurs
@@ -70,5 +80,6 @@ function [recording_time, sampling_rate, optical_zoom, position] = find_key_valu
         sampling_rate = NaN;
         optical_zoom = NaN;
         position = NaN;
+        time_minutes = NaN;
     end
 end

@@ -52,7 +52,7 @@ function pipeline_for_data_processing(selected_groups)
             case 3
                 disp(['Performing Global analysis of activity for ', current_animal_group]);
                 [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
-                [all_recording_time, all_optical_zoom, all_position] = find_recording_infos(date_group_paths,current_env_group);
+                [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(date_group_paths,current_env_group);
 
                 [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
                 [~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
@@ -60,7 +60,7 @@ function pipeline_for_data_processing(selected_groups)
                 [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate, all_imageHeight, all_imageWidth);
                 
                 export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
-                     all_recording_time, all_optical_zoom, all_position, ...
+                     all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
                      all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all);
 
             case 4
@@ -142,17 +142,19 @@ function [tseries_folders, date_group_paths] = create_base_folders(base_path, cu
     end
 end
 
-function [all_recording_time, all_optical_zoom, all_position] = find_recording_infos(date_group_paths,current_env_group)
+function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(date_group_paths,current_env_group)
     numFolders = length(date_group_paths);
     all_recording_time = cell(numFolders, 1);
     all_optical_zoom = cell(numFolders, 1);
     all_position = cell(numFolders, 1);
+    all_time_minutes = cell(numFolders, 1);
 
         for m = 1:length(date_group_paths)
-            [recording_time, ~, optical_zoom, position] = find_key_value(current_env_group{m});
+            [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(current_env_group{m});
             all_recording_time{m} = recording_time;
             all_optical_zoom{m} = optical_zoom;
             all_position{m} = position;
+            all_time_minutes{m} = time_minutes; 
         end
     end
 
