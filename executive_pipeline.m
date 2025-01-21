@@ -20,3 +20,11 @@ end
 %% Processing and analysis
 
 pipeline_for_data_processing(selected_groups)
+
+%%
+% Spécifiez le chemin et les dimensions de l'image
+path = 'D:\imaging\FCD\mTor17\ani1\2024-12-17\SingleImage-12172024-0832-004blue';
+canal = 3;
+
+
+[mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_masks_from_cellpose(path, canal);

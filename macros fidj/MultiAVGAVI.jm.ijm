@@ -2,8 +2,8 @@
 function handleSingleImages(subDir, saveSingleImDir) {
     var SubFolders = getFileList(subDir);
     for (var m = 0; m < SubFolders.length; m++) {
-        if (startsWith(SubFolders[m], "SingleImage") && File.isDirectory(subDir + "/" + SubFolders[m])) {
-            var SingleImageFolder = subDir + "/" + SubFolders[m] + "/";
+        if (startsWith(SubFolders[m], "SingleImage") && File.isDirectory(subDir + File.separator + SubFolders[m])) {
+            var SingleImageFolder = subDir + File.separator + SubFolders[m] + File.separator;
             var tifFiles = getFileList(SingleImageFolder);
             for (var n = 0; n < tifFiles.length; n++) {
                 if (endsWith(tifFiles[n], ".ome.tif")) {
@@ -26,9 +26,9 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
     var tseriesFolderFound = false;
 
     for (var l = 0; l < tseriesFoldersList.length; l++) {
-        if (startsWith(tseriesFoldersList[l], "TSeries") && File.isDirectory(subDir + "/" + tseriesFoldersList[l])) {
+        if (startsWith(tseriesFoldersList[l], "TSeries") && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
             tseriesFolderFound = true;
-            tseriesFolders = Array.concat(tseriesFolders, subDir + "/" + tseriesFoldersList[l]);
+            tseriesFolders = Array.concat(tseriesFolders, subDir + File.separator + tseriesFoldersList[l]);
         }
     }
 
@@ -45,7 +45,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         // Sauvegarder les résultats
         var tseriesFolderName = File.getName(tseriesFolder);
         var aviFileName = "AVG_concat.avi";  // Nom du fichier AVI à enregistrer
-        var fullPath = saveRegisVidDir + tseriesFolderName + "/";
+        var fullPath = saveRegisVidDir + tseriesFolderName + File.separator;
         createDirectory(fullPath);
         
         var fullPathAvi = fullPath + aviFileName;
@@ -55,7 +55,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
 		 }
 		 
         // Vérifier si le sous-dossier 'suite2p' existe
-        var suite2pFolder = tseriesFolder + "/suite2p/";                            
+        var suite2pFolder = tseriesFolder + File.separator + "suite2p" + File.separator;                            
         if (!File.isDirectory(suite2pFolder)) {
             print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
             continue; 
@@ -66,8 +66,8 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         var validPlaneFolders = newArray();
 
         for (var m = 0; m < planeFolders.length; m++) {
-            if (startsWith(planeFolders[m], "plane") && File.isDirectory(suite2pFolder + "/" + planeFolders[m])) {
-                validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + "/" + planeFolders[m] + "/");
+            if (startsWith(planeFolders[m], "plane") && File.isDirectory(suite2pFolder + File.separator + planeFolders[m])) {
+                validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + File.separator + planeFolders[m] + File.separator);
             }
         }
 
@@ -81,7 +81,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
             var planeFolder = validPlaneFolders[planeFolderIndex];
 
             // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
-            var regTifFolder = planeFolder + "/reg_tif/";
+            var regTifFolder = planeFolder + File.separator + "reg_tif" + File.separator;
             if (File.isDirectory(regTifFolder)) {
                 var tifFiles = getFileList(regTifFolder);
                 var arr_num = extract_digits(tifFiles);
@@ -91,7 +91,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
                 var hasTifFiles = false;
 
                 for (var n = 0; n < tifFiles.length; n++) {
-                    var file = regTifFolder + "/" + tifFiles[n];
+                    var file = regTifFolder + File.separator + tifFiles[n];
                     open(file);
 
                     // Ajouter des tranches vides pour faire en sorte que la taille de la pile soit un multiple de dix
@@ -179,6 +179,7 @@ function createDirectory(path) {
 // Fonction pour traiter un fichier TIFF
 function processTifFile(tifFilePath, saveDir) {
     var tifFileName = File.getName(tifFilePath);
+    	
     var pattern = "(.*)_(.*)_(.*)_(.*)\\.ome.tif";
     
     if (matches(tifFileName, pattern)) {
@@ -186,64 +187,67 @@ function processTifFile(tifFilePath, saveDir) {
         var channel = values[2];
         
         if (channel == "Ch2") {
-		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
-		        print("L'image verte existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
+		        print("L'image verte existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
 		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
 		    }
 		    open(tifFilePath);
 		    run("Green");
-		    saveAs("Jpeg", saveDir + "/" + tifFileName);
+		    saveAs("Tiff", saveDir + File.separator + tifFileName);
+		    
 		} else if (channel == "Ch1") {
-		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
-		        print("L'image rouge existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
+		        print("L'image rouge existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
 		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
 		    }
 		    open(tifFilePath);
 		    run("Red");
-		    saveAs("Jpeg", saveDir + "/" + tifFileName);
+		    saveAs("Tiff", saveDir + File.separator + tifFileName);
+		
 		} else if (channel == "Ch3") {
-		    if (File.exists(saveDir + "/" + tifFileName + ".jpeg")) { 
-		        print("L'image bleue existe déjà : " + saveDir + "/" + tifFileName + ".jpeg"); 
+		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
+		        print("L'image rouge existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
 		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
 		    }
 		    open(tifFilePath);
 		    run("Blue");
-		    saveAs("Jpeg", saveDir + "/" + tifFileName);
-		} else {
-		    print("No specific filter for channel: " + channel);
+		    saveAs("Tiff", saveDir + File.separator + tifFileName);
 		}
+		
     } else {
-        print("Filename does not match the expected pattern: " + tifFileName);
+        print("Nom du fichier ne correspond pas au modèle attendu.");
     }
 }
 
-
 // Main logic pour gérer les sous-dossiers en fonction de 'name'
-var PathSave = "D:/after_processing/";
+var PathSave = "D:" + File.separator + "after_processing" + File.separator;
 var dir = getDirectory("Choose Source Directory ");
 var list = getFileList(dir);
 setBatchMode(true);
 
 for (var i = 0; i < list.length; i++) {
-    var filename = dir + list[i];
+    var filename = dir + File.separator + list[i];
     print("Traitement du fichier : " + filename);
     
     var name = File.getName(filename);
     
     var parentFolder = File.getParent(filename); 
-    var type = parentFolder.substring(parentFolder.lastIndexOf("\\") + 1);
+    var type = parentFolder.substring(parentFolder.lastIndexOf(File.separator) + 1);
     
     var subDirList = getFileList(filename);
-    var rootDir = PathSave + type + '/' + name + '/';
+    var rootDir = PathSave + type + File.separator + name + File.separator;
     createDirectory(rootDir);
     
     // Pour chaque élément de subDirList
     for (var j = 0; j < subDirList.length; j++) {
-        var subDir = filename + "/" + subDirList[j];
+        var subDir = filename + subDirList[j];
         
         // Si le nom commence par "mTor", traitement des sous-dossiers niveau 2
         if (name.startsWith("mTor")) {
-            var aniDir = rootDir + subDirList[j];
+        	var ani = subDirList[j];
+			var ani = replace(ani, "/", "");
+			
+            var aniDir = rootDir + ani;
             createDirectory(aniDir);
 
             if (File.isDirectory(subDir)) {
@@ -251,16 +255,19 @@ for (var i = 0; i < list.length; i++) {
                 
                 if (subSubDirList.length > 0) {
                     for (var k = 0; k < subSubDirList.length; k++) {
-                        var subSubDir = subDir + "/" + subSubDirList[k];
+                        var subSubDir = subDir + subSubDirList[k];
                         print("Sous-dossier trouvé : " + subSubDir); 
-
-                        var saveDir = aniDir + "/" + subSubDirList[k];
+						
+						var date = subSubDirList[k];
+						var date = replace(date, "/", "");
+						
+                        var saveDir = aniDir + File.separator + date;
                         createDirectory(saveDir);
                         
-                        var saveSingleImDir = saveDir + "/Single images/";
+                        var saveSingleImDir = saveDir + File.separator + "Single images";
                         createDirectory(saveSingleImDir);
                         
-                        var saveRegisVidDir = saveDir + "/";
+                        var saveRegisVidDir = saveDir + File.separator;
                         createDirectory(saveRegisVidDir);
                     
                         // Traiter les dossiers "SingleImage" dans subSubDir
@@ -278,10 +285,10 @@ for (var i = 0; i < list.length; i++) {
             var saveDir = rootDir + subDirList[j];
             createDirectory(saveDir);
         
-            var saveSingleImDir = saveDir + "/Single images/";
+            var saveSingleImDir = saveDir + File.separator + "Single images";
             createDirectory(saveSingleImDir);
         
-            var saveRegisVidDir = saveDir + "/";
+            var saveRegisVidDir = saveDir + File.separator;
             createDirectory(saveRegisVidDir);
         
             // Traiter les dossiers "SingleImage" dans subDir
@@ -295,3 +302,7 @@ for (var i = 0; i < list.length; i++) {
 
 setBatchMode(false);
 
+
+
+   
+    

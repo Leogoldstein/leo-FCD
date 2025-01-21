@@ -127,18 +127,18 @@ function [tseries_folders, date_group_paths] = create_base_folders(base_path, cu
         [~, tseries_folder, ~] = fileparts(current_env_group{k});
 
         % Crée le chemin complet pour chaque date
-        date_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
+        tseries_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
 
          % Vérifie si le dossier existe déjà
-        if ~exist(date_path, 'dir')
+        if ~exist("tseries_path", 'dir')
             % Crée le dossier s'il n'existe pas
-            mkdir(date_path);
-            disp(['Created folder: ', date_path]);
+            mkdir(tseries_path);
+            disp(['Created folder: ', tseries_path]);
         end
         
         % Assigner le chemin du dossier créé dans la cellule
         tseries_folders{k} = tseries_folder;
-        date_group_paths{k} = date_path;
+        date_group_paths{k} = tseries_path;
     end
 end
 
@@ -482,9 +482,7 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
             if isfield(data, 'imageWidth') 
                 all_imageWidth{m} = data.imageWidth;
             end
-
         else
-            % Charger les fichiers nécessaires pour les distances
             [stat, iscell] = load_data_mat_npy(current_folders_group{m});
             [outline_gcampx, outline_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
 
@@ -501,6 +499,35 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
             all_gcamp_props{m} = gcamp_props;
             all_imageHeight{m} = imageHeight;
             all_imageWidth{m} = imageWidth;
+ 
+        end
+    end
+end
+
+
+function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(date_group_paths, canal)
+    numFolders = length(date_group_paths);
+    % Initialiser les cellules pour stocker les données
+    all_mask_cellpose = cell(numFolders, 1);
+    all_props_cellpose = cell(numFolders, 1);
+    all_outlines_x_cellpose = cell(numFolders, 1);
+    all_outlines_y_cellpose = cell(numFolders, 1);
+
+    for m = 1:numFolders
+   
+        % Charger les fichiers nécessaires pour les distances
+        single_images_path = fullfile(date_group_paths{m}, 'Single images'); 
+        [mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_masks_from_cellpose(single_images_path, canal);
+        
+        if ~isempty(mask_cellpose) && ~isempty(props_cellpose) && ~isempty(outlines_x_cellpose) && ~isempty(outlines_y_cellpose)
+            % Sauvegarder les variables liées à cellpose
+            %save(filePath, 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose');
+            
+            % Stocker les résultats dans les variables de sortie
+            all_mask_cellpose{m} = mask_cellpose;
+            all_props_cellpose{m} = props_cellpose;
+            all_outlines_x_cellpose{m} = outlines_x_cellpose;
+            all_outlines_y_cellpose{m} = outlines_y_cellpose;
         end
     end
 end
