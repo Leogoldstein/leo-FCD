@@ -9,7 +9,7 @@ function pipeline_for_data_processing(selected_groups)
     pathexcel=[PathSave 'analysis.xlsx'];
  
     % Ask for analysis type after gathering all inputs
-    analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), global analysis of activity (3), SCEs (4) or clusters analysis (5)? ');
+    analysis_choice = input('Choose analysis type: mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), sub-population (5) or clusters analysis (6)? ');
     
     % Pre-allocate variables for global analysis (btw animals for all dates)
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
@@ -85,6 +85,20 @@ function pipeline_for_data_processing(selected_groups)
                 all_RasterRace_groups{k} = all_RasterRace;
 
             case 5
+                disp(['Performing sub-population analysis for ', current_animal_group]);
+                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+
+                [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+
+                canal = 3; % blue cells
+                [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(date_group_paths, canal);
+                
+                tolerance_radius = 3;
+                iou_results = compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, date_group_paths, tolerance_radius);
+                assignin('base', 'iou_results', iou_results);
+                
+
+            case 6
                 disp(['Performing clusters analysis for ', current_animal_group]);
                 [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
@@ -113,7 +127,7 @@ function pipeline_for_data_processing(selected_groups)
     % end
 end
 
-%% Helper Functions
+%% Helper Functions (loading and processing)
 
 % Create subfolders for analysis
 function [tseries_folders, date_group_paths] = create_base_folders(base_path, current_dates_group, current_env_group)
@@ -515,19 +529,13 @@ function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_ou
 
     for m = 1:numFolders
    
-        % Charger les fichiers nécessaires pour les distances
-        single_images_path = fullfile(date_group_paths{m}, 'Single images'); 
-        [mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_masks_from_cellpose(single_images_path, canal);
-        
-        if ~isempty(mask_cellpose) && ~isempty(props_cellpose) && ~isempty(outlines_x_cellpose) && ~isempty(outlines_y_cellpose)
-            % Sauvegarder les variables liées à cellpose
-            %save(filePath, 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose');
-            
-            % Stocker les résultats dans les variables de sortie
-            all_mask_cellpose{m} = mask_cellpose;
-            all_props_cellpose{m} = props_cellpose;
-            all_outlines_x_cellpose{m} = outlines_x_cellpose;
-            all_outlines_y_cellpose{m} = outlines_y_cellpose;
-        end
+        [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(path, canal);        
+     
+        % Stocker les résultats dans les variables de sortie
+        all_mask_cellpose{m} = mask_cellpose;
+        all_props_cellpose{m} = props_cellpose;
+        all_outlines_x_cellpose{m} = outline_x_cellpose;      
+        all_outlines_y_cellpose{m} = outline_y_cellpose;
+
     end
 end
