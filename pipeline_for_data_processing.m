@@ -35,29 +35,29 @@ function pipeline_for_data_processing(selected_groups)
         switch analysis_choice
             case 1
                 disp(['Performing mean images for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
                 
                 all_ops = load_ops(current_folders_group);
-                save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
+                save_mean_images(current_animal_group, all_ops, current_dates_group, tseries_results_path)
 
             case 2
                 disp(['Performing raster plot analysis for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
 
-                [all_DF, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
+                [all_DF, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(tseries_results_path, current_folders_group, current_env_group);
                 
-                build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, current_animal_group, current_ages_group)
+                build_rasterplot(all_DF, all_isort1, all_MAct, tseries_results_path, current_animal_group, current_ages_group)
                 build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
             case 3
                 disp(['Performing Global analysis of activity for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
                 [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(date_group_paths,current_env_group);
 
-                [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group);
-                [~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+                [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(tseries_results_path, current_folders_group, current_env_group);
+                [~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(tseries_results_path, current_folders_group);
 
-                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, date_group_paths, all_sampling_rate, all_imageHeight, all_imageWidth);
+                [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, tseries_results_path, all_sampling_rate, all_imageHeight, all_imageWidth);
                 
                 export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                      all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
@@ -65,12 +65,12 @@ function pipeline_for_data_processing(selected_groups)
 
             case 4
                 disp(['Performing SCEs analysis for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
-                [all_DF, all_Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
-                %plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, date_group_paths, current_ages_group, all_sce_n_cells_threshold, all_TRace);
+                [all_DF, all_Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, tseries_results_path);
+                %plot_threshold_sce_evolution(current_ani_path_group, current_animal_group, tseries_results_path, current_ages_group, all_sce_n_cells_threshold, all_TRace);
                
-                [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, date_group_paths);
+                [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, tseries_results_path);
 
                 export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                    all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
@@ -86,32 +86,31 @@ function pipeline_for_data_processing(selected_groups)
 
             case 5
                 disp(['Performing sub-population analysis for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
 
-                [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+                [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(tseries_results_path, current_folders_group);
 
                 canal = 3; % blue cells
                 [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(date_group_paths, canal);
                 
-                tolerance_radius = 3;
-                iou_results = compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, date_group_paths, tolerance_radius);
-                assignin('base', 'iou_results', iou_results);
+                compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths);
+                %assignin('base', 'iou_results', iou_results);
                 
 
             case 6
                 disp(['Performing clusters analysis for ', current_animal_group]);
-                [tseries_folders, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
+                [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(current_ani_path_group, current_dates_group, current_env_group);
     
-                [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, ~, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group);
+                [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, ~, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, tseries_results_path, current_folders_group, current_env_group);
             
                 plot_assemblies(all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, current_folders_group);
 
-                plot_clusters_metrics(date_group_paths, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
+                plot_clusters_metrics(tseries_results_path, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
                
             otherwise
                 disp('Invalid analysis choice. Skipping...');
         end
-        current_group_paths{k} = date_group_paths;
+        current_group_paths{k} = tseries_results_path;
 
     end
     
@@ -130,9 +129,10 @@ end
 %% Helper Functions (loading and processing)
 
 % Create subfolders for analysis
-function [tseries_folders, date_group_paths] = create_base_folders(base_path, current_dates_group, current_env_group)
+function [tseries_folders, tseries_results_path, date_group_paths] = create_base_folders(base_path, current_dates_group, current_env_group)
 
     date_group_paths = cell(length(current_dates_group), 1);  % Chemins regroupés par date
+    tseries_results_path = cell(length(current_dates_group), 1);
     tseries_folders = cell(length(current_dates_group), 1);
     
     for k = 1:length(current_dates_group)
@@ -141,18 +141,19 @@ function [tseries_folders, date_group_paths] = create_base_folders(base_path, cu
         [~, tseries_folder, ~] = fileparts(current_env_group{k});
 
         % Crée le chemin complet pour chaque date
-        tseries_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
-
-         % Vérifie si le dossier existe déjà
-        if ~exist("tseries_path", 'dir')
+        date_path = fullfile(base_path, current_dates_group{k});
+        tseries_result_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
+        
+        if ~exist("tseries_result_path", 'dir')
             % Crée le dossier s'il n'existe pas
-            mkdir(tseries_path);
-            disp(['Created folder: ', tseries_path]);
+            mkdir(tseries_result_path);
+            disp(['Created folder: ', tseries_result_path]);
         end
         
         % Assigner le chemin du dossier créé dans la cellule
         tseries_folders{k} = tseries_folder;
-        date_group_paths{k} = tseries_path;
+        tseries_results_path{k} = tseries_result_path;
+        date_group_paths{k} = date_path;
     end
 end
 
@@ -173,9 +174,9 @@ function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] 
     end
 
 
-function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group)    
+function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(tseries_results_path, current_folders_group, current_env_group)    
     % Initialize cell arrays for outputs
-    numFolders = length(date_group_paths);
+    numFolders = length(tseries_results_path);
     all_DF = cell(numFolders, 1);
     all_sampling_rate = cell(numFolders, 1);
     all_isort1 = cell(numFolders, 1);
@@ -189,7 +190,7 @@ function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_iso
     % Loop through each save path
     for m = 1:numFolders
         % Create the full file path for results_raster.mat
-        filePath = fullfile(date_group_paths{m}, 'results_raster.mat');
+        filePath = fullfile(tseries_results_path{m}, 'results_raster.mat');
         
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
@@ -234,7 +235,7 @@ function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_iso
             synchronous_frames = round(0.2 * sampling_rate);  % Example: 0.2s of data
             
             % Call raster_processing function to process the data and get the results
-            [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, date_group_paths{m});
+            [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, tseries_results_path{m});
 
             % Store the results in the respective cell arrays
             all_DF{m} = DF;
@@ -256,9 +257,9 @@ function [all_DF, all_sampling_rate, all_synchronous_frames, all_isort1, all_iso
 end
 
 
-function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths)
+function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, tseries_results_path)
     % Initialize output cell arrays to store results for each directory
-    numFolders = length(date_group_paths);  % Number of groups
+    numFolders = length(tseries_results_path);  % Number of groups
     all_sce_n_cells_threshold = cell(numFolders, 1);
     all_Race = cell(numFolders, 1);
     all_TRace = cell(numFolders, 1);
@@ -267,7 +268,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
 
     % Load or process raster data
     [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = ...
-        load_or_process_raster_data(date_group_paths, current_folders_group, current_env_group); 
+        load_or_process_raster_data(tseries_results_path, current_folders_group, current_env_group); 
 
     % Initialize a flag to track if processing is needed
     process_needed = false;
@@ -275,7 +276,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
     % First loop: Check if results exist and load them
     for m = 1:numFolders
         % Create the full file path for results_SCEs.mat
-        filePath = fullfile(date_group_paths{m}, 'results_SCEs.mat');
+        filePath = fullfile(tseries_results_path{m}, 'results_SCEs.mat');
 
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
@@ -311,7 +312,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
         % Process data for missing files and save results
         for m = 1:numFolders
             % Create the full file path for results_SCEs.mat
-            filePath = fullfile(date_group_paths{m}, 'results_SCEs.mat');
+            filePath = fullfile(tseries_results_path{m}, 'results_SCEs.mat');
 
             % Skip already loaded files
             if exist(filePath, 'file') == 2
@@ -319,7 +320,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
             end
 
             % Process and save the missing results
-            disp(['Processing folder: ', date_group_paths{m}]);
+            disp(['Processing folder: ', tseries_results_path{m}]);
 
             % Extract relevant data for the current folder
             Raster = all_Raster{m};
@@ -331,7 +332,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
 
             % Call the processing function
             [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = ...
-                select_synchronies(date_group_paths{m}, synchronous_frames, WinActive, all_DF{m}, MAct, MinPeakDistancesce, Raster, current_animal_group, current_dates_group{m});
+                select_synchronies(tseries_results_path{m}, synchronous_frames, WinActive, all_DF{m}, MAct, MinPeakDistancesce, Raster, current_animal_group, current_dates_group{m});
 
             % Store results in output variables
             all_sce_n_cells_threshold{m} = sce_n_cells_threshold;
@@ -344,10 +345,10 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
 end
 
 
-function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, date_group_paths, current_folders_group, current_env_group)
+function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, tseries_results_path, current_folders_group, current_env_group)
     
     % Initialize output cell arrays to store results for each directory
-    numFolders = length(date_group_paths);  % Number of groups
+    numFolders = length(tseries_results_path);  % Number of groups
     % Initialize all output variables
     % all_IDX2 = cell(numFolders, 1);
     % all_sCl = cell(numFolders, 1);
@@ -371,12 +372,12 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
     
     % Load Race in prevision of clustering
     [~, all_Raster, ~, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, ~, ~, ~] = ...
-        load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, date_group_paths);
+        load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, tseries_results_path);
 
     % First loop: Check if results exist and load them
     for m = 1:numFolders
         % Chemin complet pour le fichier results_clustering.mat
-        filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
+        filePath = fullfile(tseries_results_path{m}, 'results_clustering.mat');
     
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
@@ -408,7 +409,7 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
 
           else
                 % Process and save the missing results
-                disp(['Processing folder: ', date_group_paths{m}]);
+                disp(['Processing folder: ', tseries_results_path{m}]);
     
                 % Extract relevant data for the current folder
                 Race = all_Race{m};
@@ -418,7 +419,7 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
     
                 % Call the processing function
                 [validDirectory, clusterMatrix, NClOK, assemblystat] = ...
-                    cluster_synchronies(date_group_paths{m}, Race, kmean_iter, kmeans_surrogate);
+                    cluster_synchronies(tseries_results_path{m}, Race, kmean_iter, kmeans_surrogate);
     
                 validDirectories{m} = validDirectory;
                 all_clusterMatrix{m} = clusterMatrix;
@@ -432,11 +433,11 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
     % Si des traitements sont nécessaires pour des fichiers manquants
     if further_process_needed
         % Charger les fichiers nécessaires pour les distances
-        [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group);
+        [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(tseries_results_path, current_folders_group);
 
         for m = 1:numFolders
             % Create the full file path for results_SCEs.mat
-            filePath = fullfile(date_group_paths{m}, 'results_clustering.mat');
+            filePath = fullfile(tseries_results_path{m}, 'results_clustering.mat');
 
             assemblystat = all_assemblystat{m};
 
@@ -459,8 +460,8 @@ function [all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, validDi
 end
 
 
-function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(date_group_paths, current_folders_group)
-    numFolders = length(date_group_paths);
+function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(tseries_results_path, current_folders_group)
+    numFolders = length(tseries_results_path);
     % Initialiser les cellules pour stocker les données
     all_outline_gcampx = cell(numFolders, 1);
     all_outline_gcampy = cell(numFolders, 1);
@@ -471,7 +472,7 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
 
     for m = 1:numFolders
         % Définir le chemin du fichier à charger ou sauvegarder
-        filePath = fullfile(date_group_paths{m}, 'results_image.mat'); 
+        filePath = fullfile(tseries_results_path{m}, 'results_image.mat'); 
 
         if exist(filePath, 'file') == 2 
             disp(['Loading file: ', filePath]);
@@ -528,9 +529,12 @@ function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_ou
     all_outlines_y_cellpose = cell(numFolders, 1);
 
     for m = 1:numFolders
-   
+    
+        path = fullfile(date_group_paths{m}, 'Single images'); 
+        disp(path)
         [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(path, canal);        
-     
+        assignin('base', 'outline_x_cellpose', outline_x_cellpose);
+
         % Stocker les résultats dans les variables de sortie
         all_mask_cellpose{m} = mask_cellpose;
         all_props_cellpose{m} = props_cellpose;

@@ -1,6 +1,5 @@
 function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(path, canal)
-    % Cette fonction charge les masques depuis un fichier .npy,
-    % extrait les coordonnées des cellules (composants connexes),
+    % Cette fonction charge les masques et les outlines depuis un fichier .npy,
     % et retourne les coordonnées dans 'mask_cellpose', les propriétés dans 'props_cellpose',
     % ainsi que les coordonnées des outlines dans 'outline_x_cellpose' et 'outline_y_cellpose'.
     
@@ -71,14 +70,10 @@ function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose]
         else
             error('La clé "outlines" n''a pas été trouvée dans le dictionnaire Python.');
         end
-        
-        % Identifier les composants connexes dans les masques et outlines
-        cc_masks = bwconncomp(masks_mat, 8);  % Connexité à 8 voisins pour les pixels actifs
-        cc_outlines = bwconncomp(outlines_mat, 8);  % Connexité à 8 voisins pour les outlines
-        
-        % Nombre de cellules (composants connexes)
-        num_cells_masks = cc_masks.NumObjects;
-        num_cells_outlines = cc_outlines.NumObjects;
+
+        % Nombre de cellules (une cellule par outline)
+        num_cells_masks = size(masks_mat, 3);  % Nombre de masques (profondeur du tableau)
+        num_cells_outlines = size(outlines_mat, 3);  % Nombre de contours (profondeur du tableau)
 
         % Initialiser les structures pour stocker les données
         mask_cellpose = {};        % Coordonnées des masques
@@ -88,48 +83,65 @@ function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose]
         
         % Traitement des masques et calcul des propriétés
         for ncell = 1:num_cells_masks
-            % Extraire les indices des pixels de la cellule courante
-            cell_pixels = cc_masks.PixelIdxList{ncell};
-            [cell_y, cell_x] = ind2sub(size(masks_mat), cell_pixels);
-
-            % Stocker les coordonnées dans mask_cellpose
-            mask_cellpose{ncell} = [cell_x, cell_y];  % Coordonnées des pixels sous forme [x, y]
-
-            % Calcul des propriétés pour chaque cellule (surface et centroïde)
-            props_cell = regionprops(cc_masks, 'Area', 'Centroid');
-            if ~isempty(props_cell)
-                props_cellpose(ncell).Area = props_cell(ncell).Area;        % Surface de la cellule
-                props_cellpose(ncell).Centroid = props_cell(ncell).Centroid;  % Centroïde de la cellule
+            % Extraire les pixels du masque pour la cellule courante
+            mask = masks_mat(:,:,ncell); % Masque de la cellule courante
+            
+            % Vérifier que le masque n'est pas vide
+            if any(mask(:))
+                % Calcul des propriétés pour chaque cellule (surface et centroïde)
+                props = regionprops(mask, 'Area', 'Centroid');
+                
+                % Extraire le centroïde de la cellule
+                centroid = props.Centroid; % Centroid [x, y]
+                
+                % Inverser la coordonnée Y du centroïde pour correspondre aux coordonnées de l'image
+                image_height = size(mask, 1); % Hauteur de l'image
+                centroid(2) = image_height - centroid(2) + 1; % Inversion de la coordonnée Y
+                
+                % Stocker les propriétés
+                props_cellpose(ncell).Area = props.Area; % Stocker la surface
+                props_cellpose(ncell).Centroid = centroid; % Stocker le centroïde
+            else
+                % Si le masque est vide, ne rien faire
+                props_cellpose(ncell).Area = 0;
+                props_cellpose(ncell).Centroid = [NaN, NaN];
             end
         end
-
-        % Traitement des outlines
-        for ncell = 1:num_cells_outlines
-            % Extraire les indices des pixels de l'outline courant
-            cell_pixels = cc_outlines.PixelIdxList{ncell};
-            [cell_y, cell_x] = ind2sub(size(outlines_mat), cell_pixels);
-
-            % Stocker les coordonnées dans outline_x_cellpose et outline_y_cellpose
-            outline_x_cellpose{ncell} = cell_x;  % Coordonnées x des pixels des outlines
-            outline_y_cellpose{ncell} = cell_y;  % Coordonnées y des pixels des outlines
+        
+        % Vérification de la taille de props_cellpose et affichage des centroïdes
+        disp('Propriétés des cellules:');
+        for ncell = 1:num_cells_masks
+            centroid = props_cellpose(ncell).Centroid;
+            disp(['Cellule ', num2str(ncell), ': ', num2str(centroid)]);
         end
         
+        % Traitement des outlines et inversion des coordonnées Y
+        for ncell = 1:num_cells_outlines
+            % Extraire les coordonnées des outlines
+            outline = outlines_mat(:,:,ncell);
+            [outline_y, outline_x] = find(outline);  % Trouver les indices des pixels du contour
+        
+            % Inverser les coordonnées Y des outlines
+            image_height = size(outline, 1);  % Hauteur de l'image (lignes)
+            outline_y = image_height - outline_y + 1;  % Inversion des coordonnées Y
+        
+            % Stocker les coordonnées dans outline_x_cellpose et outline_y_cellpose
+            outline_x_cellpose{ncell} = outline_x;  % Coordonnées x des contours
+            outline_y_cellpose{ncell} = outline_y;  % Coordonnées y des contours
+        end
+  
         % Affichage des résultats
         figure;
         hold on;
 
         % Tracer les masques et les centroïdes
         for ncell = 1:num_cells_masks
-            % Extraire les pixels et centroïdes
-            pixels = mask_cellpose{ncell};
             centroid = props_cellpose(ncell).Centroid;
-            
-            % Tracer les pixels du masque
-            % plot(pixels(:, 1), pixels(:, 2), 'o', 'MarkerSize', 3, ...
-            %      'DisplayName', ['Mask ', num2str(ncell)]);
+            % Afficher un message de diagnostic
+            disp(['Tracé du centroïde de la cellule ', num2str(ncell), ' à ', num2str(centroid)]);
             
             % Tracer le centroïde
-            plot(centroid(1), centroid(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, ...
+            plot(centroid(1), centroid(2), 'rx', 'MarkerSize', 8, 'LineWidth', 2, ...
                  'DisplayName', ['Centroid ', num2str(ncell)]);
         end
 
@@ -147,14 +159,10 @@ function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose]
         ylabel('Y Coordinate');
         legend;
 
-        % Inverser l'axe Y pour aligner correctement les cellules (inverse de l'orientation verticale)
-        set(gca, 'YDir', 'reverse');
-
         hold off;
     
     catch ME
         % Gestion des erreurs avec catch
         fprintf('Erreur rencontrée : %s\n', ME.message);
-        rethrow(ME);  % Rethrow pour que l'erreur soit disponible dans la console MATLAB
     end
 end
