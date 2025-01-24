@@ -51,7 +51,7 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes] =
                     % Vérifier si l'index est "ZAxis"
                     if strcmp(subindexedNode.getAttribute('index'), 'ZAxis')
                         % Chercher la balise <SubindexedValue> correspondante
-                        subindexedValueNode = subindexedNode.getElementsByTagName('SubindexedValue').item(0); % change item to 1 if Optotune ETL was used
+                        subindexedValueNode = subindexedNode.getElementsByTagName('SubindexedValue').item(1); % change item to 1 if Optotune ETL was used
                         if ~isempty(subindexedValueNode)
                             % Extraire la valeur de "value"
                             valueStr = char(subindexedValueNode.getAttribute('value'));

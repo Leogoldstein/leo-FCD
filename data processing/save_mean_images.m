@@ -1,4 +1,4 @@
-function save_mean_images(current_animal_group, all_ops, current_dates_group, date_group_paths)
+function save_mean_images(current_animal_group, all_ops, current_dates_group, tseries_results_path)
     % save_mean_images generates and saves mean images based on input data.
     % 
     % Inputs:
@@ -10,7 +10,7 @@ function save_mean_images(current_animal_group, all_ops, current_dates_group, da
     py.importlib.import_module('numpy');
 
     % Loop through each file path in directories
-    for m = 1:length(date_group_paths)
+    for m = 1:length(tseries_results_path)
         try
             % Check if all_ops{k} is a Python dictionary
             if isa(all_ops{m}, 'py.dict')
@@ -22,7 +22,7 @@ function save_mean_images(current_animal_group, all_ops, current_dates_group, da
             end
 
             % Ensure the path ends with .png for proper file extension
-            png_filename = fullfile(date_group_paths{m}, 'Mean_image.png');
+            png_filename = fullfile(tseries_results_path{m}, 'Mean_image.png');
 
             % Check if the file already exists to avoid overwriting
             if ~isfile(png_filename)

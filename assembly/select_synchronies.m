@@ -39,7 +39,7 @@ function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = sele
         end
 
         % Calculate the 99th percentile for threshold
-        percentile = 99;
+        percentile = 95;
         sce_n_cells_threshold = prctile(Sumactsh, percentile, "all");
         disp(['sce_n_cells_threshold: ' num2str(sce_n_cells_threshold)])
 
