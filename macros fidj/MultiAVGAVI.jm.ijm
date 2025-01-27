@@ -44,10 +44,12 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         
         // Sauvegarder les résultats
         var tseriesFolderName = File.getName(tseriesFolder);
-        var aviFileName = "AVG_concat.avi";  // Nom du fichier AVI à enregistrer
+        var aviFileName = "AVG_concat_groupZ.avi";  // Nom du fichier AVI à enregistrer
+        var ConcatTifFileName = "Concatenated.tif";
         var fullPath = saveRegisVidDir + tseriesFolderName + File.separator;
         createDirectory(fullPath);
         
+        var fullPathTiff = fullPath + ConcatTifFileName;
         var fullPathAvi = fullPath + aviFileName;
 		if (File.exists(fullPathAvi)) {
 			print("Le fichier AVI existe déjà : " + fullPathAvi);
@@ -83,6 +85,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
             // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
             var regTifFolder = planeFolder + File.separator + "reg_tif" + File.separator;
             if (File.isDirectory(regTifFolder)) {
+            	File.delete(regTifFolder + "AVG_concat.tif");
                 var tifFiles = getFileList(regTifFolder);
                 var arr_num = extract_digits(tifFiles);
                 Array.sort(arr_num, tifFiles);
@@ -104,7 +107,9 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
                 // Concaténer les piles
                 if (hasTifFiles) {
                     concatenateTiffFiles(filesToConcatenate);
-
+					
+					saveAs("Tiff", fullPathTiff);
+					
                     // Appliquer une projection Z groupée
                     run("Grouped Z Project...", "projection=[Average Intensity] group=10");
                     run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");

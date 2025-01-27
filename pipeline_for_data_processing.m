@@ -70,12 +70,12 @@ function pipeline_for_data_processing(selected_groups)
                 case 2
                     disp(['Performing raster plot analysis for ', current_animal_group]);
                     [all_DF, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(chosen_folder_processing, current_folders_group, current_env_group);
-                    build_rasterplot(all_DF, all_isort1, all_MAct, tseries_results_paths, current_animal_group, current_ages_group)
+                    build_rasterplot(all_DF, all_isort1, all_MAct, chosen_folder_processing, current_animal_group, current_ages_group)
                     build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
                 case 3
                     disp(['Performing Global analysis of activity for ', current_animal_group]);
-                    [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(date_group_paths, current_env_group);
+                    [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(chosen_folder_processing, current_env_group);
                     [all_DF, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(chosen_folder_processing, current_folders_group, current_env_group);
                     [~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(chosen_folder_processing, current_folders_group);
                     [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, chosen_folder_processing, all_sampling_rate, all_imageHeight, all_imageWidth);
@@ -87,8 +87,8 @@ function pipeline_for_data_processing(selected_groups)
                     disp(['Performing SCEs analysis for ', current_animal_group]);
                     [all_DF, all_Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_folders_group, current_env_group, current_dates_group, chosen_folder_processing);
                     [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, chosen_folder_processing);
-                    % export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
-                    %    all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
+                    export_data(current_animal_group, tseries_folders, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
+                        all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
 
                     % Initialiser les cellules pour ce groupe
                     all_DF_groups{k} = all_DF;
@@ -100,12 +100,13 @@ function pipeline_for_data_processing(selected_groups)
                     all_RasterRace_groups{k} = all_RasterRace;
 
                 case 5
-                    disp(['Performing sub-population analysis for ', current_animal_group]);
-                    all_ops = load_ops(current_folders_group);
+                    disp(['Performing sub-population analysis for ', current_animal_group]); 
+                    all_ops = load_ops(current_folders_group); % reference image
+                    npy_file_paths = load_or_process_cellpose_image(date_group_paths, all_ops);
+                    [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
                     [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(chosen_folder_processing, current_folders_group);
-                    canal = 3; % blue cells
-                    [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(date_group_paths, canal, all_ops);
-                    compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths);
+                    
+                    compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_ops);
 
                 case 6
                     disp(['Performing clusters analysis for ', current_animal_group]);
@@ -134,14 +135,14 @@ end
 
 %% Helper Functions (loading and processing)
 
-function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(date_group_paths,current_env_group)
-    numFolders = length(date_group_paths);
+function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(chosen_folder_processing,current_env_group)
+    numFolders = length(chosen_folder_processing);
     all_recording_time = cell(numFolders, 1);
     all_optical_zoom = cell(numFolders, 1);
     all_position = cell(numFolders, 1);
     all_time_minutes = cell(numFolders, 1);
 
-        for m = 1:length(date_group_paths)
+        for m = 1:length(chosen_folder_processing)
             [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(current_env_group{m});
             all_recording_time{m} = recording_time;
             all_optical_zoom{m} = optical_zoom;
@@ -497,36 +498,24 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
 end
 
 
-function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(date_group_paths, canal)
-    numFolders = length(date_group_paths);
-    % Initialiser les cellules pour stocker les données
-    all_mask_cellpose = cell(numFolders, 1);
-    all_props_cellpose = cell(numFolders, 1);
-    all_outlines_x_cellpose = cell(numFolders, 1);
-    all_outlines_y_cellpose = cell(numFolders, 1);
-
-    for m = 1:numFolders
-        
-        [stat, iscell] = load_data_mat_npy(current_folders_group{m});
-        [outline_gcampx, outline_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths)
     
-        % Créer poly2mask et obtenir les propriétés gcamp
-        [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(iscell, stat, outline_gcampx, outline_gcampy); 
-       
-        [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(path, aligned_image);        
+    numFiles = length(npy_file_paths);
+    % Initialiser les cellules pour stocker les données
+    all_mask_cellpose = cell(numFiles, 1);
+    all_props_cellpose = cell(numFiles, 1);
+    all_outlines_x_cellpose = cell(numFiles, 1);
+    all_outlines_y_cellpose = cell(numFiles, 1);
+
+    for m = 1:numFiles
+        npy_file_path = npy_file_paths{m};
+        [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path);        
         
         % Stocker les résultats dans les variables de sortie
-        all_outline_gcampx{m} = outline_gcampx;
-                all_outline_gcampy{m} = outline_gcampy;
-                all_gcamp_mask{m} = gcamp_mask;
-                all_gcamp_props{m} = gcamp_props;
-                all_imageHeight{m} = imageHeight;
-                all_imageWidth{m} = imageWidth;
-    
         all_mask_cellpose{m} = mask_cellpose;
         all_props_cellpose{m} = props_cellpose;
         all_outlines_x_cellpose{m} = outline_x_cellpose;      
         all_outlines_y_cellpose{m} = outline_y_cellpose;
         
-        end
+    end
 end

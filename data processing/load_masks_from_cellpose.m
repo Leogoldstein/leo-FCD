@@ -1,50 +1,15 @@
-function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(path, canal)
+function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path)
     % Cette fonction charge les masques et outlines depuis un fichier .npy
     % et retourne les masques binaires, les propriétés des cellules,
     % et les coordonnées des contours sans inverser l'axe des Y.
     
     try
-        % Déterminer le suffixe correspondant au canal
-        switch canal
-            case 1
-                canal_str = 'Ch1';
-            case 2
-                canal_str = 'Ch2';
-            case 3
-                canal_str = 'Ch3';
-            otherwise
-                error('Le canal spécifié doit être 1, 2, ou 3.');
-        end
-
         % Initialiser les sorties vides
         mask_cellpose = {};
         props_cellpose = struct('Area', {}, 'Centroid', {});
         outline_x_cellpose = {};  % Coordonnées X pour les contours
         outline_y_cellpose = {};  % Coordonnées Y pour les contours
 
-        % Lister tous les fichiers .npy dans le répertoire
-        npy_files = dir(fullfile(path, '*.npy'));
-        
-        % Filtrer les fichiers contenant le canal spécifié dans leur nom
-        npy_files_canal = npy_files(contains({npy_files.name}, canal_str));
-        
-        % Vérifier s'il y a des fichiers disponibles pour ce canal
-        if isempty(npy_files_canal)
-            error(['Aucun fichier contenant "', canal_str, '" trouvé dans le répertoire spécifié.']);
-        elseif numel(npy_files_canal) > 1
-            % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un
-            [selected_file, selected_path] = uigetfile('*.npy', ...
-                ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
-                fullfile(npy_files_canal(1).folder, npy_files_canal(1).name));
-            if isequal(selected_file, 0)
-                error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
-            end
-            npy_file_path = fullfile(selected_path, selected_file);
-        else
-            % S'il n'y a qu'un seul fichier, l'utiliser directement
-            npy_file_path = fullfile(npy_files_canal(1).folder, npy_files_canal(1).name);
-        end
-        
         % Utiliser readNPY pour lire le fichier (nécessite la bibliothèque npy-matlab)
         mod = py.importlib.import_module('python_function');
         image = mod.read_npy_file(npy_file_path);
