@@ -26,7 +26,9 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
     var tseriesFolderFound = false;
 
     for (var l = 0; l < tseriesFoldersList.length; l++) {
-        if (startsWith(tseriesFoldersList[l], "TSeries") && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
+        if (startsWith(tseriesFoldersList[l], "TSeries") 
+		    && indexOf(tseriesFoldersList[l], "gcamp") >= 0 
+		    && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
             tseriesFolderFound = true;
             tseriesFolders = Array.concat(tseriesFolders, subDir + File.separator + tseriesFoldersList[l]);
         }
@@ -53,6 +55,10 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         var fullPathAvi = fullPath + aviFileName;
 		if (File.exists(fullPathAvi)) {
 			print("Le fichier AVI existe déjà : " + fullPathAvi);
+			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
+		 }
+		 if (File.exists(fullPathTiff)) {
+			print("Le fichier concatenated.tif existe déjà : " + fullPathTiff);
 			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
 		 }
 		 

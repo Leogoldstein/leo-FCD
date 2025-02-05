@@ -23,6 +23,7 @@ function save_mean_images(current_animal_group, all_ops, current_dates_group, ts
 
             % Ensure the path ends with .png for proper file extension
             png_filename = fullfile(tseries_results_path{m}, 'Mean_image.png');
+            disp(png_filename)
 
             % Check if the file already exists to avoid overwriting
             if ~isfile(png_filename)

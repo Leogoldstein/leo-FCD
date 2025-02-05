@@ -3,7 +3,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
     % Patterns pour identifier les chemins
     pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
     pattern_ani = 'D:\\imaging\\CTRL\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
-    pattern_general = '(\d{4}-\d{2}-\d{2})-(mtor\d+)?-(ani\d+)';
+    pattern_general = '(\d{4}-\d{2}-\d{2})-(ani\d+)-(mtor\d+)?';
     
     % Initialiser la liste des nouveaux dossiers
     newdataFolders = {};
@@ -35,8 +35,8 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
         if ~isempty(tokens)
             % Extraire les sous-parties
             date_part = tokens{1}{1}; % Date
-            mTor_part = tokens{1}{2}; % mTor (peut être vide)
-            animal_part = tokens{1}{3}; % Animal
+            mTor_part = tokens{1}{3}; % mTor (peut être vide)
+            animal_part = tokens{1}{2}; % Animal
             
             disp(['Matched: Date = ' date_part ', mTor = ' mTor_part ', Animal = ' animal_part]);
             

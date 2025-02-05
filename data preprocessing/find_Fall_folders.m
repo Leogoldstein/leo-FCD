@@ -1,95 +1,186 @@
-function [truedataFolders, true_env_paths, env_paths_all] = find_Fall_folders(selectedFolders)
-    % Initialize cell arrays to store paths and canceled indices
-    truedataFolders = {};  
-    true_env_paths = {};
-    env_paths_all = {};
+function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(selectedFolders)
+    % Initialiser la cellule pour stocker les chemins pour chaque type de dossier
+    numFolders = length(selectedFolders);
+    TseriesFolders = cell(numFolders, 4); 
+    true_env_paths = {};  % Initialiser la cellule pour les chemins d'environnement
 
-    % Loop through each selected folder
-    for idx = 1:length(selectedFolders)
+    % Boucler à travers chaque dossier sélectionné
+    for idx = 1:numFolders
         selectedFolder = selectedFolders{idx};
-       
-        % Check for 'TSeries' folders in the selected directory
+        
+        % Vérifier si le dossier existe
+        if ~isfolder(selectedFolder)
+            disp(['Warning: Folder does not exist: ', selectedFolder]);
+            continue;  % Passer au dossier suivant
+        end
+        
+        % Vérifier les dossiers 'TSeries' dans le répertoire sélectionné
         TSeriesFolders = dir(fullfile(selectedFolder, 'TSeries*'));
 
-        % Handle cases based on the number of TSeries folders found
+        % Gérer les cas où aucun dossier 'TSeries' n'est trouvé
         if isempty(TSeriesFolders)
-            disp('No TSeries folders found. Skipping this folder.');
-            continue;  % Skip to the next iteration if none found
-        elseif isscalar(TSeriesFolders) && TSeriesFolders(1).isdir
-            % If there is only one 'TSeries' folder, select it automatically
-            TSeriesPath = fullfile(selectedFolder, TSeriesFolders(1).name);
-        else
-            % If there are multiple 'TSeries' folders, prompt the user to select one
-            TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
-
-            % Check if the user canceled the selection
-            if isequal(TSeriesPath, 0)
-                disp(['User clicked Cancel for folder index: ' num2str(idx)]);
-                continue; % Skip to the next iteration of the loop
-            end
+            disp(['No TSeries folders found in folder: ', selectedFolder, '. Skipping.']);
+            continue;  % Passer au dossier suivant si aucun dossier 'TSeries' trouvé
         end
-
-        % Always process the .env file if it exists, even if no suite2p folder is found
-        env_file = dir(fullfile(TSeriesPath, '*.env'));
-        if ~isempty(env_file)
-            % If a .env file exists, construct its full path
-            env_path = fullfile(TSeriesPath, env_file(1).name); 
-            env_paths_all{end+1} = env_path; % Add to env_paths
-        else
-            disp(['Warning: No .env file found in TSeries folder: ' TSeriesPath]);
-            env_paths_all{end+1} = ''; % Add an empty entry for consistency
-        end
-
-        % Check for the 'suite2p' folder inside the TSeries folder
-        suite2pFolder = fullfile(TSeriesPath, 'suite2p');
         
-        % If 'suite2p' subfolder exists, use it
-        if exist(suite2pFolder, 'dir') == 7
-            selectedFolder = suite2pFolder;
-        else
-            disp('Error: No ''suite2p'' subfolder found in TSeries folder. Skipping Fall.mat processing.');
-            continue;  % Skip to the next iteration of the loop, but .env is already processed
-        end
-    
-        % List 'plane' folders in suite2pFolder
-        planeFolders = dir(fullfile(selectedFolder, 'plane*'));
-        
-        if isscalar(planeFolders) && planeFolders(1).isdir
-            % If there is only one 'plane' folder, select it automatically
-            selectedFolder = fullfile(selectedFolder, planeFolders(1).name);
-        else
-            % If there are multiple 'plane' folders or none, prompt the user to select one
-            selectedFolder = uigetdir(selectedFolder, 'Select a plane folder');
+        % Initialiser un tableau cellulaire pour les chemins TSeries (Gcamp, Red, Blue)
+        TSeriesPaths = {[], [], [], []};  % [Gcamp, Red, Blue, Green]
+
+        % Traiter chaque dossier TSeries
+        for i = 1:length(TSeriesFolders)
+            folderName = TSeriesFolders(i).name;
+            fullPath = fullfile(selectedFolder, folderName);
             
-            % Check if the user canceled the selection
-            if isequal(selectedFolder, 0)
-                disp(['User clicked Cancel for folder index: ' num2str(idx)]);
-                continue; % Skip to the next iteration of the loop
+            % Classer les dossiers TSeries par leur nom
+            if contains(lower(folderName), 'gcamp')
+                TSeriesPaths{1} = fullPath;  % Gcamp
+            end
+            if contains(lower(folderName), 'red')
+                TSeriesPaths{2} = fullPath;  % Red
+            end
+            if contains(lower(folderName), 'blue')
+                % Définition des chemins des sous-dossiers
+                blueFolder = fullfile(fullPath, 'Blue');
+                greenFolder = fullfile(fullPath, 'Green');
+        
+                % Vérifier et créer le dossier "Blue" si nécessaire
+                if ~exist(blueFolder, 'dir')
+                    mkdir(blueFolder);
+                    
+                    % Lister les fichiers .tiff contenant "Ch3" dans fullPath
+                    tiffFiles = dir(fullfile(fullPath, '*Ch3*.tif'));
+                    
+                    % Déplacer les fichiers trouvés dans le sous-dossier "Blue"
+                    for j = 1:length(tiffFiles)
+                        oldFilePath = fullfile(fullPath, tiffFiles(j).name);
+                        newFilePath = fullfile(blueFolder, tiffFiles(j).name);
+                        movefile(oldFilePath, newFilePath);
+                    end
+                end
+                
+                % Vérifier et créer le dossier "Green" si nécessaire
+                if ~exist(greenFolder, 'dir')
+                    mkdir(greenFolder);
+                    
+                    % Lister les fichiers .tiff contenant "Ch2" dans fullPath
+                    tiffFiles = dir(fullfile(fullPath, '*Ch2*.tif'));
+                    
+                    % Déplacer les fichiers trouvés dans le sous-dossier "Green"
+                    for j = 1:length(tiffFiles)
+                        oldFilePath = fullfile(fullPath, tiffFiles(j).name);
+                        newFilePath = fullfile(greenFolder, tiffFiles(j).name);
+                        movefile(oldFilePath, newFilePath);
+                    end
+                end
+                
+                % Sauvegarder les chemins des dossiers "Blue" et "Green"
+                TSeriesPaths{3} = blueFolder;
+                TSeriesPaths{4} = greenFolder;
             end
         end
 
-        % Construct the path to Fall.mat
-        file_path = fullfile(selectedFolder, 'Fall.mat');
-        
-        % Check if Fall.mat exists
-        if exist(file_path, 'file') == 2
-            truedataFolders{end+1} = file_path;  % Add the path to Fall.mat to the cell array
-            true_env_paths{end+1} = env_path;
+        % Traiter le fichier .env uniquement pour TSeriesPathGcamp
+        if ~isempty(TSeriesPaths{1})
+            [env_paths_all, env_path] = processEnvFile(TSeriesPaths{1});
         else
-            % If Fall.mat does not exist, display an error message
-            disp(['Error: This folder does not contain a Fall.mat file. Folder: ' selectedFolder]);
+            disp('No GCaMP TSeries found, skipping .env processing.');
+            env_path = '';  % Si aucun fichier .env trouvé
+        end
+        
+        % Traiter suite2p et la sélection des dossiers 'plane' pour tous les types de TSeries
+        dataFolders = {NaN, NaN, NaN, NaN};  % Correspond à Gcamp, Red, Blue, Green
+        
+        % Boucler à travers chaque chemin TSeries et traiter
+        for j = 1:4  % Gcamp, Red, Blue, Green
+            currentPath = TSeriesPaths{j};
+            
+            if ~isempty(currentPath)
+                dataFolder = process_TSeries(currentPath);
+            
+                % Vérifier que dataFolder n'est pas NaN, et ajouter le dossier correspondant
+                if ~isnan(dataFolder)
+                    dataFolders{j} = dataFolder;
+                end
+            end
+        end
+
+        % Ajouter les résultats de chaque dossier dans TseriesFolders
+        TseriesFolders{idx, 1} = dataFolders{1};  % Gcamp
+        TseriesFolders{idx, 2} = dataFolders{2};  % Red
+        TseriesFolders{idx, 3} = dataFolders{3};  % Blue
+        TseriesFolders{idx, 3} = dataFolders{4};  % Green
+
+        % Traiter Fall.mat **SEULEMENT** pour TSeriesPathGcamp
+        if ~isempty(dataFolders{1}) && ~any(isnan(dataFolders{1}))
+            file_path = fullfile(dataFolders{1}, 'Fall.mat');
+            FallMatPaths = {};  % Initialize the output variable
+            
+            if exist(file_path, 'file') == 2
+                FallMatPaths{end+1} = file_path;  % Add the path to Fall.mat
+                true_env_paths{end+1} = env_path;  % Add the corresponding env_path
+            else
+                disp(['Error: No Fall.mat found in folder: ', dataFolders{1}]);
+            end
+
+            % Mettre à jour TseriesFolders avec le chemin de Fall.mat
+            TseriesFolders{idx, 1} = FallMatPaths;  % Store Fall.mat path in the output
         end
     end
+end
+
+
+% Function to process the .env file for GCaMP folder
+function [env_paths_all, env_path] = processEnvFile(TSeriesPathGcamp)
+    % Recherche des fichiers .env dans le dossier GCaMP
+    env_file = dir(fullfile(TSeriesPathGcamp, '*.env'));
     
-    % Display the directories with Fall.mat files
-    disp('Directories with Fall.mat files:');
-    for i = 1:length(truedataFolders)
-        disp(truedataFolders{i});
+    % Initialisation du tableau pour stocker les chemins .env
+    env_paths_all = {};  
+    
+    % Si un fichier .env est trouvé
+    if ~isempty(env_file)
+        % Prendre le chemin du premier fichier .env trouvé
+        env_path = fullfile(TSeriesPathGcamp, env_file(1).name);
+        % Ajouter le chemin au tableau des chemins .env
+        env_paths_all{end+1} = env_path;
+    else
+        % Avertir si aucun fichier .env n'est trouvé
+        disp(['Warning: No .env file found in GCaMP folder: ', TSeriesPathGcamp]);
+        % Assigner une chaîne vide si aucun fichier .env trouvé
+        env_path = '';  
+        % Ajouter une entrée vide dans le tableau des chemins .env
+        env_paths_all{end+1} = '';  
+    end
+end
+
+% Function to process each identified TSeries path (for suite2p and plane* selection)
+function dataFolder = process_TSeries(TSeriesPath)
+    suite2pFolder = fullfile(TSeriesPath, 'suite2p');
+    if ~isfolder(suite2pFolder)
+        disp(['Error: No ''suite2p'' folder found in ', TSeriesPath, '. Skipping processing.']);
+        dataFolder = NaN;  % Valeur par défaut si suite2p n'est pas trouvé
+        return
     end
     
-    % Display the .env file paths
-    % disp('Paths to .env files:');
-    % for i = 1:length(true_env_paths)
-    %     disp(true_env_paths{i});
-    % end
+    % List 'plane' folders in suite2pFolder
+    planeFolders = dir(fullfile(suite2pFolder, 'plane*'));
+    
+    if isempty(planeFolders)
+        disp(['Error: No ''plane'' folder found in ', suite2pFolder, '. Skipping processing.']);
+        dataFolder = NaN;  % Valeur par défaut si aucun dossier 'plane' n'est trouvé
+        return;  % Skip to the next iteration if no plane folders are found
+    end
+    
+    if isscalar(planeFolders) && planeFolders(1).isdir
+        % If only one 'plane' folder exists, select it automatically
+        dataFolder = fullfile(suite2pFolder, planeFolders(1).name);
+    else
+        % If multiple plane folders exist, ask the user to select one
+        dataFolder = uigetdir(suite2pFolder, 'Select a plane folder');
+        if dataFolder == 0
+            disp(['User clicked Cancel for folder: ', TSeriesPath]);
+            dataFolder = NaN;  % Valeur par défaut si l'utilisateur annule la sélection
+            return;
+        end
+    end
 end

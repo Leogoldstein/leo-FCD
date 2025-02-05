@@ -46,7 +46,8 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [truedataFolders, true_env_paths, env_paths_all] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(dataFolders);
+            truedataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement FCD terminé.');
 
         case 3
@@ -55,7 +56,8 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [truedataFolders, true_env_paths, env_paths_all] = find_Fall_folders(dataFolders); % Identifier les fichiers Fall.mat
+            [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(dataFolders);
+            truedataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement CTRL terminé.');
 
         otherwise
@@ -125,7 +127,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             selected_groups(k).animal_group = current_animal_group;
             selected_groups(k).animal_type = unique(type_part(date_indices)); % Save unique types
             selected_groups(k).dates = date_part(date_indices);
-            selected_groups(k).folders = truedataFolders(date_indices);
+            selected_groups(k).folders = TseriesFolders(date_indices, :);
             selected_groups(k).env = true_env_paths(date_indices);
             selected_groups(k).ages = age_part(date_indices);
             selected_groups(k).path = ani_path;
