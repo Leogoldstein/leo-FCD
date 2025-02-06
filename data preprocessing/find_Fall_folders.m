@@ -1,8 +1,9 @@
-function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(selectedFolders)
+function [TseriesFolders, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
     % Initialiser la cellule pour stocker les chemins pour chaque type de dossier
     numFolders = length(selectedFolders);
     TseriesFolders = cell(numFolders, 4); 
     true_env_paths = {};  % Initialiser la cellule pour les chemins d'environnement
+    lastFolderNames = cell(numFolders, 4); % Cellule pour stocker les noms des derniers dossiers
 
     % Boucler à travers chaque dossier sélectionné
     for idx = 1:numFolders
@@ -59,7 +60,17 @@ function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(sel
                 if ~isempty(choice)
                     TSeriesPaths{k} = foundFolders{k}{choice};
                 end
-             end
+            end
+        end
+
+        % Récupérer le nom du dernier dossier pour chaque label et le stocker
+        for k = 1:length(TSeriesPaths)
+            if ~isempty(TSeriesPaths{k})  % Vérifier que TSeriesPaths{k} n'est pas vide
+                [~, lastFolderName] = fileparts(TSeriesPaths{k});
+                lastFolderNames{idx, k} = lastFolderName;  % Sauvegarder le nom du dernier dossier pour chaque label
+            else
+                lastFolderNames{idx, k} = NaN;  % Si le chemin est vide, mettre NaN
+            end
         end
  
         % Vérifier et organiser les fichiers dans le dossier 'Blue'
@@ -87,7 +98,6 @@ function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(sel
             TSeriesPaths{3} = blueFolder;
             TSeriesPaths{4} = greenFolder;
         end
-
 
         % Traiter le fichier .env uniquement pour TSeriesPathGcamp
         if ~isempty(TSeriesPaths{1})

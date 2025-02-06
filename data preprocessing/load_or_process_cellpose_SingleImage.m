@@ -1,4 +1,4 @@
-function [npy_file_paths, aligned_image] = load_or_process_cellpose_SingleImage(date_group_paths, all_ops)
+function [npy_file_paths, aligned_image] = load_or_process_cellpose_Singleimage(date_group_paths, all_ops)
     % Fonction pour recaler les images en fonction d'un canal et d'un fichier moyen
     %
     % Arguments :

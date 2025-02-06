@@ -1,31 +1,15 @@
-function [date_group_paths, tseries_folders, tseries_results_paths, chosen_folder_processing] = create_base_folders(base_path, current_dates_group, current_env_group, daytime, user_choice1, user_choice2, current_animal_group)
+function chosen_folder_processing = create_base_folders(date_group_paths, current_gcamp_folders_names_group, daytime, user_choice1, user_choice2, current_animal_group)
     % Function to create base folders for each date and process subfolders
 
-    % Initialize output variables
-    date_group_paths = cell(length(current_dates_group), 1);  % Store paths for each date
-    tseries_folders = cell(length(current_dates_group), 1);   % Store tseries folder names
-    tseries_results_paths = cell(length(current_dates_group), 1); % Store tseries result paths
-    chosen_folder_processing = cell(length(current_dates_group), 1); % Store paths for folders being processed
+    chosen_folder_processing = cell(length(date_group_paths), 1); % Store paths for folders being processed
 
     % List and filter subfolders based on a specific naming convention (outside loop)
     all_specificSubfolders = {};  % Cell array to hold all specific subfolders
 
-    for k = 1:length(current_dates_group)
-        % Extract the last part of the path (folder name without extension)
-        [~, tseries_folder, ~] = fileparts(current_env_group{k});
-
-        % Create the full path for the date and result folder
-        date_path = fullfile(base_path, current_dates_group{k});
-        tseries_result_path = fullfile(base_path, current_dates_group{k}, tseries_folder);
-
-        % Create the tseries result folder if it doesn't exist
-        if ~exist(tseries_result_path, 'dir')
-            mkdir(tseries_result_path);
-            disp(['Created folder: ', tseries_result_path]);
-        end
-
-        % List and filter subfolders based on a specific naming convention
-        subfolders = dir(tseries_result_path);
+    for k = 1:length(date_group_paths)
+ 
+        % List and filter subfolders in the main date folder
+        subfolders = dir(date_group_paths{k});
         subfolders = subfolders([subfolders.isdir]);  % Filter out files and keep only directories
         subfolders = subfolders(~ismember({subfolders.name}, {'.', '..'}));  % Remove '.' and '..' entries
 
@@ -34,21 +18,17 @@ function [date_group_paths, tseries_folders, tseries_results_paths, chosen_folde
 
         % Add the filtered subfolders to the list of all specific subfolders
         all_specificSubfolders{k} = specificSubfolders;
-
-        % Store the paths and folder names for further processing
-        date_group_paths{k} = date_path;
-        tseries_folders{k} = tseries_folder;
-        tseries_results_paths{k} = tseries_result_path;
     end
 
     % Now, after the loop, we process the user choice and sorting
     all_unique_subfolders = {};  % This will hold all unique subfolders across dates
-    for k = 1:length(current_dates_group)
+    for k = 1:length(date_group_paths)
+      
         specificSubfolders = all_specificSubfolders{k};  % Get the specific subfolders for the current date
 
         % If no subfolders match the format, create a new folder with the current datetime
         if isempty(specificSubfolders)
-            newSubfolderPath = fullfile(tseries_results_paths{k}, daytime);
+            newSubfolderPath = fullfile(date_group_paths{k}, daytime, current_gcamp_folders_names_group{k});
             mkdir(newSubfolderPath);
             disp(['No subfolder found. Created new folder: ', newSubfolderPath]);
             chosen_folder_processing{k} = newSubfolderPath;
@@ -91,7 +71,7 @@ function [date_group_paths, tseries_folders, tseries_results_paths, chosen_folde
             selected_subfolder_name = unique_subfolders{selectedIndex};
 
             % Reconstruct the path to the selected subfolder
-            for k = 1:length(current_dates_group)
+            for k = 1:length(date_group_paths)
                 specificSubfolders = all_specificSubfolders{k};  % Get the specific subfolders for the current date
 
                 % Find the matching subfolder
@@ -99,29 +79,30 @@ function [date_group_paths, tseries_folders, tseries_results_paths, chosen_folde
 
                 if ~isempty(matchingSubfolder)
                     % Reconstruct the full path to the selected subfolder
-                    chosen_folder_processing{k} = fullfile(tseries_results_paths{k}, matchingSubfolder.name);
+                    chosen_folder_processing{k} = fullfile(date_group_paths{k}, matchingSubfolder.name, current_gcamp_folders_names_group{k});
                     disp(['Selected subfolder: ', chosen_folder_processing{k}]);
-                end
+                end            
             end
         else
-            % Create a new folder with the current datetime
-            newFolderPath = fullfile(tseries_results_paths{k}, daytime);
-            mkdir(newFolderPath);
-            disp(['Created new saving folder: ', newFolderPath]);
-
-            % Store the path to the newly created folder
-            chosen_folder_processing{k} = newFolderPath;
+            for k = 1:length(date_group_paths)
+                % Create a new folder with the current datetime
+                newFolderPath = fullfile(date_group_paths{k}, daytime, current_gcamp_folders_names_group{k});
+                mkdir(newFolderPath);
+                disp(['Created new saving folder: ', newFolderPath]);
+                chosen_folder_processing{k} = newFolderPath;
+            end
         end
+
     elseif ~isempty(user_choice1) && strcmpi(user_choice1, '1')
         % Handle the case when user selects "yes" (choose most recent subfolder automatically)
-        for k = 1:length(current_dates_group)
+        for k = 1:length(date_group_paths)
             specificSubfolders = all_specificSubfolders{k};  % Get the specific subfolders for the current date
 
             % If there are any specific subfolders
             if ~isempty(specificSubfolders)
                 % Select the most recent one
                 most_recent_subfolder = specificSubfolders(1);  % The first after sorting in descending order
-                chosen_folder_processing{k} = fullfile(tseries_results_paths{k}, most_recent_subfolder.name);
+                chosen_folder_processing{k} = fullfile(date_group_paths{k}, most_recent_subfolder.name, current_gcamp_folders_names_group{k});
                 disp(['Automatically selected the most recent subfolder: ', chosen_folder_processing{k}]);
             end
         end
