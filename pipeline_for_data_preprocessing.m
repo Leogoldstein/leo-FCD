@@ -8,7 +8,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
     % 3 : CTRL (données Fall.mat pour CTRL)
     %
     % Sorties :
-    % - truedataFolders : Dossiers des données valides
+    % - gcampdataFolders : Dossiers des données valides
     % - animal_date_list : Liste des animaux et dates
     % - F : Données brutes
     % - DF : Données dF/F
@@ -37,7 +37,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             disp('Traitement des données JM...');
             dataFolders = select_folders(jm_folder);
             [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
-            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
+            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
             disp('Traitement JM terminé.');
 
         case 2
@@ -47,7 +47,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
             [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(dataFolders);
-            truedataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
+            gcampdataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement FCD terminé.');
 
         case 3
@@ -57,7 +57,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
             [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(dataFolders);
-            truedataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
+            gcampdataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement CTRL terminé.');
 
         otherwise
@@ -65,10 +65,10 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             error('Choix invalide. Veuillez relancer la fonction et choisir 1, 2 ou 3.');
     end
     
-    % Vérifier si truedataFolders existe et n'est pas vide
-    if ~isempty(truedataFolders)
+    % Vérifier si gcampdataFolders existe et n'est pas vide
+    if ~isempty(gcampdataFolders)
         % Créer une liste des animaux et des dates
-        animal_date_list = create_animal_date_list(truedataFolders, PathSave);
+        animal_date_list = create_animal_date_list(gcampdataFolders, PathSave);
     
         % Ensure all parts are strings, replace empty values with empty strings
         type_part = animal_date_list(:, 1);

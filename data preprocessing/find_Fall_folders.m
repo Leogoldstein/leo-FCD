@@ -16,68 +16,78 @@ function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(sel
         
         % Vérifier les dossiers 'TSeries' dans le répertoire sélectionné
         TSeriesFolders = dir(fullfile(selectedFolder, 'TSeries*'));
-
+        
         % Gérer les cas où aucun dossier 'TSeries' n'est trouvé
         if isempty(TSeriesFolders)
             disp(['No TSeries folders found in folder: ', selectedFolder, '. Skipping.']);
-            continue;  % Passer au dossier suivant si aucun dossier 'TSeries' trouvé
+            return;
         end
         
-        % Initialiser un tableau cellulaire pour les chemins TSeries (Gcamp, Red, Blue)
+        % Initialiser un tableau cellulaire pour les chemins TSeries (Gcamp, Red, Blue, Green)
         TSeriesPaths = {[], [], [], []};  % [Gcamp, Red, Blue, Green]
-
-        % Traiter chaque dossier TSeries
+        labels = {'Gcamp', 'Red', 'Blue'};
+        
+        % Stocker les correspondances potentielles
+        foundFolders = {[], [], []};
+        
+        % Parcourir les dossiers trouvés
         for i = 1:length(TSeriesFolders)
             folderName = TSeriesFolders(i).name;
             fullPath = fullfile(selectedFolder, folderName);
             
-            % Classer les dossiers TSeries par leur nom
-            if contains(lower(folderName), 'gcamp')
-                TSeriesPaths{1} = fullPath;  % Gcamp
-            end
-            if contains(lower(folderName), 'red')
-                TSeriesPaths{2} = fullPath;  % Red
-            end
-            if contains(lower(folderName), 'blue')
-                % Définition des chemins des sous-dossiers
-                blueFolder = fullfile(fullPath, 'Blue');
-                greenFolder = fullfile(fullPath, 'Green');
-        
-                % Vérifier et créer le dossier "Blue" si nécessaire
-                if ~exist(blueFolder, 'dir')
-                    mkdir(blueFolder);
-                    
-                    % Lister les fichiers .tiff contenant "Ch3" dans fullPath
-                    tiffFiles = dir(fullfile(fullPath, '*Ch3*.tif'));
-                    
-                    % Déplacer les fichiers trouvés dans le sous-dossier "Blue"
-                    for j = 1:length(tiffFiles)
-                        oldFilePath = fullfile(fullPath, tiffFiles(j).name);
-                        newFilePath = fullfile(blueFolder, tiffFiles(j).name);
-                        movefile(oldFilePath, newFilePath);
-                    end
+            for k = 1:length(labels)
+                if contains(lower(folderName), lower(labels{k}))
+                    foundFolders{k} = [foundFolders{k}; {fullPath}];
                 end
-                
-                % Vérifier et créer le dossier "Green" si nécessaire
-                if ~exist(greenFolder, 'dir')
-                    mkdir(greenFolder);
-                    
-                    % Lister les fichiers .tiff contenant "Ch2" dans fullPath
-                    tiffFiles = dir(fullfile(fullPath, '*Ch2*.tif'));
-                    
-                    % Déplacer les fichiers trouvés dans le sous-dossier "Green"
-                    for j = 1:length(tiffFiles)
-                        oldFilePath = fullfile(fullPath, tiffFiles(j).name);
-                        newFilePath = fullfile(greenFolder, tiffFiles(j).name);
-                        movefile(oldFilePath, newFilePath);
-                    end
-                end
-                
-                % Sauvegarder les chemins des dossiers "Blue" et "Green"
-                TSeriesPaths{3} = blueFolder;
-                TSeriesPaths{4} = greenFolder;
             end
         end
+        
+        % Sélectionner un seul dossier par catégorie
+        for k = 1:length(labels)
+            if isscalar(foundFolders{k})
+                TSeriesPaths{k} = foundFolders{k}{1};
+            elseif length(foundFolders{k}) > 1
+                % Extraire le dernier dossier de chaque chemin
+                [~, lastFolders] = cellfun(@(x) fileparts(x), foundFolders{k}, 'UniformOutput', false);
+                
+                % Extraire uniquement le nom du dernier dossier (pas tout le chemin)
+                lastFolderNames = cellfun(@(x) strrep(x, filesep, ''), lastFolders, 'UniformOutput', false);
+                
+                % Afficher uniquement les derniers dossiers
+                choice = listdlg('ListString', lastFolderNames, 'SelectionMode', 'single', ...
+                                 'PromptString', ['Select the ', labels{k}, ' folder:']);
+                if ~isempty(choice)
+                    TSeriesPaths{k} = foundFolders{k}{choice};
+                end
+             end
+        end
+ 
+        % Vérifier et organiser les fichiers dans le dossier 'Blue'
+        if ~isempty(TSeriesPaths{3})
+            blueFolder = fullfile(TSeriesPaths{3}, 'Blue');
+            greenFolder = fullfile(TSeriesPaths{3}, 'Green');
+            
+            if ~exist(blueFolder, 'dir')
+                mkdir(blueFolder);
+                tiffFiles = dir(fullfile(TSeriesPaths{3}, '*Ch3*.tif'));
+                for j = 1:length(tiffFiles)
+                    movefile(fullfile(TSeriesPaths{3}, tiffFiles(j).name), fullfile(blueFolder, tiffFiles(j).name));
+                end
+            end
+            
+            if ~exist(greenFolder, 'dir')
+                mkdir(greenFolder);
+                tiffFiles = dir(fullfile(TSeriesPaths{3}, '*Ch2*.tif'));
+                for j = 1:length(tiffFiles)
+                    movefile(fullfile(TSeriesPaths{3}, tiffFiles(j).name), fullfile(greenFolder, tiffFiles(j).name));
+                end
+            end
+            
+            % Sauvegarder les chemins des dossiers Blue et Green
+            TSeriesPaths{3} = blueFolder;
+            TSeriesPaths{4} = greenFolder;
+        end
+
 
         % Traiter le fichier .env uniquement pour TSeriesPathGcamp
         if ~isempty(TSeriesPaths{1})
@@ -108,7 +118,7 @@ function [TseriesFolders, env_paths_all, true_env_paths] = find_Fall_folders(sel
         TseriesFolders{idx, 1} = dataFolders{1};  % Gcamp
         TseriesFolders{idx, 2} = dataFolders{2};  % Red
         TseriesFolders{idx, 3} = dataFolders{3};  % Blue
-        TseriesFolders{idx, 3} = dataFolders{4};  % Green
+        TseriesFolders{idx, 4} = dataFolders{4};  % Green
 
         % Traiter Fall.mat **SEULEMENT** pour TSeriesPathGcamp
         if ~isempty(dataFolders{1}) && ~any(isnan(dataFolders{1}))

@@ -42,7 +42,18 @@ function pipeline_for_data_processing(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
         current_animal_type = selected_groups(k).animal_type;
         current_dates_group = selected_groups(k).dates;
+
         current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders(:, 1), 'UniformOutput', false);
+        current_red_folders_group = cellfun(@string, selected_groups(k).folders(:, 2), 'UniformOutput', false);
+        current_blue_folders_group = cellfun(@string, selected_groups(k).folders(:, 3), 'UniformOutput', false);
+        current_green_folders_group = cellfun(@string, selected_groups(k).folders(:, 4), 'UniformOutput', false);
+        folders_groups = {
+            current_gcamp_folders_group,  % Group gCamp
+            current_red_folders_group,    % Group Red
+            current_blue_folders_group,   % Group Blue
+            current_green_folders_group   % Group Green
+        };
+
         current_ani_path_group = selected_groups(k).path;
         current_ages_group = selected_groups(k).ages;
         current_env_group = selected_groups(k).env;
@@ -100,9 +111,48 @@ function pipeline_for_data_processing(selected_groups)
                     all_RasterRace_groups{k} = all_RasterRace;
 
                 case 5
-                    disp(['Performing sub-population analysis for ', current_animal_group]); 
-                    all_ops = load_ops(current_gcamp_folders_group); % reference image
-                    [npy_file_paths, aligned_image] = load_or_process_cellpose_image(date_group_paths, all_ops);
+                    disp(['Performing sub-population analysis for ', current_animal_group]);
+                    
+                    all_ops_colors = {[], [], [], []};
+                    labels = {'Gcamp', 'Red', 'Blue', 'Green'};
+                    
+                    % Charger les opérations pour chaque groupe
+                    for j = 1:length(folders_groups)
+                        current_group_folders = folders_groups{j};
+                        
+                        if ~isempty(current_group_folders)
+                            try
+                                % Charger les opérations si des dossiers valides sont trouvés
+                                all_ops = load_ops(current_group_folders);
+                                all_ops_colors{j} = all_ops;
+                            catch
+                                % Gestion d'erreur si la fonction 'load_ops' échoue
+                                warning('Error loading operations for group: %s.', labels{j});
+                                all_ops_colors{j} = []; % On s'assure que all_ops{j} reste vide en cas d'erreur
+                            end
+                            
+
+                        else
+                            % Avertissement si aucun dossier valide n'est trouvé
+                            warning('No valid folders found for group: %s.', labels{j});
+                            
+                            % Essayer avec les images Cellpose simples (singles images)
+                            disp(['Trying with single images for group: ', labels{j}]);
+                            
+                            % Appel de la fonction pour charger ou traiter les images Cellpose
+                            [npy_file_paths, aligned_image] = load_or_process_cellpose_image(date_group_paths, all_ops);
+                        end
+                    end
+
+                    end
+
+
+
+
+                    
+
+
+
                     [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
                     [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(chosen_folder_processing, current_gcamp_folders_group);
                     
