@@ -6,33 +6,42 @@ function all_ops = load_ops(current_folders_group)
 
     % Loop through each working folder
     for m = 1:numFolders
-        current_folder = current_folders_group{m};
+        try
+            % Get the current folder path
+            current_folder = current_folders_group{m};
 
-        % Determine file extension and check for .npy files
-        [~, ~, ext] = fileparts(current_folder);
-        files = dir(fullfile(current_folder, '*.npy'));
+            % Determine file extension and check for .npy files
+            [~, ~, ext] = fileparts(current_folder);
+            files = dir(fullfile(current_folder, '*.npy'));
+            disp(files)
 
-        if ~isempty(files)
-            % Unpack .npy file paths
-            newOpsPath = fullfile(current_folder, 'ops.npy');
+            if ~isempty(files)
+                % Unpack .npy file paths
+                newOpsPath = fullfile(current_folder, 'ops.npy');
 
-            % Call the Python function to load stats and ops
-            try
-                mod = py.importlib.import_module('python_function');
-                ops = mod.read_npy_file(newOpsPath);
-            catch ME
-                error('Failed to call Python function: %s', ME.message);
+                % Call the Python function to load stats and ops
+                try
+                    mod = py.importlib.import_module('python_function');
+                    ops = mod.read_npy_file(newOpsPath);
+                catch ME
+                    error('Failed to call Python function: %s', ME.message);
+                end
+
+            elseif strcmp(ext, '.mat')
+                % Load .mat files
+                data = load(current_folder);
+                ops = data.ops;
+            else
+                error('Unsupported file type: %s', ext);
             end
 
-        elseif strcmp(ext, '.mat')
-            % Load .mat files
-            data = load(current_folder);
-            ops = data.ops;
-        else
-            error('Unsupported file type: %s', ext);
+            % Append data to output variables
+            all_ops{m} = ops;
+            
+        catch ME
+            % Handle any errors related to the current folder and continue the loop
+            disp(ME.message);
+            continue;  % Continue to the next folder in the loop
         end
-
-        % Append data to output variables
-        all_ops{m} = ops;
     end
 end

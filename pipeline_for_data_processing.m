@@ -71,8 +71,7 @@ function pipeline_for_data_processing(selected_groups)
         current_ages_group = selected_groups(k).ages;
         current_env_group = selected_groups(k).env;
         
-        gcamp_output_folders = create_base_folders(date_group_paths, current_gcamp_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);
-        blue_output_folders = create_base_folders(date_group_paths, current_blue_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);     
+        [gcamp_output_folders, blue_output_folders] = create_base_folders(date_group_paths, current_gcamp_folders_names_group, current_blue_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);     
         assignin('base', 'gcamp_output_folders', gcamp_output_folders);
 
         % Create the new path for the Excel file with the modified title
@@ -122,7 +121,7 @@ function pipeline_for_data_processing(selected_groups)
 
                 case 5
                     disp(['Performing sub-population analysis for ', current_animal_group]);
-                    load_or_process_cellpose_TSeries(folders_groups, date_group_paths, gcamp_output_folders)
+                    load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
                 
 
                     %[all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
