@@ -1,137 +1,149 @@
-function load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
-   
-    py.importlib.import_module('numpy');
-    labels = {'Gcamp', 'Red', 'Blue', 'Green'};
-
-    % Charger les opérations pour chaque groupe
-    for j = 1:length(folders_groups)
-       
-        current_group_folders = folders_groups{j}(:, 1); % Chemins des dossiers du groupe j    
+function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
+      
+    for i = 1:numel(blue_output_folders)
+        numFolders = length(blue_output_folders);
+        npy_file_paths = cell(numFolders, 1);
+    
         try
-            % Charger les opérations pour ce groupe
-            all_ops = load_ops(current_group_folders); 
-            
-            % Itérer sur chaque dossier dans le groupe
-            for k = 1:length(all_ops)
-                if isa(all_ops{k}, 'py.dict')
-                    ops = all_ops{k};  % Dictionnaire Python
-                    meanImg = double(ops{'meanImg'});  % Convertir en tableau MATLAB
+            output_folder = string(blue_output_folders{i}); % Dossier actuel
+            cellpose_files = dir(fullfile(output_folder, '*_seg.npy'));
+    
+            if ~isempty(cellpose_files)
+                if numel(cellpose_files) > 1
+                    [selected_file, selected_path] = uigetfile(fullfile(output_folder, '*.npy'), ...
+                        'Sélectionnez un fichier .npy');
+    
+                    if isequal(selected_file, 0)
+                        error('Aucun fichier sélectionné. Opération annulée.');
+                    end
+                    npy_file_path = fullfile(selected_path, selected_file);
                 else
-                    ops = all_ops{k};  % Structure MATLAB
-                    meanImg = ops.meanImg;  % Extraire l'image moyenne
+                    npy_file_path = fullfile(cellpose_files(1).folder, cellpose_files(1).name);
                 end
-        
-                % Stocker l'image moyenne dans la cellule
-                all_meanImg{k, j} = meanImg;
-        
-                % Stocker le nom du dossier
-                current_group_folders_names{k, j} = folders_groups{j}{k, 2};  
+    
+                aligned_image_path = strrep(npy_file_path, '_seg.npy', '.tif');
+    
+                if isfile(aligned_image_path)
+                    aligned_image = imread(aligned_image_path);
+                    aligned_image = normalize_image(aligned_image);
+                    fprintf('TIFF aligné trouvé : %s\n', aligned_image_path);
+                    npy_file_paths{i} = npy_file_path;
+                else
+                    fprintf('Fichier TIFF introuvable : %s\n', aligned_image_path);
+                end              
+            else
+                output_path = fullfile(output_folder, 'aligned_image.tif');
+    
+                if isfile(output_path)
+                    aligned_image = imread(output_path);
+                    fprintf('Fichier aligné chargé : %s\n', output_path);
+    
+                    % Lancer Cellpose
+                    launch_cellpose_from_matlab(output_path);
+    
+                    % Vérifier la création du fichier NPY
+                    [~, folder_name, ~] = fileparts(output_path);
+                    npy_file_name = [folder_name, '_seg.npy'];
+                    npy_file_path = fullfile(output_folder, npy_file_name);
+    
+                    if isfile(npy_file_path)
+                        npy_file_paths{i} = npy_file_path;
+                        fprintf('Fichier NPY ajouté : %s\n', npy_file_path);
+                    else
+                        fprintf('Aucun fichier NPY trouvé après Cellpose : %s\n', npy_file_path);
+                    end
+                else
+                    fprintf('Aucun fichier aligné trouvé dans : %s\n', blue_output_folders{i});
+                
+                    numGroups = length(folders_groups);
+                    all_meanImg = cell(numGroups, 1);
+                    labels = {'Gcamp', 'Red', 'Blue', 'Green'};
+                    
+                    for j = 1:numGroups
+                        try
+                            input_path = string(folders_groups{j}{i, 1});
+                            disp(input_path)
+                            
+                            [~, ~, ext] = fileparts(input_path);
+                            files = dir(fullfile(input_path, '*.npy'));
+                
+                            if ~isempty(files)
+                                % Unpack .npy file paths
+                                newOpsPath = fullfile(input_path, 'ops.npy');
+                
+                                % Call the Python function to load stats and ops
+                                try
+                                    mod = py.importlib.import_module('python_function');
+                                    py.importlib.import_module('numpy');
+                                    ops = mod.read_npy_file(newOpsPath);
+                                    
+                                    meanImg = double(ops{'meanImg'});
+                                catch ME
+                                    error('Failed to call Python function: %s', ME.message);
+                                end
+                
+                            elseif strcmp(ext, '.mat')
+                                % Load .mat files
+                                data = load(input_path);
+                                ops = data.ops;
+                                meanImg = ops.meanImg;
+                            else
+                                error('Unsupported file type: %s', ext);
+                            end
+                                   
+                            all_meanImg{j} = meanImg;   
+                            
+                        catch ME
+                            warning('Erreur de chargement pour le groupe: %s. Erreur: %s', labels{j}, ME.message);
+                            all_meanImg{j} = NaN; % Stocker NaN en cas d'erreur
+                        end
+                    end
+                    
+                    %Vérification avant l'alignement
+                    if all(cellfun(@(x) ~isempty(x) && isnumeric(x), {all_meanImg{1}, all_meanImg{4}}))
+                        reg_obj = imregcorr(all_meanImg{1}, all_meanImg{4}, 'similarity');
+                        T = reg_obj.T;
+
+                        if ~isempty(all_meanImg{3}) && isnumeric(all_meanImg{3})
+                            aligned_image = imwarp(all_meanImg{3}, affine2d(T), 'OutputView', imref2d(size(all_meanImg{3})));          
+                            not_aligned_image = all_meanImg{4};
+                            
+                            aligned_image = normalize_image(aligned_image);
+                            imwrite(aligned_image, output_path, 'tif');
+                            fprintf('Image alignée sauvegardée : %s\n', output_path);
+
+                            display_animation(not_aligned_image, aligned_image)
+
+                            % Lancer Cellpose
+                            launch_cellpose_from_matlab(output_path);
+            
+                            % Vérifier la création du fichier NPY
+                            [~, folder_name, ~] = fileparts(output_path);
+                            npy_file_name = [folder_name, '_seg.npy'];
+                            npy_file_path = fullfile(output_folder, npy_file_name);
+            
+                            if isfile(npy_file_path)
+                                npy_file_paths{i} = npy_file_path;
+                                fprintf('Fichier NPY ajouté : %s\n', npy_file_path);
+                            else
+                                fprintf('Aucun fichier NPY trouvé après Cellpose : %s\n', npy_file_path);
+                            end
+
+                        else
+                            warning('all_meanImg{3} est vide ou invalide.');
+                        end  
+                    else
+                        warning('Problème avec all_meanImg{1} ou all_meanImg{4}, impossible d’aligner.');
+                    end
+                end
             end
         catch ME
-            % Gestion d'erreur si la fonction 'load_ops' échoue
-            warning('Erreur lors du chargement des opérations pour le groupe: %s. Erreur: %s', labels{j}, ME.message);
-            % Ne pas vider la colonne ici, car l'erreur pourrait être temporaire
-            all_meanImg{1:end, j} = {NaN};  % Marquer comme NaN pour indiquer une erreur
-        end
-
-    end
-
-    % Charger les opérations pour chaque groupe
-    for j = 1:length(folders_groups)
-
-        current_group_folders = folders_groups{j}(:, 1); % Chemins des dossiers du groupe j
-        numFolders = length(current_group_folders);
-        npy_file_paths = cell(numFolders, 1);
-      
-        for i = 1:numel(current_group_folders)
-            try
-                current_folder = current_group_folders{i}; % Dossier actuel
-               
-                % Lister tous les fichiers .npy
-                npy_files = dir(fullfile(current_folder, '*aligned_image.npy'));
-
-                if ~isempty(npy_files)
-                    if numel(npy_files) > 1
-                        % Sélection utilisateur
-                        [selected_file, selected_path] = uigetfile(fullfile(current_folder, '*.npy'), ...
-                            'Sélectionnez un fichier .npy');
-    
-                        if isequal(selected_file, 0)
-                            error('Aucun fichier sélectionné. Opération annulée.');
-                        end
-                        npy_file_path = fullfile(selected_path, selected_file);
-                    else
-                        npy_file_path = fullfile(npy_files(1).folder, npy_files(1).name);
-                    end
-    
-                    % Vérification et lecture du fichier aligné
-                    aligned_image_path = strrep(npy_file_path, '_aligned_image.npy', '.tif');
-    
-                    if isfile(aligned_image_path)
-                        aligned_image = imread(aligned_image_path);
-                        aligned_image = normalize_image(aligned_image);
-                        fprintf('TIFF aligné trouvé : %s\n', aligned_image_path);
-                        npy_file_paths{j, i} = npy_file_path;
-                    else
-                        fprintf('Fichier TIFF introuvable : %s\n', aligned_image_path);
-                    end
-    
-                else
-                    aligned_image_filename = 'aligned_image.tif';
-                    
-                    % Vérifiez si l'indice i est valide pour blue_output_folders
-                    if i <= numel(blue_output_folders) && isfolder(blue_output_folders{i})
-                        output_path = fullfile(blue_output_folders{i}, aligned_image_filename);
-                    else
-                        fprintf('Indice %d est hors limites pour blue_output_folders ou dossier non valide, on passe au dossier suivant.\n', i);
-                        continue;  % Passer au dossier suivant
-                    end
-    
-                    if isfile(output_path)
-                        aligned_image = imread(output_path);
-                        fprintf('Fichier aligné chargé : %s\n', output_path);
-    
-                        % Exécution de Cellpose
-                        launch_cellpose_from_matlab(output_path);
-    
-                        % Vérifier la création du fichier NPY
-                        [~, folder_name, ~] = fileparts(output_path);
-                        npy_file_name = [folder_name, '_seg.npy'];
-                        npy_file_path = fullfile(current_folder, npy_file_name);
-    
-                        if isfile(npy_file_path)
-                            npy_file_paths{j, i} = npy_file_path;
-                            fprintf('Fichier NPY ajouté : %s\n', npy_file_path);
-                        else
-                            fprintf('Aucun fichier NPY trouvé après Cellpose : %s\n', npy_file_path);
-                        end              
-                    else
-                        fprintf('Aucun fichier aligné trouvé dans : %s\n', current_folder);
-    
-                        % Vérifier que les images moyennes existent avant alignement
-                        if j <= size(all_meanImg, 1) && ~isempty(all_meanImg{j, 1}) && ~isempty(all_meanImg{j, 4})
-                            reg_obj = imregcorr(all_meanImg{j, 4}, all_meanImg{j, 1}, 'similarity');
-                            T = reg_obj.T;
-            
-                            if ~isempty(all_meanImg{j, 3})
-                                aligned_image = imwarp(all_meanImg{j, 3}, affine2d(T), 'OutputView', imref2d(size(all_meanImg{j, 3})));          
-                                aligned_image = normalize_image(aligned_image);
-            
-                                % Sauvegarde du fichier TIFF aligné
-                                imwrite(aligned_image, output_path, 'tif');
-                                fprintf('Image alignée sauvegardée : %s\n', output_path);
-                            end
-                        end
-                    end
-                end
-            catch ME
-                % Si une erreur survient, afficher un message d'erreur et passer au dossier suivant
-                continue;  % Passer au dossier suivant
-            end
+            warning('Erreur dans le traitement du dossier %d : %s', i, ME.message);
+            npy_file_paths{i} = NaN;
+            continue;
         end
     end
 end
-
 
 
 
@@ -151,24 +163,46 @@ end
 
 
 function display_animation(image_tiff, aligned_image)
-    % Fonction pour afficher l'animation
+    % Fonction pour afficher l'animation avec imagesc, après normalisation
+
+    % Normalisation de aligned_image par rapport à image_tiff
+    mean_tiff = mean(image_tiff(:));
+    std_tiff = std(image_tiff(:));
+
+    mean_aligned = mean(aligned_image(:));
+    std_aligned = std(aligned_image(:));
+
+    % Transformation pour aligner l'intensité
+    aligned_image_norm = ((aligned_image - mean_aligned) / std_aligned) * std_tiff + mean_tiff;
+
+    % Assurer que les valeurs restent dans la plage de image_tiff
+    aligned_image_norm = max(min(aligned_image_norm, max(image_tiff(:))), min(image_tiff(:)));
+
+    % Création de la figure
     figureHandle = figure('Position', [100, 100, 800, 600], 'Name', 'Animation');
+    ax = axes('Parent', figureHandle); % Création des axes
+
     while ishandle(figureHandle) && isvalid(figureHandle)
         for i = 1:2
             if ~ishandle(figureHandle) || ~isvalid(figureHandle)
-                break; % Sortir de la boucle si la figure est supprimée
+                break; % Sortie si la figure est fermée
             end
             if mod(i, 2) == 1
-                imshow(image_tiff, 'Parent', gca);
-                title('Image Originale (Normalisée)');
+                imagesc(image_tiff, 'Parent', ax);
+                title(ax, 'Image Originale (Normalisée)');
             else
-                imshow(aligned_image, 'Parent', gca);
-                title('Image Alignée (Normalisée)');
+                imagesc(aligned_image_norm, 'Parent', ax);
+                title(ax, 'Image Alignée (Normalisée)');
             end
+            colormap(ax, 'gray'); % Colormap en niveaux de gris
+            axis(ax, 'image'); % Maintien des proportions de l'image
+            colorbar; % Ajout d'une barre de couleur
             pause(0.5);
         end
     end
 end
+
+
 
 
 function launch_cellpose_from_matlab(image_path)

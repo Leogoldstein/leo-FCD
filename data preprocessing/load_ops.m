@@ -13,7 +13,6 @@ function all_ops = load_ops(current_folders_group)
             % Determine file extension and check for .npy files
             [~, ~, ext] = fileparts(current_folder);
             files = dir(fullfile(current_folder, '*.npy'));
-            disp(files)
 
             if ~isempty(files)
                 % Unpack .npy file paths
