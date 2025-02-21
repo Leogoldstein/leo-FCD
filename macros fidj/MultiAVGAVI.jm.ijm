@@ -48,7 +48,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         var tseriesFolderName = File.getName(tseriesFolder);
         var aviFileName = "AVG_concat_groupZ.avi";  // Nom du fichier AVI à enregistrer
         var ConcatTifFileName = "Concatenated.tif";
-        var fullPath = saveRegisVidDir + tseriesFolderName + File.separator;
+        var fullPath = saveRegisVidDir ;//+ tseriesFolderName + File.separator;
         createDirectory(fullPath);
         
         var fullPathTiff = fullPath + ConcatTifFileName;

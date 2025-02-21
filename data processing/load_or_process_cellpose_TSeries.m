@@ -1,9 +1,14 @@
-function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
+function [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
       
     for i = 1:numel(blue_output_folders)
         numFolders = length(blue_output_folders);
         npy_file_paths = cell(numFolders, 1);
-    
+        numGroups = length(folders_groups);
+        all_meanImg = cell(numFolders, numGroups);
+
+        split_path = strsplit(blue_output_folders{i}, filesep); 
+        base_output_folders{i} = fullfile(split_path{1:7});
+
         try
             output_folder = string(blue_output_folders{i}); % Dossier actuel
             cellpose_files = dir(fullfile(output_folder, '*_seg.npy'));
@@ -37,7 +42,7 @@ function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_
                 if isfile(output_path)
                     aligned_image = imread(output_path);
                     fprintf('Fichier aligné chargé : %s\n', output_path);
-    
+
                     % Lancer Cellpose
                     launch_cellpose_from_matlab(output_path);
     
@@ -56,7 +61,7 @@ function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_
                     fprintf('Aucun fichier aligné trouvé dans : %s\n', blue_output_folders{i});
                 
                     numGroups = length(folders_groups);
-                    all_meanImg = cell(numGroups, 1);
+                    meanImg_channels = cell(numGroups, 1);
                     labels = {'Gcamp', 'Red', 'Blue', 'Green'};
                     
                     for j = 1:numGroups
@@ -91,22 +96,25 @@ function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_
                                 error('Unsupported file type: %s', ext);
                             end
                                    
-                            all_meanImg{j} = meanImg;   
+                            meanImg_channels{j} = meanImg;   
                             
+                            save(fullfile(base_output_folders{i}, 'meanImg_channels.mat'), 'meanImg_channels');
+
                         catch ME
                             warning('Erreur de chargement pour le groupe: %s. Erreur: %s', labels{j}, ME.message);
-                            all_meanImg{j} = NaN; % Stocker NaN en cas d'erreur
+                            meanImg_channels{j} = NaN; % Stocker NaN en cas d'erreur
                         end
                     end
                     
                     %Vérification avant l'alignement
-                    if all(cellfun(@(x) ~isempty(x) && isnumeric(x), {all_meanImg{1}, all_meanImg{4}}))
-                        reg_obj = imregcorr(all_meanImg{1}, all_meanImg{4}, 'similarity');
+                    if all(cellfun(@(x) ~isempty(x) && isnumeric(x), {meanImg_channels{1}, meanImg_channels{4}}))
+                        reg_obj = imregcorr(meanImg_channels{1}, meanImg_channels{4}, 'similarity'); % recalage de l'image gcamp avec l'image green (image de référence)
+
                         T = reg_obj.T;
 
-                        if ~isempty(all_meanImg{3}) && isnumeric(all_meanImg{3})
-                            aligned_image = imwarp(all_meanImg{3}, affine2d(T), 'OutputView', imref2d(size(all_meanImg{3})));          
-                            not_aligned_image = all_meanImg{4};
+                        if ~isempty(meanImg_channels{3}) && isnumeric(meanImg_channels{3})
+                            aligned_image = imwarp(meanImg_channels{3}, affine2d(T), 'OutputView', imref2d(size(meanImg_channels{3})));          
+                            not_aligned_image = meanImg_channels{4};
                             
                             aligned_image = normalize_image(aligned_image);
                             imwrite(aligned_image, output_path, 'tif');
@@ -130,18 +138,30 @@ function npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_
                             end
 
                         else
-                            warning('all_meanImg{3} est vide ou invalide.');
+                            warning('meanImg_channels{3} est vide ou invalide.');
                         end  
                     else
-                        warning('Problème avec all_meanImg{1} ou all_meanImg{4}, impossible d’aligner.');
+                        warning('Problème avec meanImg_channels{1} ou meanImg_channels{4}, impossible d’aligner.');
                     end
                 end
             end
+
+            filePath = fullfile(base_output_folders{i}, 'meanImg_channels.mat');
+            if exist(filePath, 'file') == 2 
+                data = load(filePath);
+                if isfield(data, 'meanImg_channels')
+                    % Si `meanImg_channels` contient 4 éléments, tu peux les affecter un par un
+                    [all_meanImg{i,:}] = deal(data.meanImg_channels{:});
+                end
+            else
+                fprintf('Fichier meanImg_channels.mat introuvable : %s\n', base_output_folders{i});
+            end
+
         catch ME
             warning('Erreur dans le traitement du dossier %d : %s', i, ME.message);
             npy_file_paths{i} = NaN;
             continue;
-        end
+        end    
     end
 end
 

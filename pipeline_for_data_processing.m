@@ -121,13 +121,13 @@ function pipeline_for_data_processing(selected_groups)
 
                 case 5
                     disp(['Performing sub-population analysis for ', current_animal_group]);
-                    npy_file_paths = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
-                    assignin('base', 'npy_file_paths', npy_file_paths);
-
-                    %[all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
+                    [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
+       
+                    % [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
                     % [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
-                    % 
-                    % compute_iou_between_centroids(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_ops, aligned_image);
+                    % show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_meanImg, aligned_image);
+                    
+                    %get_blue_cells_rois(blue_output_folders, all_meanImg)
 
                 case 6
                     disp(['Performing clusters analysis for ', current_animal_group]);
@@ -519,7 +519,7 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
 end
 
 
-function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths)
+function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths) %#ok<DEFNU>
     
     numFiles = length(npy_file_paths);
     % Initialiser les cellules pour stocker les données

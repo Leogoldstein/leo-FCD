@@ -1,4 +1,4 @@
-function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_ops, aligned_image)
+function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_meanImg, aligned_image)
 
     % Initialisation des résultats
     cell_indices_below_threshold = {}; % Liste des cellules avec IoU ≤ 3 pixels
@@ -9,14 +9,7 @@ function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose
             gcamp_props = all_gcamp_props{m};
             cellpose_props = all_props_cellpose{m};
 
-            % Gestion de l'image de fond (meanImg)
-            if isa(all_ops{m}, 'py.dict')
-                ops = all_ops{m}; % Python dictionary
-                meanImg = double(ops{'meanImg'}); % Convertir en tableau MATLAB
-            else
-                ops = all_ops{m}; % Structure MATLAB
-                meanImg = ops.meanImg;
-            end
+            meanImg = all_meanImg{1,m};
 
             % Calcul des distances entre les centroides
             gcamp_centroids = vertcat(gcamp_props.Centroid); % Matrice [n x 2]
