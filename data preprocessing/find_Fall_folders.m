@@ -1,4 +1,4 @@
-function [TseriesFolders, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
+function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
     % Initialiser la cellule pour stocker les chemins pour chaque type de dossier
     numFolders = length(selectedFolders);
     TseriesFolders = cell(numFolders, 4); 

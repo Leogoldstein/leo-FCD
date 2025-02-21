@@ -1,4 +1,4 @@
-function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
+function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
     true_env_paths = {};
     env_paths_all = {};
@@ -7,6 +7,7 @@ function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPath
     iscellPaths = {};
     opsPaths = {};
     spksPaths = {};
+    TSeriesPaths = {};  % Initialize the TSeriesPaths array
 
     for idx = 1:length(selectedFolders)
         selectedFolder = selectedFolders{idx};
@@ -29,7 +30,7 @@ function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPath
         else
             % If there are multiple 'TSeries' folders or none, prompt the user to select one
             TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
-            
+
             % Check if the user canceled the selection
             if isequal(TSeriesPath, 0)
                 disp('User clicked Cancel. Skipping this folder.');
@@ -38,7 +39,6 @@ function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPath
             
             % Check if the selected folder contains 'suite2p'
             if ~endsWith(TSeriesPath, 'suite2p')
-                
                 suite2pFolder = fullfile(selectedFolder, 'suite2p');
                 
                 % If 'suite2p' subfolder exists, append it to the selected folder
@@ -90,16 +90,24 @@ function [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPath
         filePaths = {stat_path, F_path, iscell_path, ops_path, spks_path};
         
         % Check the existence of each file in the list
+        filesExist = false;  % Initialize flag to check if any file exists
+        
         for i = 1:length(filePaths)
             if exist(filePaths{i}, 'file') == 2
-                % Add the paths to the corresponding lists
-                statPaths{end+1} = filePaths{1};
-                FPaths{end+1} = filePaths{2};
-                iscellPaths{end+1} = filePaths{3};
-                opsPaths{end+1} = filePaths{4};
-                spksPaths{end+1} = filePaths{5};
-                break
+                filesExist = true;  % At least one file exists
+                break;
             end
+        end
+
+        % If at least one file exists, store the TSeriesPath
+        if filesExist
+            TSeriesPaths{end+1} = TSeriesPath;  % Add TSeriesPath to the list
+            % Add the paths to the corresponding lists
+            statPaths{end+1} = filePaths{1};
+            FPaths{end+1} = filePaths{2};
+            iscellPaths{end+1} = filePaths{3};
+            opsPaths{end+1} = filePaths{4};
+            spksPaths{end+1} = filePaths{5};
         end
     end
 end

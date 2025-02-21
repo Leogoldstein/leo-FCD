@@ -36,7 +36,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             % Traitement JM (Jure's data)
             disp('Traitement des données JM...');
             dataFolders = select_folders(jm_folder);
-            [true_env_paths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+            [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
             [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
             disp('Traitement JM terminé.');
 
@@ -46,7 +46,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             initial_folder = fcd_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [TseriesFolders, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(dataFolders);
+            [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(dataFolders);
             gcampdataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement FCD terminé.');
 
@@ -56,7 +56,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             initial_folder = ctrl_folder; % Point de départ pour la sélection
             dataFolders = select_folders(initial_folder);
             dataFolders = organize_data_by_animal(dataFolders);
-            [TseriesFolders, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(dataFolders);
+            [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(dataFolders);
             gcampdataFolders = cellfun(@string, TseriesFolders(:, 1), 'UniformOutput', false);
             disp('Traitement CTRL terminé.');
 
@@ -127,6 +127,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             selected_groups(k).animal_group = current_animal_group;
             selected_groups(k).animal_type = unique(type_part(date_indices)); % Save unique types
             selected_groups(k).dates = date_part(date_indices);
+            selected_groups(k).pathTSeries = TSeriesPaths(date_indices, :);
             selected_groups(k).folders = TseriesFolders(date_indices, :);
             selected_groups(k).folders_names = lastFolderNames(date_indices, :);
             selected_groups(k).env = true_env_paths(date_indices);

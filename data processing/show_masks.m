@@ -1,9 +1,9 @@
-function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_meanImg, aligned_image)
+function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, sorted_date_group_paths, all_meanImg, aligned_images)
 
     % Initialisation des résultats
-    cell_indices_below_threshold = {}; % Liste des cellules avec IoU ≤ 3 pixels
+    % cell_indices_below_threshold = {}; % Liste des cellules avec IoU ≤ 3 pixels
 
-    for m = 1:length(date_group_paths)
+    for m = 1:length(sorted_date_group_paths)
         try
             % Extraction des données pour le groupe m
             gcamp_props = all_gcamp_props{m};
@@ -19,12 +19,12 @@ function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose
             distances = pdist2(gcamp_centroids, cellpose_centroids); % Taille [n x m]
 
             % Trouver les paires avec une distance ≤ 3 pixels
-            [gcamp_idx, cellpose_idx] = find(distances <= 3); % Indices des paires
-            cell_indices_below_threshold{m} = struct( ...
-                'GCaMP', gcamp_idx, ...
-                'Cellpose', cellpose_idx, ...
-                'Distances', distances(gcamp_idx + (cellpose_idx - 1) * size(distances, 1)) ...
-            );
+            % [gcamp_idx, cellpose_idx] = find(distances <= 3); % Indices des paires
+            % cell_indices_below_threshold{m} = struct( ...
+            %     'GCaMP', gcamp_idx, ...
+            %     'Cellpose', cellpose_idx, ...
+            %     'Distances', distances(gcamp_idx + (cellpose_idx - 1) * size(distances, 1)) ...
+            % );
 
             % Créer une nouvelle figure pour chaque groupe avec 2 sous-figures côte à côte
             figure;
@@ -49,12 +49,6 @@ function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose
                 plot(centroid_gcamp(1), centroid_gcamp(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, 'Color', 'g');
             end
 
-            % Marquer les cellules avec IoU ≤ 3 pixels en rouge (GCaMP)
-            for pair_idx = 1:length(gcamp_idx)
-                gcamp_centroid = gcamp_centroids(gcamp_idx(pair_idx), :);
-                viscircles(gcamp_centroid, 3, 'Color', 'r', 'LineWidth', 1); % Cercle rouge autour du centroid
-            end
-
             % Titre et ajustement des axes
             title('GCaMP sur meanImg');
             xlabel('X Coordinate');
@@ -62,10 +56,10 @@ function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose
             set(gca, 'YDir', 'reverse'); % Inverser l'axe Y pour un alignement correct
             hold off;
 
-            % Subplot 2: Cellpose sur aligned_image
+            % Subplot 2: Cellpose sur aligned_images
             subplot(1, 2, 2);
             hold on;
-            imagesc(aligned_image);
+            imagesc(aligned_images{m});
             colormap gray;
             axis image;
             
@@ -83,10 +77,10 @@ function show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose
             end
 
             % Marquer les cellules avec IoU ≤ 3 pixels en rouge (Cellpose)
-            for pair_idx = 1:length(cellpose_idx)
-                cellpose_centroid = cellpose_centroids(cellpose_idx(pair_idx), :);
-                viscircles(cellpose_centroid, 3, 'Color', 'r', 'LineWidth', 1); % Cercle rouge autour du centroid
-            end
+            % for pair_idx = 1:length(cellpose_idx)
+            %     cellpose_centroid = cellpose_centroids(cellpose_idx(pair_idx), :);
+            %     viscircles(cellpose_centroid, 3, 'Color', 'r', 'LineWidth', 1); % Cercle rouge autour du centroid
+            % end
 
             % Titre et ajustement des axes
             title('Cellpose sur aligned_image');

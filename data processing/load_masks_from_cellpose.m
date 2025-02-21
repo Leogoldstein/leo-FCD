@@ -1,4 +1,4 @@
-function [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path)
+function [num_cells_masks, mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path)
     % Cette fonction charge les masques et outlines depuis un fichier .npy
     % et retourne les masques binaires, les propriétés des cellules,
     % et les coordonnées des contours sans inverser l'axe des Y.

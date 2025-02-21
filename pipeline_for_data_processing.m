@@ -121,13 +121,25 @@ function pipeline_for_data_processing(selected_groups)
 
                 case 5
                     disp(['Performing sub-population analysis for ', current_animal_group]);
-                    [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
-       
-                    % [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
-                    % [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
-                    % show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, date_group_paths, all_meanImg, aligned_image);
+                    [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
                     
-                    %get_blue_cells_rois(blue_output_folders, all_meanImg)
+                    sorted_date_group_paths = cell(size(npy_file_paths)); 
+                    for l = 1:numel(npy_file_paths)
+                        % Diviser le chemin en parties
+                        split_path = strsplit(npy_file_paths{l}, filesep); 
+                        
+                        % Reconstruire jusqu'à la date incluse (6 premiers éléments)
+                        sorted_date_group_paths{l} = fullfile(split_path{1:6});
+                    end
+
+                    [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
+                    [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
+                    show_masks(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, sorted_date_group_paths, all_meanImg, aligned_images);
+
+                    current_gcamp_TSeries_path = cellfun(@string, selected_groups(k).pathTSeries(:, 1), 'UniformOutput', false);
+                    DF_blue = get_blue_cells_rois(current_gcamp_TSeries_path, sorted_date_group_paths, all_num_cells_masks, all_outlines_x_cellpose, all_outlines_y_cellpose);
+                    assignin('base', 'DF_blue', DF_blue);
+                    
 
                 case 6
                     disp(['Performing clusters analysis for ', current_animal_group]);
@@ -519,10 +531,11 @@ function [all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_prop
 end
 
 
-function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths) %#ok<DEFNU>
+function [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths) %#ok<DEFNU>
     
     numFiles = length(npy_file_paths);
     % Initialiser les cellules pour stocker les données
+    all_num_cells_masks = cell(numFiles, 1);
     all_mask_cellpose = cell(numFiles, 1);
     all_props_cellpose = cell(numFiles, 1);
     all_outlines_x_cellpose = cell(numFiles, 1);
@@ -530,9 +543,10 @@ function [all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_ou
 
     for m = 1:numFiles
         npy_file_path = npy_file_paths{m};
-        [mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path);        
+        [num_cells_masks, mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path);  
         
         % Stocker les résultats dans les variables de sortie
+        all_num_cells_masks{m} = num_cells_masks; 
         all_mask_cellpose{m} = mask_cellpose;
         all_props_cellpose{m} = props_cellpose;
         all_outlines_x_cellpose{m} = outline_x_cellpose;      

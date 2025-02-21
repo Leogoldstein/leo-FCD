@@ -1,8 +1,9 @@
-function [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
+function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders)
       
     for i = 1:numel(blue_output_folders)
         numFolders = length(blue_output_folders);
         npy_file_paths = cell(numFolders, 1);
+        aligned_images = cell(numFolders, 1);
         numGroups = length(folders_groups);
         all_meanImg = cell(numFolders, numGroups);
 
@@ -32,6 +33,7 @@ function [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose
                     aligned_image = imread(aligned_image_path);
                     aligned_image = normalize_image(aligned_image);
                     fprintf('TIFF aligné trouvé : %s\n', aligned_image_path);
+                    aligned_images{i} = aligned_image;
                     npy_file_paths{i} = npy_file_path;
                 else
                     fprintf('Fichier TIFF introuvable : %s\n', aligned_image_path);
@@ -42,6 +44,7 @@ function [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose
                 if isfile(output_path)
                     aligned_image = imread(output_path);
                     fprintf('Fichier aligné chargé : %s\n', output_path);
+                    aligned_images{i} = aligned_image;
 
                     % Lancer Cellpose
                     launch_cellpose_from_matlab(output_path);
@@ -117,6 +120,7 @@ function [aligned_image, all_meanImg, npy_file_paths] = load_or_process_cellpose
                             not_aligned_image = meanImg_channels{4};
                             
                             aligned_image = normalize_image(aligned_image);
+                            aligned_images{i} = aligned_image;
                             imwrite(aligned_image, output_path, 'tif');
                             fprintf('Image alignée sauvegardée : %s\n', output_path);
 
