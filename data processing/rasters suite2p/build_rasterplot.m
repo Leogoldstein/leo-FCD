@@ -12,7 +12,15 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, curren
         flattened_data = data(:);
         min_val = prctile(flattened_data, 5);   % 5th percentile
         max_val = prctile(flattened_data, 99.9); % 99.9th percentile
+    
+        % Ensure that min_val is less than max_val
+        if min_val >= max_val
+            warning('The calculated scaling limits are invalid. Adjusting to default values.');
+            min_val = min(flattened_data);  % Fallback to min of data
+            max_val = max(flattened_data);  % Fallback to max of data
+        end
     end
+
 
     for m = 1:length(date_group_paths)
         try

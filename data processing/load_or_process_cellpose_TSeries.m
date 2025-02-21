@@ -6,6 +6,7 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
         aligned_images = cell(numFolders, 1);
         numGroups = length(folders_groups);
         all_meanImg = cell(numFolders, numGroups);
+        base_output_folders = cell(numFolders, 1);
 
         split_path = strsplit(blue_output_folders{i}, filesep); 
         base_output_folders{i} = fullfile(split_path{1:7});
