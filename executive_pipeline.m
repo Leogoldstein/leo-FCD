@@ -18,3 +18,20 @@ end
 %%
 % Processing and analysis
 pipeline_for_data_processing(selected_groups)
+%%
+
+% Plot the fluorescence values for each cell across images
+figure;
+hold on;  % Keep all the plots on the same figure
+
+% Loop through each cell and plot its fluorescence values
+for n = 1:size(flattened_DF_blue, 1)  % Loop over each cell
+    plot(flattened_DF_blue(n, :));  % Plot the DF values for the n-th cell
+end
+
+% Customize the plot
+xlabel('Image Number');  % X-axis label (image index)
+ylabel('Fluorescence Intensity (DF)');  % Y-axis label (DF value)
+title('Fluorescence Time Series for Each Cell');  % Plot title
+legend(cellstr(num2str((1:size(flattened_DF_blue, 1))')));  % Add a legend for each cell
+hold off;  % End the holding of the plot

@@ -1,4 +1,4 @@
-function [F, ops, stat, iscell] = load_data(workingFolder)
+function [F, DF, ops, stat, iscell] = load_data(workingFolder)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -24,6 +24,8 @@ function [F, ops, stat, iscell] = load_data(workingFolder)
             error('Failed to call Python function: %s', ME.message);
         end
 
+        DF = double(F(iscell(:,1) > 0, :));  
+
     elseif strcmp(ext, '.mat')
         % Load .mat files
         data = load(workingFolder);
@@ -33,8 +35,9 @@ function [F, ops, stat, iscell] = load_data(workingFolder)
         iscell = data.iscell;
         ops = data.ops;
         stat = data.stat;  % Assuming stat is available in .mat file
-
+        
+        DF = double(F(iscell(:,1) > 0, :));  
     else
         error('Unsupported file type: %s', ext);
-    end
+    end   
 end

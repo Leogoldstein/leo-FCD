@@ -1,12 +1,10 @@
-function DF = DF_processing(F, iscell)
+function DF = DF_processing(DF)
     % Apply preprocessing steps to the data matrix DF.
     % Input:
     % - DF: Data matrix to be preprocessed.
     % Output:
     % - DF: Preprocessed data matrix.
-
-    DF = double(F(iscell(:,1) > 0, :));
-
+    
     % Savitzky-Golay filter
     DF = sgolayfilt(DF', 3, 5)' ;
 

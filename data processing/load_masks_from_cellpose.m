@@ -22,6 +22,7 @@ function [num_cells_masks, mask_cellpose, props_cellpose, outline_x_cellpose, ou
         if ismember('masks', keys_list)
             masks = image{'masks'};  % Accéder à la clé 'masks'
             masks_mat = double(py.numpy.array(masks));  % Convertir en tableau MATLAB
+            %assignin('base', 'masks_mat', masks_mat);
         else
             error('La clé "masks" n''a pas été trouvée dans le dictionnaire Python.');
         end
