@@ -1,4 +1,4 @@
-function [DF, Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames)
+function [Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames)
     % Get the dimensions of the input matrix F
     [NCell, Nz] = size(DF);
 
