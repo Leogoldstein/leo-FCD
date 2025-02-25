@@ -11,7 +11,7 @@ function pipeline_for_data_processing(selected_groups)
     
     % Ask if the user wants to include blue cells in the analysis
     include_blue_cells = input('Do you want to include blue cells in your analysis? (1/2): ', 's');
-    
+
     % Ask for analysis types, multiple choices separated by spaces
     analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), or clusters analysis (5)? ', 's');
     
@@ -78,33 +78,6 @@ function pipeline_for_data_processing(selected_groups)
         [gcamp_output_folders, blue_output_folders] = create_base_folders(date_group_paths, current_gcamp_folders_names_group, current_blue_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);     
         assignin('base', 'gcamp_output_folders', gcamp_output_folders);
 
-        % Handle the blue cells analysis before processing analysis choices
-        if strcmpi(include_blue_cells, '1')
-            disp(['Performing sub-population analysis for ', current_animal_group]);
-            [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
-
-            [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
-
-            [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
-
-            sorted_date_group_paths = cell(size(npy_file_paths)); 
-            for l = 1:numel(npy_file_paths)
-                % Divide the path into parts
-                split_path = strsplit(npy_file_paths{l}, filesep); 
-
-                % Rebuild up to the date included (first 6 elements)
-                sorted_date_group_paths{l} = fullfile(split_path{1:6});
-            end
-
-            [matched_cellpose_idx, matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, sorted_date_group_paths, all_meanImg, aligned_images);
-
-            [all_DF, ~, ~, ~, ~, ~, ~, ~, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group);
-
-            [all_DF_blue, selectedPathsSave, selecteDataPaths] = get_blue_cells_rois(sorted_date_group_paths, current_gcamp_TSeries_path, blue_output_folders, current_blue_folders_group, all_num_cells_masks, all_mask_cellpose, matched_cellpose_idx, matched_gcamp_idx, all_DF);
-            %assignin('base', 'all_DF_blue', all_DF_blue);
-
-        end
-
         % Create the new path for the Excel file with the modified title
         pathexcel = [PathSave 'analysis.xlsx'];
 
@@ -120,20 +93,18 @@ function pipeline_for_data_processing(selected_groups)
 
                 case 2
                     disp(['Performing raster plot analysis for ', current_animal_group]);
-                    [all_DF, ~, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group);
+                    [all_DF, ~, ~, ~, all_isort1, ~, ~, ~, all_MAct, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, current_gcamp_TSeries_path);                    
                     build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group)
                     build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-
                 case 3
                     disp(['Performing Global analysis of activity for ', current_animal_group]);
                     [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
-                    [all_DF, ~, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group);
+                    [all_DF, ~, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, current_gcamp_TSeries_path);                                          
                     [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
                     [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(all_DF, all_Raster, all_MAct, gcamp_output_folders, all_sampling_rate, all_imageHeight, all_imageWidth);
                     export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                          all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
                          all_sampling_rate, all_synchronous_frames, NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all);
-
                 case 4
                     disp(['Performing SCEs analysis for ', current_animal_group]);
                     [all_DF, all_Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_gcamp_folders_group, current_env_group, current_dates_group, gcamp_output_folders);
@@ -193,8 +164,7 @@ function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] 
     end
 end
 
-
-function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group)
+function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_isort1, all_isort2, all_Sm, all_Raster, all_MAct, all_Acttmp2] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, current_gcamp_TSeries_path)
     % Initialize cell arrays for outputs
     numFolders = length(gcamp_output_folders);
     all_DF = cell(numFolders, 1);
@@ -207,7 +177,6 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
     all_MAct = cell(numFolders, 1);
     all_Acttmp2 = cell(numFolders, 1);
     all_synchronous_frames = cell(numFolders, 1);
-
     DF_blue = false;
    
     % Loop through each save path
@@ -221,12 +190,11 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
             data = load(filePath);
         
             % Assign the relevant fields to the output variables if they exist in the file
-            if isfield(data, 'DF')
+             if isfield(data, 'DF')
                 all_DF{m} = data.DF;               
             elseif isfield(data, 'DF_blue')
                 all_DF_blue{m} = data.DF_blue;
-                DF_blue = true;
-            end        
+            end             
             % Load or assign existing variables (even if empty)
             if isfield(data, 'isort1')
                 all_isort1{m} = data.isort1;
@@ -255,6 +223,7 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
         else
             % If the results_raster.mat doesn't exist, initialize everything to empty
             all_DF{m} = [];
+            all_DF_blue{m} = [];
             all_isort1{m} = [];
             all_isort2{m} = [];
             all_Sm{m} = [];
@@ -275,9 +244,8 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
            all_synchronous_frames{m} = synchronous_frames;
         end                
         MinPeakDistance = 5;
-        if isempty(all_DF{m}) && ~DF_blue
+        if isempty(all_DF{m})
             [F, DF, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
-
             all_DF{m} = DF_processing(DF);
             fields = {'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2'};
             for i = 1:length(fields)
@@ -286,16 +254,50 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
                     eval(['all_' fields{i} '{m} = ' fields{i} ';']);
                 end
             end
+        end
+        if isempty(all_DF_blue{m}) && strcmpi(include_blue_cells, '1')
+            disp('No pre-existing blue cell data found. Processing blue cells...');
+            DF_blue = true;
+        end
+    end
+    if DF_blue
+        [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);       
+        [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
+        [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);       
         
-        elseif DF_blue && isempty(all_DF{m})
-            for i = 1:length(fields)
-                if isempty(eval(['all_' fields{i} '{m}']))
-                    all_DF_blue{m} = DF_blue;
-                    % [DF, Raster, MAct, Acttmp2] = Sumactivity(all_DF_blue{m}, MinPeakDistance, synchronous_frames);
-                    % eval(['all_' fields{i} '{m} = ' fields{i} ';']);
-                end
-            end
+        % Sort paths for which npy_file_paths exist
+        sorted_date_group_paths = cell(size(npy_file_paths)); 
+        for l = 1:numel(npy_file_paths)
+            split_path = strsplit(npy_file_paths{l}, filesep); 
+            sorted_date_group_paths{l} = fullfile(split_path{1:6}); 
         end    
+        % Initialize an array to store the valid indices
+        valid_indices = zeros(1, length(sorted_date_group_paths));  % Preallocate array with zeros
+        
+        % Initialize a counter for valid indices
+        validCount = 0;
+        
+        for idx = 1:length(sorted_date_group_paths)  % Loop over sorted_date_group_paths
+            gcamp_TSeries_path = current_gcamp_TSeries_path{idx};  
+            
+            parentDir = fileparts(gcamp_TSeries_path);
+            pathPartsCurrent = strsplit(parentDir, filesep);
+            lastThreePartsCurrent = pathPartsCurrent(end-2:end);
+            
+            sortedPath = sorted_date_group_paths{idx};
+            pathPartsSorted = strsplit(sortedPath, filesep);
+            lastThreePartsSorted = pathPartsSorted(end-2:end);
+            
+            % Compare last three parts of the paths
+            if isequal(lastThreePartsCurrent, lastThreePartsSorted) 
+                validCount = validCount + 1;  % Increment the count for valid indices
+                valid_indices(validCount) = idx;  % Store the valid index in the preallocated array
+            end
+        end
+
+        [matched_cellpose_idx, matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, numFolders, valid_indices, all_meanImg, aligned_images);                          
+        all_DF_blue = get_blue_cells_rois(gcamp_output_folders, valid_indices, current_gcamp_TSeries_path, all_num_cells_masks, all_mask_cellpose, matched_cellpose_idx, matched_gcamp_idx, all_DF);
+    
     end
 end
 
@@ -311,7 +313,7 @@ function [all_DF, all_Raster, all_sampling_rate, all_synchronous_frames, all_sce
 
     % Load or process raster data
     [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, ~] = ...
-        load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group); 
+        load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, current_gcamp_TSeries_path); 
 
     % Initialize a flag to track if processing is needed
     process_needed = false;
@@ -562,29 +564,4 @@ end
  
         end
     end
-end
-
-
-function [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths) %#ok<DEFNU>
-    
-    numFiles = length(npy_file_paths);
-    % Initialiser les cellules pour stocker les données
-    all_num_cells_masks = cell(numFiles, 1);
-    all_mask_cellpose = cell(numFiles, 1);
-    all_props_cellpose = cell(numFiles, 1);
-    all_outlines_x_cellpose = cell(numFiles, 1);
-    all_outlines_y_cellpose = cell(numFiles, 1);
-
-    for m = 1:numFiles
-        npy_file_path = npy_file_paths{m};
-        [num_cells_masks, mask_cellpose, props_cellpose, outline_x_cellpose, outline_y_cellpose] = load_masks_from_cellpose(npy_file_path);  
-        
-        % Stocker les résultats dans les variables de sortie
-        all_num_cells_masks{m} = num_cells_masks; 
-        all_mask_cellpose{m} = mask_cellpose;
-        all_props_cellpose{m} = props_cellpose;
-        all_outlines_x_cellpose{m} = outline_x_cellpose;      
-        all_outlines_y_cellpose{m} = outline_y_cellpose;
-        
-    end
-end
+ end

@@ -164,13 +164,10 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
 
         catch ME
             warning('Erreur dans le traitement du dossier %d : %s', i, ME.message);
-            npy_file_paths{i} = NaN;
             continue;
         end    
     end
 end
-
-
 
 function norm_img = normalize_image(img)
     % Fonction pour normaliser une image entre 0 et 255
@@ -185,7 +182,6 @@ function norm_img = normalize_image(img)
         error('Type de données non supporté pour l''image.');
     end
 end
-
 
 function display_animation(image_tiff, aligned_image)
     % Fonction pour afficher l'animation avec imagesc, après normalisation
@@ -226,9 +222,6 @@ function display_animation(image_tiff, aligned_image)
         end
     end
 end
-
-
-
 
 function launch_cellpose_from_matlab(image_path)
     % Cette fonction configure l'environnement Python pour Cellpose et lance Cellpose depuis MATLAB avec l'interface graphique.
