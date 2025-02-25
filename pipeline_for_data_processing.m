@@ -125,23 +125,50 @@ function pipeline_for_data_processing(selected_groups)
                     [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders);
 
                     [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
-                    [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
                     
+                    [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
+
                     sorted_date_group_paths = cell(size(npy_file_paths)); 
                     for l = 1:numel(npy_file_paths)
                         % Diviser le chemin en parties
                         split_path = strsplit(npy_file_paths{l}, filesep); 
-                        
+
                         % Reconstruire jusqu'à la date incluse (6 premiers éléments)
                         sorted_date_group_paths{l} = fullfile(split_path{1:6});
                     end
 
                     [matched_cellpose_idx, matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, sorted_date_group_paths, all_meanImg, aligned_images);
-                   
+
                     [all_DF, ~, ~, ~, ~, ~, ~, ~, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group);
+
+                    [all_DF_blue, selectedPathsSave, selecteDataPaths] = get_blue_cells_rois(sorted_date_group_paths, current_gcamp_TSeries_path, blue_output_folders, current_blue_folders_group, all_num_cells_masks, all_mask_cellpose, matched_cellpose_idx, matched_gcamp_idx, all_DF);
+                    %assignin('base', 'all_DF_blue', all_DF_blue);
+
+                    % Loop over each element in all_DF_blue
+                    for idx = 1:length(all_DF_blue)
+                        % Extract DF_blue for the current path
+                        DF_blue = all_DF_blue{idx};
                     
-                    [all_DF_blue, selectedPathsSave, selecteDataPaths] = get_blue_cells_rois(sorted_date_group_paths, current_gcamp_TSeries_path, blue_output_folders, current_blue_folders_group, all_num_cells_masks, all_outlines_x_cellpose, all_outlines_y_cellpose, matched_cellpose_idx, matched_gcamp_idx, all_DF);
-                    assignin('base', 'all_DF_blue', all_DF_blue);
+                        % Number of frames (assuming rows are cells and columns are frames)
+                        [num_cells, num_frames] = size(DF_blue);
+                    
+                        % Create a figure for plotting
+                        figure;
+                    
+                        % Plot each cell's DF_blue (each row represents a cell)
+                        hold on;
+                        for cell_idx = 1:num_cells
+                            plot(DF_blue(cell_idx, :), 'DisplayName', ['Cell ' num2str(cell_idx)]);
+                        end
+                        hold off;
+                    
+                        % Add labels and title
+                        xlabel('Frame Number');
+                        ylabel('Fluorescence Intensity');
+                        title(['DF_blue for Group ' num2str(idx)]);
+                        legend show; % Show legend for each cell
+                    
+                    end
 
                 case 6
                     disp(['Performing clusters analysis for ', current_animal_group]);

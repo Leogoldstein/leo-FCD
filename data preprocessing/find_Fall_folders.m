@@ -29,20 +29,28 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
         labels = {'Gcamp', 'Red', 'Blue'};
         
         % Stocker les correspondances potentielles
-        foundFolders = {[], [], []};
+        foundFolders = {[], [], [], []}; % [Gcamp, Red, Blue, Green]
         
         % Parcourir les dossiers trouvés
         for i = 1:length(TSeriesFolders)
             folderName = TSeriesFolders(i).name;
             fullPath = fullfile(selectedFolder, folderName);
             
-            for k = 1:length(labels)
+            matched = false; % Indicateur pour voir si le dossier correspond à un label
+            
+            for k = 2:length(labels) % Commence à 2 car Gcamp est le cas par défaut
                 if contains(lower(folderName), lower(labels{k}))
                     foundFolders{k} = [foundFolders{k}; {fullPath}];
+                    matched = true; % Marquer comme trouvé
                 end
             end
+            
+            % Si aucun label ne correspond, classer dans Gcamp (index 1)
+            if ~matched
+                foundFolders{1} = [foundFolders{1}; {fullPath}];
+            end
         end
-        
+
         % Sélectionner un seul dossier par catégorie
         for k = 1:length(labels)
             if isscalar(foundFolders{k})

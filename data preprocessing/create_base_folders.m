@@ -36,7 +36,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
             % For blue
             newSubfolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
             mkdir(newSubfolderPath_blue);
-            disp(['No subfolder found. Created new blue folder: ', newSubfolderPath_blue]);
+            disp(['No subfolder found. Created new folder for analysis : ', newSubfolderPath_blue]);
             chosen_folder_processing_blue{k} = newSubfolderPath_blue;
             continue;  % Move to the next date in the loop
         end
