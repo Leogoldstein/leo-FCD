@@ -3,7 +3,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
     % Patterns pour identifier les chemins
     pattern_mTOR = 'D:\\imaging\\FCD\\([^\\]+)\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
     pattern_ani = 'D:\\imaging\\CTRL\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
-    pattern_general = '(\d{4}-\d{2}-\d{2})-(ani\d+)-(mtor\d+)?';
+    pattern_general = '(\d{2}-\d{2}-\d{4})-(ani\d+)-(mtor\d+)?';
     
     % Initialiser la liste des nouveaux dossiers
     newdataFolders = {};

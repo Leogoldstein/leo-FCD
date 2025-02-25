@@ -10,8 +10,8 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
     for k = 1:length(date_group_paths)
         % List and filter subfolders in the main date folder
         subfolders = dir(date_group_paths{k});
-        subfolders = subfolders([subfolders.isdir]);  % Filter out files and keep only directories
-        subfolders = subfolders(~ismember({subfolders.name}, {'.', '..'}));  % Remove '.' and '..' entries
+        subfolders = subfolders([subfolders.isdir]);  % Keep only directories
+        subfolders = subfolders(~ismember({subfolders.name}, {'.', '..'}));  % Remove '.' and '..'
 
         % Filter subfolders that match the date format (e.g., dd_mm_yy_HH_MM)
         specificSubfolders = subfolders(~cellfun('isempty', regexp({subfolders.name}, '^\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$', 'once')));
@@ -33,11 +33,13 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
             disp(['No subfolder found. Created new gcamp folder: ', newSubfolderPath_gcamp]);
             chosen_folder_processing_gcamp{k} = newSubfolderPath_gcamp;
             
-            % For blue
-            newSubfolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
-            mkdir(newSubfolderPath_blue);
-            disp(['No subfolder found. Created new folder for analysis : ', newSubfolderPath_blue]);
-            chosen_folder_processing_blue{k} = newSubfolderPath_blue;
+            % For blue (only if current_blue_folders_names_group is not empty)
+            if ~isempty(current_blue_folders_names_group)
+                newSubfolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
+                mkdir(newSubfolderPath_blue);
+                disp(['No subfolder found. Created new folder for analysis: ', newSubfolderPath_blue]);
+                chosen_folder_processing_blue{k} = newSubfolderPath_blue;
+            end
             continue;  % Move to the next date in the loop
         end
 
@@ -50,7 +52,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
         all_unique_subfolders = [all_unique_subfolders, {specificSubfolders.name}];
     end
 
-    % Now, remove duplicates by using unique() function
+    % Now, remove duplicates using unique()
     unique_subfolders = unique(all_unique_subfolders);  % Get unique subfolder names
 
     % Process user_choice1 and user_choice2 only if they are not empty
@@ -88,9 +90,11 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                     chosen_folder_processing_gcamp{k} = fullfile(date_group_paths{k}, matchingSubfolder.name, current_gcamp_folders_names_group{k});
                     disp(['Selected gcamp subfolder: ', chosen_folder_processing_gcamp{k}]);
 
-                    % Reconstruct the full path to the selected subfolder for blue
-                    chosen_folder_processing_blue{k} = fullfile(date_group_paths{k}, matchingSubfolder.name, current_blue_folders_names_group{k});
-                    disp(['Selected blue subfolder: ', chosen_folder_processing_blue{k}]);
+                    % Reconstruct the full path to the selected subfolder for blue (only if not empty)
+                    if ~isempty(current_blue_folders_names_group)
+                        chosen_folder_processing_blue{k} = fullfile(date_group_paths{k}, matchingSubfolder.name, current_blue_folders_names_group{k});
+                        disp(['Selected blue subfolder: ', chosen_folder_processing_blue{k}]);
+                    end
                 end            
             end
         else
@@ -101,11 +105,13 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                 disp(['Created new gcamp saving folder: ', newFolderPath_gcamp]);
                 chosen_folder_processing_gcamp{k} = newFolderPath_gcamp;
 
-                % Create a new folder with the current datetime for blue
-                newFolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
-                mkdir(newFolderPath_blue);
-                disp(['Created new blue saving folder: ', newFolderPath_blue]);
-                chosen_folder_processing_blue{k} = newFolderPath_blue;
+                % Create a new folder with the current datetime for blue (only if not empty)
+                if ~isempty(current_blue_folders_names_group)
+                    newFolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
+                    mkdir(newFolderPath_blue);
+                    disp(['Created new blue saving folder: ', newFolderPath_blue]);
+                    chosen_folder_processing_blue{k} = newFolderPath_blue;
+                end
             end
         end
     elseif ~isempty(user_choice1) && strcmpi(user_choice1, '1')
@@ -120,10 +126,12 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                 chosen_folder_processing_gcamp{k} = fullfile(date_group_paths{k}, most_recent_subfolder_gcamp.name, current_gcamp_folders_names_group{k});
                 disp(['Automatically selected the most recent gcamp subfolder: ', chosen_folder_processing_gcamp{k}]);
 
-                % Select the most recent one for blue
-                most_recent_subfolder_blue = specificSubfolders(1);  % The first after sorting in descending order
-                chosen_folder_processing_blue{k} = fullfile(date_group_paths{k}, most_recent_subfolder_blue.name, current_blue_folders_names_group{k});
-                disp(['Automatically selected the most recent blue subfolder: ', chosen_folder_processing_blue{k}]);
+                % Select the most recent one for blue (only if not empty)
+                if ~isempty(current_blue_folders_names_group)
+                    most_recent_subfolder_blue = specificSubfolders(1);
+                    chosen_folder_processing_blue{k} = fullfile(date_group_paths{k}, most_recent_subfolder_blue.name, current_blue_folders_names_group{k});
+                    disp(['Automatically selected the most recent blue subfolder: ', chosen_folder_processing_blue{k}]);
+                end
             end
         end
     end
