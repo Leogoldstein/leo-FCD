@@ -3,8 +3,8 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
     animal_type = current_animal_type{1}; % Par exemple, 'FCD'
 
     % Charger ou créer les en-têtes nécessaires
-    headers_general = {'Identifier', 'TseriesFolder', 'Age', 'RecordingTime', 'OpticalZoom','Depth(μm)', 'RecordingDuration(minutes)'};
-    headers_case_3 = {'SamplingRate', 'SynchronousFrames', 'ActiveCellsNumber', 'MeanFrequencyMinutes', 'StdFrequencyMinutes', 'ActiveCellsDensity(/μm2)', 'MeanMaxPairwiseCorr'};
+    headers_general = {'Identifier', 'TseriesFolder', 'Age', 'RecordingTime', 'OpticalZoom', 'Depth(μm)', 'RecordingDuration(minutes)'};
+    headers_case_3 = {'SamplingRate', 'SynchronousFrames', 'ActiveCellsNumber', 'ActiveCellsNumberBlue', 'MeanFrequencyMinutes', 'MeanFrequencyMinutesBlue', 'StdFrequencyMinutes', 'StdFrequencyMinutesBlue', 'ActiveCellsDensity(/μm2)', 'ActiveCellsDensityBlue', 'MeanMaxPairwiseCorr', 'MeanMaxPairwiseCorrBlue'};
     headers_case_4 = {'SCEsThreshold', 'SCEsNumber', 'SCEsFrequency(Hz)', 'MeanActiveCellsSCEsNumber', 'PercentageActiveCellsSCEs', 'MeanSCEsduration(ms)'};
     all_headers = [headers_general, headers_case_3, headers_case_4];
 
@@ -24,6 +24,10 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
     else
         % Charger les données existantes depuis la feuille correspondante
         existing_data = readcell(pathexcel, 'Sheet', animal_type);
+        % If sheet exists, ensure it's initialized correctly
+        if isempty(existing_data)
+            existing_data = [all_headers; cell(0, numel(all_headers))]; % If data is empty, initialize with headers
+        end
     end
 
     % Parcourir toutes les dates et âges fournis
@@ -32,13 +36,14 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
             % Chercher une ligne correspondante (même Identifier, Date et Age)
             row_to_update = find_row_for_update(identifier, tseries_folders{m}, ages{m}, existing_data);
 
-            % Si une ligne existe déjà, mettre à jour uniquement les colonnes nécessaires
+            % Vérifier si la ligne existe déjà
             if row_to_update ~= -1
+                % Si une ligne existe déjà, mettre à jour uniquement les colonnes nécessaires
                 switch analysis_choice
                     case 3
-                        existing_data(row_to_update, 4:14) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m)};
+                        existing_data(row_to_update, 4:19) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m), varargin{12}(m), varargin{13}(m), varargin{14}(m), varargin{15}(m), varargin{16}(m)};
                     case 4
-                        existing_data(row_to_update, 15:20) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
+                        existing_data(row_to_update, 20:25) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
                 end
             else
                 % Si aucune ligne correspondante n'existe, ajouter une nouvelle ligne complète
@@ -46,15 +51,15 @@ function export_data(identifier, tseries_folders, ages, analysis_choice, pathexc
                 new_row(1:3) = {identifier, tseries_folders{m}, ages{m}}; % Identifier, Date, Age
                 switch analysis_choice
                     case 3
-                        new_row(4:14) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m)};
+                        new_row(4:19) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m), varargin{12}(m), varargin{13}(m), varargin{14}(m), varargin{15}(m), varargin{16}(m)};
                     case 4
-                        new_row(15:20) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
+                        new_row(20:25) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
                 end
-                existing_data = [existing_data; new_row];
+                existing_data = [existing_data; new_row]; % Ajouter la nouvelle ligne
             end
         catch ME
             % En cas d'erreur, afficher l'erreur et continuer
-            disp(['Error processing group at index ', num2str(m), ': ', ME.message]);
+            disp(['Error exportation group at index ', num2str(m), ': ', ME.message]);
         end
     end
 

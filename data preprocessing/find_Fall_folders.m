@@ -1,7 +1,8 @@
 function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
     % Initialiser la cellule pour stocker les chemins pour chaque type de dossier
     numFolders = length(selectedFolders);
-    TseriesFolders = cell(numFolders, 4); 
+    TseriesFolders = cell(numFolders, 4);  % Stocker les chemins Gcamp, Red, Blue, Green
+    TSeriesPaths = cell(numFolders, 4);   % Stocker les chemins pour chaque type de dossier
     true_env_paths = {};  % Initialiser la cellule pour les chemins d'environnement
     lastFolderNames = cell(numFolders, 4); % Cellule pour stocker les noms des derniers dossiers
 
@@ -16,29 +17,30 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
         end
         
         % Vérifier les dossiers 'TSeries' dans le répertoire sélectionné
-        TSeriesFolders = dir(fullfile(selectedFolder, 'TSeries*'));
+        TSeriesFoldersList = dir(fullfile(selectedFolder, 'TSeries*'));
         
         % Gérer les cas où aucun dossier 'TSeries' n'est trouvé
-        if isempty(TSeriesFolders)
+        if isempty(TSeriesFoldersList)
             disp(['No TSeries folders found in folder: ', selectedFolder, '. Skipping.']);
-            return;
+            continue;  % Passer au dossier suivant
         end
         
         % Initialiser un tableau cellulaire pour les chemins TSeries (Gcamp, Red, Blue, Green)
-        TSeriesPaths = {[], [], [], []};  % [Gcamp, Red, Blue, Green]
-        labels = {'Gcamp', 'Red', 'Blue'};
+        TSeriesPathsTemp = {[], [], [], []};  % [Gcamp, Red, Blue, Green]
+        labels = {'Gcamp', 'Red', 'Blue', 'Green'};
         
         % Stocker les correspondances potentielles
         foundFolders = {[], [], [], []}; % [Gcamp, Red, Blue, Green]
         
         % Parcourir les dossiers trouvés
-        for i = 1:length(TSeriesFolders)
-            folderName = TSeriesFolders(i).name;
+        for i = 1:length(TSeriesFoldersList)
+            folderName = TSeriesFoldersList(i).name;
             fullPath = fullfile(selectedFolder, folderName);
             
             matched = false; % Indicateur pour voir si le dossier correspond à un label
             
-            for k = 2:length(labels) % Commence à 2 car Gcamp est le cas par défaut
+            % Parcourir les labels et associer les dossiers
+            for k = 1:length(labels)
                 if contains(lower(folderName), lower(labels{k}))
                     foundFolders{k} = [foundFolders{k}; {fullPath}];
                     matched = true; % Marquer comme trouvé
@@ -54,78 +56,81 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
         % Sélectionner un seul dossier par catégorie
         for k = 1:length(labels)
             if isscalar(foundFolders{k})
-                TSeriesPaths{k} = foundFolders{k}{1};
+                TSeriesPathsTemp{k} = foundFolders{k}{1};
             elseif length(foundFolders{k}) > 1
                 % Extraire le dernier dossier de chaque chemin
                 [~, lastFolders] = cellfun(@(x) fileparts(x), foundFolders{k}, 'UniformOutput', false);
                 
                 % Extraire uniquement le nom du dernier dossier (pas tout le chemin)
-                lastFolderNames = cellfun(@(x) strrep(x, filesep, ''), lastFolders, 'UniformOutput', false);
+                lastFolderNamesList = cellfun(@(x) strrep(x, filesep, ''), lastFolders, 'UniformOutput', false);
                 
                 % Afficher uniquement les derniers dossiers
-                choice = listdlg('ListString', lastFolderNames, 'SelectionMode', 'single', ...
+                choice = listdlg('ListString', lastFolderNamesList, 'SelectionMode', 'single', ...
                                  'PromptString', ['Select the ', labels{k}, ' folder:']);
                 if ~isempty(choice)
-                    TSeriesPaths{k} = foundFolders{k}{choice};
+                    TSeriesPathsTemp{k} = foundFolders{k}{choice};
                 end
             end
         end
 
-        % Récupérer le nom du dernier dossier pour chaque label et le stocker
-        for k = 1:length(TSeriesPaths)
-            if ~isempty(TSeriesPaths{k})  % Vérifier que TSeriesPaths{k} n'est pas vide
-                [~, lastFolderName] = fileparts(TSeriesPaths{k});
-                lastFolderNames{idx, k} = lastFolderName;  % Sauvegarder le nom du dernier dossier pour chaque label
+        % Mettre à jour TSeriesPaths avec les chemins correspondants
+        TSeriesPaths(idx, :) = TSeriesPathsTemp;  % Mettre à jour la cellule pour chaque dossier
+
+        % Sauvegarder les noms des derniers dossiers pour chaque type
+        for k = 1:length(TSeriesPathsTemp)
+            if ~isempty(TSeriesPathsTemp{k})
+                [~, lastFolderName] = fileparts(TSeriesPathsTemp{k});
+                lastFolderNames{idx, k} = lastFolderName;
             else
-                lastFolderNames{idx, k} = NaN;  % Si le chemin est vide, mettre NaN
+                lastFolderNames{idx, k} = [];  % Si le chemin est vide, mettre []
             end
         end
- 
+        
         % Vérifier et organiser les fichiers dans le dossier 'Blue'
-        if ~isempty(TSeriesPaths{3})
-            blueFolder = fullfile(TSeriesPaths{3}, 'Blue');
-            greenFolder = fullfile(TSeriesPaths{3}, 'Green');
+        if ~isempty(TSeriesPaths{idx, 3})  % Blue folder
+            blueFolder = fullfile(TSeriesPaths{idx, 3}, 'Blue');
+            greenFolder = fullfile(TSeriesPaths{idx, 3}, 'Green');
             
             if ~exist(blueFolder, 'dir')
                 mkdir(blueFolder);
-                tiffFiles = dir(fullfile(TSeriesPaths{3}, '*Ch3*.tif'));
+                tiffFiles = dir(fullfile(TSeriesPaths{idx, 3}, '*Ch3*.tif'));
                 for j = 1:length(tiffFiles)
-                    movefile(fullfile(TSeriesPaths{3}, tiffFiles(j).name), fullfile(blueFolder, tiffFiles(j).name));
+                    movefile(fullfile(TSeriesPaths{idx, 3}, tiffFiles(j).name), fullfile(blueFolder, tiffFiles(j).name));
                 end
             end
             
             if ~exist(greenFolder, 'dir')
                 mkdir(greenFolder);
-                tiffFiles = dir(fullfile(TSeriesPaths{3}, '*Ch2*.tif'));
+                tiffFiles = dir(fullfile(TSeriesPaths{idx, 3}, '*Ch2*.tif'));
                 for j = 1:length(tiffFiles)
-                    movefile(fullfile(TSeriesPaths{3}, tiffFiles(j).name), fullfile(greenFolder, tiffFiles(j).name));
+                    movefile(fullfile(TSeriesPaths{idx, 3}, tiffFiles(j).name), fullfile(greenFolder, tiffFiles(j).name));
                 end
             end
             
             % Sauvegarder les chemins des dossiers Blue et Green
-            TSeriesPaths{3} = blueFolder;
-            TSeriesPaths{4} = greenFolder;
+            TSeriesPaths{idx, 3} = blueFolder;
+            TSeriesPaths{idx, 4} = greenFolder;
         end
 
         % Traiter le fichier .env uniquement pour TSeriesPathGcamp
-        if ~isempty(TSeriesPaths{1})
-            [env_paths_all, env_path] = processEnvFile(TSeriesPaths{1});
+        if ~isempty(TSeriesPaths{idx, 1})
+            [env_paths_all, env_path] = processEnvFile(TSeriesPaths{idx, 1});
         else
             disp('No GCaMP TSeries found, skipping .env processing.');
             env_path = '';  % Si aucun fichier .env trouvé
         end
         
         % Traiter suite2p et la sélection des dossiers 'plane' pour tous les types de TSeries
-        dataFolders = {NaN, NaN, NaN, NaN};  % Correspond à Gcamp, Red, Blue, Green
+        dataFolders = {[], [], [], []};  % Correspond à Gcamp, Red, Blue, Green
         
         % Boucler à travers chaque chemin TSeries et traiter
         for j = 1:4  % Gcamp, Red, Blue, Green
-            currentPath = TSeriesPaths{j};
+            currentPath = TSeriesPaths{idx, j};
             
             if ~isempty(currentPath)
                 dataFolder = process_TSeries(currentPath);
             
-                % Vérifier que dataFolder n'est pas NaN, et ajouter le dossier correspondant
+                % Vérifier que dataFolder n'est pas [], et ajouter le dossier correspondant
                 if ~isnan(dataFolder)
                     dataFolders{j} = dataFolder;
                 end
@@ -157,6 +162,7 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
 end
 
 
+
 % Function to process the .env file for GCaMP folder
 function [env_paths_all, env_path] = processEnvFile(TSeriesPathGcamp)
     % Recherche des fichiers .env dans le dossier GCaMP
@@ -186,7 +192,7 @@ function dataFolder = process_TSeries(TSeriesPath)
     suite2pFolder = fullfile(TSeriesPath, 'suite2p');
     if ~isfolder(suite2pFolder)
         disp(['Error: No ''suite2p'' folder found in ', TSeriesPath, '. Skipping processing.']);
-        dataFolder = NaN;  % Valeur par défaut si suite2p n'est pas trouvé
+        dataFolder = [];  % Valeur par défaut si suite2p n'est pas trouvé
         return
     end
     
@@ -195,7 +201,7 @@ function dataFolder = process_TSeries(TSeriesPath)
     
     if isempty(planeFolders)
         disp(['Error: No ''plane'' folder found in ', suite2pFolder, '. Skipping processing.']);
-        dataFolder = NaN;  % Valeur par défaut si aucun dossier 'plane' n'est trouvé
+        dataFolder = [];  % Valeur par défaut si aucun dossier 'plane' n'est trouvé
         return;  % Skip to the next iteration if no plane folders are found
     end
     
@@ -207,7 +213,7 @@ function dataFolder = process_TSeries(TSeriesPath)
         dataFolder = uigetdir(suite2pFolder, 'Select a plane folder');
         if dataFolder == 0
             disp(['User clicked Cancel for folder: ', TSeriesPath]);
-            dataFolder = NaN;  % Valeur par défaut si l'utilisateur annule la sélection
+            dataFolder = [];  % Valeur par défaut si l'utilisateur annule la sélection
             return;
         end
     end
