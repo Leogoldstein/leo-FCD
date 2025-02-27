@@ -44,9 +44,11 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                             error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
                         end
                         npy_file_path = fullfile(selected_path, selected_file);
+                        npy_file_paths{i} = npy_file_path;
                     else
                         % S'il n'y a qu'un seul fichier, l'utiliser directement
                         npy_file_path = fullfile(cellpose_files_canal(1).folder, cellpose_files_canal(1).name);
+                        npy_file_paths{i} = npy_file_path;
                     end
             
                     % Créer le chemin du fichier TIFF aligné en remplaçant le suffixe _seg.npy par .tiff
@@ -150,9 +152,9 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                         % Lire le fichier TIFF
                         image_tiff = imread(tif_file_path);
             
-                        meanImg_channels{1} = meanImg;  
-                        meanImg_channels{canal} = meanImg; 
-            
+                        meanImg_channels{1} = meanImg;                   
+                        meanImg_channels{canal} = image_tiff; 
+                        
                         save(fullfile(path, 'meanImg_channels.mat'), 'meanImg_channels');
             
                         % Aligner l'image
@@ -190,16 +192,26 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                             npy_file_paths{i} = [];
                         end
                     end
-                    filePath = fullfile(path, 'meanImg_channels.mat');
-                    if exist(filePath, 'file') == 2 
-                        data = load(filePath);
-                        if isfield(data, 'meanImg_channels')
-                            [all_meanImg{i,:}] = deal(data.meanImg_channels{:});
-                        end
-                    else
-                        fprintf('Fichier meanImg_channels.mat introuvable : %s\n', path);
+                end
+                filePath = fullfile(path, 'meanImg_channels.mat');
+                if exist(filePath, 'file') == 2 
+                    data = load(filePath);
+                    if isfield(data, 'meanImg_channels')
+                        % Initialize a cell array to store images
+                         for j = 1:numel(data.meanImg_channels)
+                            % Vérifier si la cellule est vide avant d'assigner
+                            if ~isempty(data.meanImg_channels{j})
+                                % Assigner l'image (en conservant le type d'origine)
+                                all_meanImg{i,j} = data.meanImg_channels{j};
+                            else
+                                % Si vide, assigner NaN dans la cellule (pour garder la cohérence du type)
+                                all_meanImg{i,j} = []; % Option : remplacer les vides par NaN
+                            end
+                         end
                     end
-                end                  
+                else
+                    fprintf('Fichier meanImg_channels.mat introuvable : %s\n', path);
+                end
             else
                 aligned_images{i} = [];
                 npy_file_paths{i} = [];

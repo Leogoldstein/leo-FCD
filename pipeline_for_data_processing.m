@@ -310,7 +310,8 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
     end
     if DF_blue
         disp('No pre-existing blue cell data found. Processing blue cells...');
-        [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders, date_group_paths);       
+        [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders, date_group_paths); 
+        assignin('base', 'all_meanImg', all_meanImg);
         [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
         [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);       
         

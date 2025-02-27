@@ -20,6 +20,9 @@ function [all_matched_cellpose_idx, all_matched_gcamp_idx] = show_masks_and_over
                 gcamp_props = all_gcamp_props{m};
                 cellpose_props = all_props_cellpose{n};
                 meanImg = all_meanImg{n, 1};
+                if isa(meanImg, 'single')
+                    meanImg = uint16(meanImg);  % Conversion de single en uint16
+                end
 
                 % Vérifier si les centroids existent
                 if isempty(gcamp_props) || isempty(cellpose_props)
