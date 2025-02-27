@@ -13,7 +13,7 @@
     include_blue_cells = input('Do you want to include blue cells in your analysis? (1/2): ', 's');
 
     % Ask for analysis types, multiple choices separated by spaces
-    analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), or clusters analysis (5)? ', 's');
+    analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), clusters analysis (5), or code development (6)? ', 's');
     
     % Prompt for the first choice
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
@@ -132,6 +132,12 @@
                     plot_assemblies(all_assemblystat, all_outline_gcampx, all_outline_gcampy, all_meandistance_assembly, current_gcamp_folders_group);
                     plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
                
+                case 6
+                    [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, ~, ~, ~, all_Raster, all_MAct, all_Raster_blue, all_MAct_blue] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);  
+                    plot_raster(date_group_paths, all_MAct, all_Raster, all_MAct_blue, all_Raster_blue)
+
+
+
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
@@ -186,44 +192,49 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
     all_Raster_blue = cell(numFolders, 1);
     all_MAct_blue = cell(numFolders, 1);
     DF_blue = false;
-   
-    % Loop through each save path
+  
     for m = 1:numFolders
         % Create the full file path for results_raster.mat
         filePath = fullfile(gcamp_output_folders{m}, 'results_raster.mat');       
         
          if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
+
             % Try to load the pre-existing results from the file
             data = load(filePath);
         
             % Assign the relevant fields to the output variables if they exist in the file
-            if isfield(data, 'DF')
-                all_DF{m} = data.DF;
-            else
-                all_DF{m} = []; % Assigne une cellule vide si 'DF' n'existe pas
-            end
-            
             if strcmpi(include_blue_cells, '1')
                 if isfield(data, 'DF_blue')
                     all_DF_blue{m} = data.DF_blue;
                 else
                     all_DF_blue{m} = [];
+                    DF_blue = true;
                 end   
-            
+                if isfield(data, 'DF_gcamp_not_blue')
+                    all_DF{m} = data.DF_gcamp_not_blue;
+                elseif isfield(data, 'DF')
+                    all_DF{m} = data.DF;
+                else
+                    all_DF{m} = [];
+                end                  
                 if isfield(data, 'Raster_blue')
                     all_Raster_blue{m} = data.Raster_blue;
                 else
                     all_Raster_blue{m} = [];
-                end 
-            
+                end      
                 if isfield(data, 'MAct_blue')
                     all_MAct_blue{m} = data.MAct_blue;
                 else
                     all_MAct_blue{m} = [];
-                end      
+                end
+            elseif strcmpi(include_blue_cells, '2')
+                if isfield(data, 'DF')
+                    all_DF{m} = data.DF;
+                else
+                    all_DF{m} = [];
+                end          
             end
-            
             if isfield(data, 'isort1')
                 all_isort1{m} = data.isort1;
             else
@@ -240,14 +251,12 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
                 all_Sm{m} = data.Sm;
             else
                 all_Sm{m} = [];
-            end
-            
+            end          
             if isfield(data, 'Raster')
                 all_Raster{m} = data.Raster;
             else
                 all_Raster{m} = [];
-            end
-            
+            end       
             if isfield(data, 'MAct')
                 all_MAct{m} = data.MAct;
             else
@@ -265,7 +274,6 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
             else
                 all_synchronous_frames{m} = [];
             end
-
         else
             % If the results_raster.mat doesn't exist, initialize everything to empty
             all_DF{m} = [];
@@ -289,23 +297,19 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
            all_synchronous_frames{m} = synchronous_frames;
         end                
         MinPeakDistance = 5;
-        if isempty(all_DF{m})
+        if isempty(all_DF{m}) 
             [F, DF, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
-            all_DF{m} = DF_processing(DF);
-            fields = {'isort1', 'isort2', 'Sm', 'Raster', 'MAct'};
-            for i = 1:length(fields)
-                if isempty(eval(['all_' fields{i} '{m}']))
-                    [isort1, isort2, Sm, Raster, MAct, ~] = raster_processing(all_DF{m}, ops, MinPeakDistance, sampling_rate, synchronous_frames, gcamp_output_folders{m});
-                    eval(['all_' fields{i} '{m} = ' fields{i} ';']);
-                end
-            end
-        end
-        if isempty(all_DF_blue{m}) && strcmpi(include_blue_cells, '1')
-            disp('No pre-existing blue cell data found. Processing blue cells...');
-            DF_blue = true;
+            all_DF{m} = DF_processing(DF);   
+            [isort1, isort2, Sm, Raster, MAct, ~] = raster_processing(all_DF{m}, ops, MinPeakDistance, all_sampling_rate{m}, all_synchronous_frames{m}, gcamp_output_folders{m});
+            all_isort1{m} = isort1;
+            all_isort2{m} = isort2;
+            all_Sm{m} = Sm;
+            all_Raster{m} = Raster;
+            all_MAct{m} = MAct;
         end
     end
     if DF_blue
+        disp('No pre-existing blue cell data found. Processing blue cells...');
         [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders, date_group_paths);       
         [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths);
         [all_NCell, all_outline_gcampx, all_outline_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);       
@@ -343,9 +347,9 @@ function [all_DF, all_DF_blue, all_sampling_rate, all_synchronous_frames, all_is
                 end
             end
         end
-        [matched_cellpose_idx, matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, numFolders, valid_indices, all_meanImg, aligned_images);                          
-        [all_DF_blue, all_Raster_blue, all_MAct_blue] = get_blue_cells_rois(gcamp_output_folders, valid_indices, current_gcamp_TSeries_path, all_num_cells_masks, all_mask_cellpose, matched_cellpose_idx, matched_gcamp_idx, all_DF, MinPeakDistance, all_synchronous_frames);
-        
+        [all_matched_cellpose_idx, all_matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, gcamp_output_folders, valid_indices, all_meanImg, aligned_images);                          
+        [all_DF_blue, all_Raster_blue, all_MAct_blue, all_DF_gcamp_not_blue] = get_blue_cells_rois(gcamp_output_folders, valid_indices, current_gcamp_TSeries_path, all_num_cells_masks, all_mask_cellpose,all_matched_cellpose_idx, all_matched_gcamp_idx, all_DF, MinPeakDistance, all_synchronous_frames); 
+        all_DF = all_DF_gcamp_not_blue;
     end
 end
 

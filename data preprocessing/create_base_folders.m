@@ -12,7 +12,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
         subfolders = subfolders([subfolders.isdir]);  % Keep only directories
         subfolders = subfolders(~ismember({subfolders.name}, {'.', '..'}));  % Remove '.' and '..'
 
-        % Filter subfolders that match the date format (e.g., dd_mm_yy_HH_MM)
+        % Filter subfolders that match the date format (e.g., yy_mm_dd_HH_MM)
         specificSubfolders = subfolders(~cellfun('isempty', regexp({subfolders.name}, '^\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$', 'once')));
 
         % Add to the list of all specific subfolders
@@ -46,12 +46,16 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
         end
 
         % Sort subfolders in descending order (most recent first)
-        dates = datetime({specificSubfolders.name}, 'InputFormat', 'dd_MM_yy_HH_mm', 'Format', 'dd_MM_yy_HH_mm');
-        [~, sortedIndices] = sort(dates, 'descend');
+        dates = datetime({specificSubfolders.name}, 'InputFormat', 'yy_MM_dd_HH_mm', 'Format', 'yy_MM_dd_HH_mm');
+        [~, sortedIndices] = sort(dates, 'descend'); 
         specificSubfolders = specificSubfolders(sortedIndices);  
 
         % Store unique subfolders
         all_unique_subfolders = [all_unique_subfolders, {specificSubfolders.name}];
+        
+        % Display the sorted dates for debugging
+        % disp('Sorted subfolder dates:');
+        % disp({specificSubfolders.name});
     end
 
     unique_subfolders = unique(all_unique_subfolders);  % Remove duplicates
@@ -111,23 +115,46 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                 end
             end
         end
-    elseif ~isempty(user_choice1) && strcmpi(user_choice1, '1')
+        elseif ~isempty(user_choice1) && strcmpi(user_choice1, '1')
         % Auto-select most recent subfolder
         for k = 1:length(date_group_paths)
             specificSubfolders = all_specificSubfolders{k};
-
+    
             if ~isempty(specificSubfolders)
+                % Trier les sous-dossiers par date (les plus récents en premier)
+                dates = datetime({specificSubfolders.name}, 'InputFormat', 'yy_MM_dd_HH_mm', 'Format', 'yy_MM_dd_HH_mm');
+                [~, sortedIndices] = sort(dates, 'descend');
+                specificSubfolders = specificSubfolders(sortedIndices);
+    
+                % Afficher les sous-dossiers triés pour débogage
+                % disp('Sorted subfolder dates:');
+                % disp({specificSubfolders.name});
+                
+                % Sélectionner le sous-dossier le plus récent
                 most_recent_subfolder_gcamp = specificSubfolders(1);
                 chosen_folder_processing_gcamp{k} = fullfile(date_group_paths{k}, most_recent_subfolder_gcamp.name, current_gcamp_folders_names_group{k});
                 disp(['Automatically selected the most recent gcamp subfolder: ', chosen_folder_processing_gcamp{k}]);
-
+    
+                % Vérification si le dossier existe
+                if exist(chosen_folder_processing_gcamp{k}, 'dir') ~= 7
+                    disp(['⚠️ Folder does not exist: ', chosen_folder_processing_gcamp{k}]);
+                end
+    
+                % Traitement pour le dossier bleu (si applicable)
                 if ~isempty(current_blue_folders_names_group) && ~isempty(current_blue_folders_names_group{k})
                     most_recent_subfolder_blue = specificSubfolders(1);
                     chosen_folder_processing_blue{k} = fullfile(date_group_paths{k}, most_recent_subfolder_blue.name, current_blue_folders_names_group{k});
                     disp(['Automatically selected the most recent blue subfolder: ', chosen_folder_processing_blue{k}]);
+    
+                    % Vérification si le dossier bleu existe
+                    if exist(chosen_folder_processing_blue{k}, 'dir') ~= 7
+                        disp(['⚠️ Folder does not exist: ', chosen_folder_processing_blue{k}]);
+                    end
                 else
                     chosen_folder_processing_blue{k} = [];
                 end
+            else
+                disp('No subfolders found for this date.');
             end
         end
     end

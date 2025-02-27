@@ -1,36 +1,43 @@
 function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, directory)
-    % raster_processing processes data given DF and ops, and saves results for a single directory.
-    %
-    % Inputs:
-    % - DF: Data matrix (dF/F) for the single directory
-    % - ops: ops structure or Python dictionary for the single directory
-    % - MinPeakDistance: Minimum distance between peaks in frames
-    % - sampling_rate: Sampling rate of the data
-    % - synchronous_frames: Number of synchronous frames for activity calculation
-    % - directory: Directory to save individual results
-    %
-    % Outputs:
-    % - isort1: Sorted data from first sorting step
-    % - isort2: Sorted data from second sorting step
-    % - Sm: Sm matrix for the single directory
-    % - Raster: Raster data for the single directory
-    % - MAct: MAct vector for the single directory
-    % - Acttmp2: Temporary activity data for the single directory
+    % Initialisation des sorties en cas d'erreur
+    isort1 = [];
+    isort2 = [];
+    Sm = [];
+    Raster = [];
+    MAct = [];
+    Acttmp2 = [];
 
     try 
+        % Vérification de la taille de DF
+        if isempty(DF) || size(DF, 1) < 2 || size(DF, 2) < 2
+            error('DF est vide ou ses dimensions sont incorrectes.');
+        end
+        
         % Process raster plots
         [isort1, isort2, Sm] = processRasterPlots(DF, ops);
-        
-        % Call Sumactivity to get raster and activity data
-        [Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames);
-                
-        % Save individual results for the current directory
+
+        % Vérification des dimensions avant de passer à Sumactivity
+        if ~isempty(isort1) && ~isempty(isort2)
+            % Vérification de la cohérence des dimensions
+            if size(DF, 1) ~= size(isort1, 1)
+                error('Dimension mismatch: DF et isort1 doivent avoir le même nombre de lignes.');
+            end
+
+            % Calcul des activités et du raster
+            [Raster, MAct, Acttmp2] = Sumactivity(DF, MinPeakDistance, synchronous_frames);
+        else
+            warning('processRasterPlots n''a pas retourné de résultats valides.');
+        end
+
+        % Sauvegarde des résultats
         save(fullfile(directory, 'results_raster.mat'), ...
             'MinPeakDistance', 'sampling_rate', 'synchronous_frames', 'DF', ...
             'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'Acttmp2');
-        
+
     catch ME
-        % If there's an error, display a warning
-        warning('Error processing raster plots for directory %s: %s', directory, ME.message);
+        % Affichage de l'erreur et assignation de NaN aux sorties
+        warning('Erreur lors du traitement du raster pour %s: %s', directory, ME.message);
+        isort1 = NaN; isort2 = NaN; Sm = NaN;
+        Raster = NaN; MAct = NaN; Acttmp2 = NaN;
     end
 end

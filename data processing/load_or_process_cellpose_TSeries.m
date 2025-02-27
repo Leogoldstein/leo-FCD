@@ -1,23 +1,206 @@
 function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders, date_group_paths)
     
-    numFolders = length(blue_output_folders);
+    numFolders = length(date_group_paths);
     npy_file_paths = cell(numFolders, 1);
-    aligned_images = cell(numFolders, 1);
-    numGroups = length(folders_groups);
-    all_meanImg = cell(numFolders, numGroups);
+    aligned_images = cell(numFolders, 1);   
     base_output_folders = cell(numFolders, 1);
+    
+    numChannels = length(folders_groups);
+    meanImg_channels = cell(numChannels, 1);
+    labels = {'Gcamp', 'Red', 'Blue', 'Green'};
+    all_meanImg = cell(numFolders, numChannels);
 
-    for i = 1:numel(blue_output_folders)
+    for i = 1:numel(date_group_paths)
         if isempty(blue_output_folders{i})
             path = fullfile(date_group_paths{i}, 'Single images');
             if isfolder(path)
-                currentFolder = folders_groups{1}{i, 1};
-                [npy_file_path, aligned_image] = load_or_process_cellpose_SingleImage(date_group_paths{i}, currentFolder);
-                all_meanImg = [];  % Initialisation
-                aligned_images{i} = aligned_image;
-                npy_file_paths{i} = npy_file_path;
+                canal = input('Veuillez entrer le canal (1 pour Rouge, 2 pour Vert, 3 pour Bleu) : ');
+                if ~ismember(canal, [1, 2, 3])
+                    error('Le canal spécifié doit être 1 (Rouge), 2 (Vert) ou 3 (Bleu).');
+                end
+                
+                % Déterminer le suffixe correspondant au canal
+                switch canal
+                    case 1
+                        canal_str = 'Ch1';
+                    case 2
+                        canal_str = 'Ch2';
+                    case 3
+                        canal_str = 'Ch3';
+                end
+
+                % Lister tous les fichiers .npy dans le répertoire
+                cellpose_files = dir(fullfile(path, '*_seg.npy'));
+                cellpose_files_canal = cellpose_files(contains({cellpose_files.name}, canal_str));
+                
+                % Vérifier si des fichiers NPY sont disponibles pour ce canal
+                if ~isempty(cellpose_files_canal)
+                    if numel(cellpose_files_canal) > 1
+                        % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un parmi ceux qui contiennent le canal
+                        [selected_file, selected_path] = uigetfile({['*' canal_str '*.npy']}, ...
+                            ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
+                            fullfile(cellpose_files_canal(1).folder, cellpose_files_canal(1).name));
+                        if isequal(selected_file, 0)
+                            error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
+                        end
+                        npy_file_path = fullfile(selected_path, selected_file);
+                    else
+                        % S'il n'y a qu'un seul fichier, l'utiliser directement
+                        npy_file_path = fullfile(cellpose_files_canal(1).folder, cellpose_files_canal(1).name);
+                    end
+            
+                    % Créer le chemin du fichier TIFF aligné en remplaçant le suffixe _seg.npy par .tiff
+                    aligned_image_path = strrep(npy_file_path, '_seg.npy', '.tif');
+                    
+                    % Lire l'image alignée
+                    aligned_image = imread(aligned_image_path);
+                    aligned_image = normalize_image(aligned_image);
+                    aligned_images{i} = aligned_image;
+                else
+                    % Si aucun fichier NPY n'existe, passer aux fichiers TIF
+                    tif_files = dir(fullfile(path, '*.tif'));
+                    tif_files_canal = tif_files(contains({tif_files.name}, canal_str));
+                    
+                    % Vérifier si des fichiers TIF sont disponibles pour ce canal
+                    if isempty(tif_files_canal)
+                        % Aucun fichier TIF trouvé, afficher un message et passer à l'itération suivante
+                        disp(['Aucun fichier contenant "', canal_str, '" trouvé dans le répertoire spécifié. Passage au suivant.']);
+                        aligned_images{i} = [];
+                        npy_file_paths{i} = [];
+                        continue;
+                    elseif numel(tif_files_canal) > 1
+                        % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un parmi ceux qui contiennent le canal
+                        [selected_file, selected_path] = uigetfile({['*' canal_str '*.tif']}, ...
+                            ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
+                            fullfile(tif_files_canal(1).folder, tif_files_canal(1).name));
+                        if isequal(selected_file, 0)
+                            error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
+                        end
+                        tif_file_path = fullfile(selected_path, selected_file);
+                    else
+                        % S'il n'y a qu'un seul fichier, l'utiliser directement
+                        tif_file_path = fullfile(tif_files_canal(1).folder, tif_files_canal(1).name);
+                    end
+                    
+                    % Définir le chemin de sortie pour l'image alignée en utilisant toujours tif_file_path
+                    [~, file_name, ~] = fileparts(tif_file_path); % Utiliser tif_file_path pour le chemin de sortie
+                    
+                    % Vérifier si le fichier est déjà aligné (commence par 'aligned_')
+                    if contains(file_name, 'aligned_')
+                        % Si le fichier est déjà aligné, charger l'image alignée
+                        aligned_image = imread(tif_file_path);
+                        fprintf('Fichier déjà aligné trouvé, chargé : %s\n', tif_file_path);
+                        
+                        % Retrouver l'image originale en enlevant le préfixe 'aligned_' et ajouter '.tif'
+                        original_file_name = [strrep(file_name, 'aligned_', ''), '.tif'];
+                        original_file_path = fullfile(path, original_file_name);
+                        image_tiff = imread(original_file_path);
+                        fprintf('Image originale trouvée, chargée : %s\n', original_file_path);
+            
+                        % Normalisation des images avant l'animation
+                        image_tiff = normalize_image(image_tiff);
+                        aligned_image = normalize_image(aligned_image);
+                        aligned_images{i} = aligned_image;
+            
+                        % Animation avant de lancer Cellpose
+                        display_animation(image_tiff, aligned_image);
+                        
+                        launch_cellpose_from_matlab(tif_file_path);
+            
+                        % Vérifier si le fichier .npy existe après l'exécution de Cellpose
+                        [~, folder_name, ~] = fileparts(tif_file_path);
+                        npy_file_name = [folder_name, '_seg.npy'];
+                        npy_file_path = fullfile(path, npy_file_name);
+                        if isfile(npy_file_path)
+                            npy_file_paths{i} = npy_file_path;
+                            fprintf('Fichier NPY trouvé et ajouté\n');
+                        else
+                            % Si aucun fichier NPY n'est trouvé, afficher un message
+                            disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
+                            npy_file_paths{i} = [];
+                        end
+                    else
+                        currentFolder = folders_groups{1}{i, 1};
+                        % Determine file extension and check for .npy files
+                        [~, ~, ext] = fileparts(currentFolder);
+                        files = dir(fullfile(currentFolder, '*.npy'));
+            
+                        if ~isempty(files)
+                            % Unpack .npy file paths
+                            newOpsPath = fullfile(currentFolder, 'ops.npy');
+            
+                            % Call the Python function to load stats and ops
+                            try
+                                mod = py.importlib.import_module('python_function');
+                                ops = mod.read_npy_file(newOpsPath);
+                                meanImg = double(ops{'meanImg'});
+                            catch ME
+                                error('Failed to call Python function: %s', ME.message);
+                            end
+            
+                        elseif strcmp(ext, '.mat')
+                            % Load .mat files
+                            data = load(currentFolder);
+                            ops = data.ops;
+                            meanImg = ops.meanImg;
+                        else
+                            error('Unsupported file type: %s', ext);
+                        end
+                                   
+                        % Lire le fichier TIFF
+                        image_tiff = imread(tif_file_path);
+            
+                        meanImg_channels{1} = meanImg;  
+                        meanImg_channels{canal} = meanImg; 
+            
+                        save(fullfile(path, 'meanImg_channels.mat'), 'meanImg_channels');
+            
+                        % Aligner l'image
+                        reg_obj = imregcorr(image_tiff, meanImg, 'similarity');
+                        T = reg_obj.T;
+                        
+                        % Appliquer la transformation finale
+                        aligned_image = imwarp(image_tiff, affine2d(T), 'OutputView', imref2d(size(image_tiff)));
+                        aligned_image = normalize_image(aligned_image);
+                        aligned_images{i} = aligned_image;
+            
+                        % Sauvegarder l'image alignée
+                        aligned_image_path = fullfile(path, ['aligned_', file_name, '.tif']);
+                        imwrite(aligned_image, aligned_image_path, 'tif');
+                        fprintf('Image alignée sauvegardée : %s\n', aligned_image_path);
+                        
+                        % Normalisation des images avant l'animation
+                        image_tiff = normalize_image(image_tiff);
+            
+                        % Animation avant de lancer Cellpose
+                        display_animation(image_tiff, aligned_image);
+                        
+                        launch_cellpose_from_matlab(aligned_image_path);
+            
+                        % Vérifier si le fichier .npy existe après l'exécution de Cellpose
+                        [~, folder_name, ~] = fileparts(aligned_image_path);
+                        npy_file_name = [folder_name, '_seg.npy'];
+                        npy_file_path = fullfile(path, npy_file_name);
+                        if isfile(npy_file_path)
+                            npy_file_paths{i} = npy_file_path;
+                            fprintf('Fichier NPY trouvé et ajouté\n');
+                        else
+                            % Si aucun fichier NPY n'est trouvé, afficher un message
+                            disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
+                            npy_file_paths{i} = [];
+                        end
+                    end
+                    filePath = fullfile(path, 'meanImg_channels.mat');
+                    if exist(filePath, 'file') == 2 
+                        data = load(filePath);
+                        if isfield(data, 'meanImg_channels')
+                            [all_meanImg{i,:}] = deal(data.meanImg_channels{:});
+                        end
+                    else
+                        fprintf('Fichier meanImg_channels.mat introuvable : %s\n', path);
+                    end
+                end                  
             else
-                all_meanImg = [];  % Initialisation
                 aligned_images{i} = [];
                 npy_file_paths{i} = [];
             end
@@ -57,7 +240,18 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                     if isfile(aligned_image_path)
                         aligned_image = imread(aligned_image_path);
                         fprintf('Fichier aligné chargé : %s\n', aligned_image_path);
+                        
+                        % Retrouver l'image originale en enlevant le préfixe 'aligned_' et ajouter '.tif'
+                        original_file_name = [strrep(file_name, 'aligned_', ''), '.tif'];
+                        original_file_path = fullfile(path, original_file_name);
+                        image_tiff = imread(original_file_path);
+                        fprintf('Image originale trouvée, chargée : %s\n', original_file_path);
+            
+                        % Normalisation des images avant l'animation
+                        image_tiff = normalize_image(image_tiff);
+                        aligned_image = normalize_image(aligned_image);
                         aligned_images{i} = aligned_image;
+                        display_animation(image_tiff, aligned_image);
     
                         % Lancer Cellpose
                         launch_cellpose_from_matlab(aligned_image_path);  
@@ -70,16 +264,10 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                             npy_file_paths{i} = [];
                         end
                     else
-                        fprintf('Aucun fichier aligné trouvé dans : %s\n', blue_output_folders{i});
-                    
-                        numGroups = length(folders_groups);
-                        meanImg_channels = cell(numGroups, 1);
-                        labels = {'Gcamp', 'Red', 'Blue', 'Green'};
-                        
-                        for j = 1:numGroups
+                        fprintf('Aucun fichier aligné trouvé dans : %s\n', blue_output_folders{i});  
+                        for j = 1:numChannels
                             try
                                 input_path = string(folders_groups{j}{i, 1});
-                                disp(input_path)
                                 
                                 [~, ~, ext] = fileparts(input_path);
                                 files = dir(fullfile(input_path, '*.npy'));
@@ -114,16 +302,15 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
     
                             catch ME
                                 warning('Erreur de chargement pour le groupe: %s. Erreur: %s', labels{j}, ME.message);
-                                meanImg_channels{j} = NaN; % Stocker NaN en cas d'erreur
                             end
                         end
                         
                         %Vérification avant l'alignement
                         if all(cellfun(@(x) ~isempty(x) && isnumeric(x), {meanImg_channels{1}, meanImg_channels{4}}))
-                            reg_obj = imregcorr(meanImg_channels{1}, meanImg_channels{4}, 'similarity'); % recalage de l'image gcamp avec l'image green (image de référence)
+                            reg_obj = imregcorr(meanImg_channels{4}, meanImg_channels{1}, 'similarity'); % recalage de l'image green avec l'image gcamp (image de référence)
     
                             T = reg_obj.T;
-    
+
                             if ~isempty(meanImg_channels{3}) && isnumeric(meanImg_channels{3})
                                 aligned_image = imwarp(meanImg_channels{3}, affine2d(T), 'OutputView', imref2d(size(meanImg_channels{3})));          
                                 not_aligned_image = meanImg_channels{4};
@@ -172,7 +359,7 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
             end    
         end
     end
-end
+end 
 
 function norm_img = normalize_image(img)
     % Fonction pour normaliser une image entre 0 et 255
@@ -230,220 +417,44 @@ function display_animation(image_tiff, aligned_image)
 end
 
 function launch_cellpose_from_matlab(image_path)
-    % Cette fonction configure l'environnement Python pour Cellpose et lance Cellpose depuis MATLAB avec l'interface graphique.
-    % 
-    % Arguments :
-    %   - image_path : Le chemin vers l'image à traiter (format .tif ou .png).
-    % Exemple :
-    %   launch_cellpose_from_matlab('C:\chemin\vers\image.png');
+    % This function configures the Python environment for Cellpose and launches Cellpose from MATLAB with the graphical interface.
+    %
+    % Arguments:
+    %   - image_path: The path to the image to be processed (in .tif or .png format).
+    % Example:
+    %   launch_cellpose_from_matlab('C:\path\to\image.png');
 
-    % Chemin vers l'exécutable Python dans l'environnement Conda de Cellpose
-    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';  % Mettre à jour avec votre propre chemin
+    % Path to the Python executable in the Cellpose Conda environment
+    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';  % Update with your own path
 
-    % Vérifier si l'environnement Python est déjà configuré
-    currentPyEnv = pyenv;  % Ne pas passer d'arguments à pyenv
+    % Check if the Python environment is already configured
+    currentPyEnv = pyenv;  % Do not pass arguments to pyenv
     if ~strcmp(currentPyEnv.Version, pyExec)
-        % Si l'environnement Python n'est pas celui que nous voulons, on le configure
-        pyenv('Version', pyExec);  % Configurer l'environnement Python
+        % If the Python environment is not the one we want, configure it
+        pyenv('Version', pyExec);  % Configure the Python environment
     end
 
-    % Vérifier si l'environnement Python est correctement configuré
+    % Check if the Python environment is properly configured
     try
-        py.print("Python fonctionne dans Cellpose !");
+        py.print("Python is working with Cellpose!");
     catch
-        error('Erreur : Python n''est pas correctement configuré dans MATLAB.');
+        error('Error: Python is not properly configured in MATLAB.');
     end
 
-    % Ajouter le chemin d'accès de Cellpose au PATH si nécessaire
+    % Add Cellpose path to the PATH if necessary
     setenv('PATH', [getenv('PATH') ';C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts']);
     
-    % Ouvrir l'interface graphique de Cellpose
-    fprintf('Lancement de Cellpose avec l''interface graphique pour traiter l''image : %s\n', image_path);
-    cellposePath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts\cellpose.exe';  % Spécifiez le chemin absolu
-    system(cellposePath);  % Lancer Cellpose avec l'interface graphique
-end
-
-
-function [npy_file_path, aligned_image] = load_or_process_cellpose_SingleImage(date_group_path, currentFolder)
-    % Fonction pour recaler les images en fonction d'un canal et d'un fichier moyen
-    %
-    % Arguments :
-    % - date_group_paths : Cell array contenant les chemins de chaque dossier
-    % - all_ops : Cell array contenant les structures ou dictionnaires Python pour chaque dossier
-    %
-    % Retourne :
-    % - npy_file_paths : Cell array contenant les chemins des fichiers NPY traités
+    % Ask the user if they want to launch Cellpose
+    answer = questdlg('Do you want to launch Cellpose to process this image?', ...
+        'Launch Cellpose', 'Yes', 'No', 'No');
     
-    % Demander à l'utilisateur de spécifier le canal
-    canal = input('Veuillez entrer le canal (1 pour Rouge, 2 pour Vert, 3 pour Bleu) : ');
-    if ~ismember(canal, [1, 2, 3])
-        error('Le canal spécifié doit être 1 (Rouge), 2 (Vert) ou 3 (Bleu).');
-    end
-    
-    % Déterminer le suffixe correspondant au canal
-    switch canal
-        case 1
-            canal_str = 'Ch1';
-        case 2
-            canal_str = 'Ch2';
-        case 3
-            canal_str = 'Ch3';
-    end
-
-    path = fullfile(date_group_path, 'Single images');
-    
-    % Lister tous les fichiers .npy dans le répertoire
-    cellpose_files = dir(fullfile(path, '*_seg.npy'));
-    cellpose_files_canal = cellpose_files(contains({cellpose_files.name}, canal_str));
-    
-    % Vérifier si des fichiers NPY sont disponibles pour ce canal
-    if ~isempty(cellpose_files_canal)
-        if numel(cellpose_files_canal) > 1
-            % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un parmi ceux qui contiennent le canal
-            [selected_file, selected_path] = uigetfile({['*' canal_str '*.npy']}, ...
-                ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
-                fullfile(cellpose_files_canal(1).folder, cellpose_files_canal(1).name));
-            if isequal(selected_file, 0)
-                error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
-            end
-            npy_file_path = fullfile(selected_path, selected_file);
-        else
-            % S'il n'y a qu'un seul fichier, l'utiliser directement
-            npy_file_path = fullfile(cellpose_files_canal(1).folder, cellpose_files_canal(1).name);
-        end
-
-        % Créer le chemin du fichier TIFF aligné en remplaçant le suffixe _seg.npy par .tiff
-        aligned_image_path = strrep(npy_file_path, '_seg.npy', '.tif');
-        
-        % Lire l'image alignée
-        aligned_image = imread(aligned_image_path);
-        aligned_image = normalize_image(aligned_image);
+    % If the user answers "Yes", launch Cellpose
+    if strcmp(answer, 'Yes')
+        % Launch the Cellpose graphical interface
+        fprintf('Launching Cellpose with the graphical interface to process the image: %s\n', image_path);
+        cellposePath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts\cellpose.exe';  % Specify the absolute path
+        system(cellposePath);  % Launch Cellpose with the graphical interface
     else
-        % Si aucun fichier NPY n'existe, passer aux fichiers TIF
-        tif_files = dir(fullfile(path, '*.tif'));
-        tif_files_canal = tif_files(contains({tif_files.name}, canal_str));
-        
-        % Vérifier si des fichiers TIF sont disponibles pour ce canal
-        if isempty(tif_files_canal)
-            % Aucun fichier TIF trouvé, afficher un message et passer à l'itération suivante
-            disp(['Aucun fichier contenant "', canal_str, '" trouvé dans le répertoire spécifié. Passage au suivant.']);
-            aligned_image = [];
-            npy_file_path = [];
-            return;
-        elseif numel(tif_files_canal) > 1
-            % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un parmi ceux qui contiennent le canal
-            [selected_file, selected_path] = uigetfile({['*' canal_str '*.tif']}, ...
-                ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
-                fullfile(tif_files_canal(1).folder, tif_files_canal(1).name));
-            if isequal(selected_file, 0)
-                error('Aucun fichier sélectionné. Opération annulée par l''utilisateur.');
-            end
-            tif_file_path = fullfile(selected_path, selected_file);
-        else
-            % S'il n'y a qu'un seul fichier, l'utiliser directement
-            tif_file_path = fullfile(tif_files_canal(1).folder, tif_files_canal(1).name);
-        end
-        
-        % Définir le chemin de sortie pour l'image alignée en utilisant toujours tif_file_path
-        [~, file_name, ~] = fileparts(tif_file_path); % Utiliser tif_file_path pour le chemin de sortie
-        
-        % Vérifier si le fichier est déjà aligné (commence par 'aligned_')
-        if contains(file_name, 'aligned_')
-            % Si le fichier est déjà aligné, charger l'image alignée
-            aligned_image = imread(tif_file_path);
-            fprintf('Fichier déjà aligné trouvé, chargé : %s\n', tif_file_path);
-            
-            % Retrouver l'image originale en enlevant le préfixe 'aligned_' et ajouter '.tif'
-            original_file_name = [strrep(file_name, 'aligned_', ''), '.tif'];
-            original_file_path = fullfile(path, original_file_name);
-            image_tiff = imread(original_file_path);
-            fprintf('Image originale trouvée, chargée : %s\n', original_file_path);
-
-            % Normalisation des images avant l'animation
-            image_tiff = normalize_image(image_tiff);
-            aligned_image = normalize_image(aligned_image);
-
-            % Animation avant de lancer Cellpose
-            display_animation(image_tiff, aligned_image);
-            
-            launch_cellpose_from_matlab(tif_file_path);
-
-            % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-            [~, folder_name, ~] = fileparts(tif_file_path);
-            npy_file_name = [folder_name, '_seg.npy'];
-            npy_file_path = fullfile(path, npy_file_name);
-            if isfile(npy_file_path)
-                npy_file_path = npy_file_path;
-                fprintf('Fichier NPY trouvé et ajouté\n');
-            else
-                % Si aucun fichier NPY n'est trouvé, afficher un message
-                disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
-                npy_file_path = [];
-            end
-
-        else
-            % Determine file extension and check for .npy files
-            [~, ~, ext] = fileparts(currentFolder);
-            files = dir(fullfile(currentFolder, '*.npy'));
-
-            if ~isempty(files)
-                % Unpack .npy file paths
-                newOpsPath = fullfile(currentFolder, 'ops.npy');
-
-                % Call the Python function to load stats and ops
-                try
-                    mod = py.importlib.import_module('python_function');
-                    ops = mod.read_npy_file(newOpsPath);
-                    meanImg = double(ops{'meanImg'});
-                catch ME
-                    error('Failed to call Python function: %s', ME.message);
-                end
-
-            elseif strcmp(ext, '.mat')
-                % Load .mat files
-                data = load(currentFolder);
-                ops = data.ops;
-                meanImg = ops.meanImg;
-            else
-                error('Unsupported file type: %s', ext);
-            end
-
-            % Lire le fichier TIFF
-            image_tiff = imread(tif_file_path);
-    
-            % Aligner l'image
-            reg_obj = imregcorr(image_tiff, meanImg, 'similarity');
-            T = reg_obj.T;
-            
-            % Appliquer la transformation finale
-            aligned_image = imwarp(image_tiff, affine2d(T), 'OutputView', imref2d(size(image_tiff)));
-            aligned_image = normalize_image(aligned_image);
-
-            % Sauvegarder l'image alignée
-            aligned_image_path = fullfile(path, ['aligned_', file_name, '.tif']);
-            imwrite(aligned_image, aligned_image_path, 'tif');
-            fprintf('Image alignée sauvegardée : %s\n', aligned_image_path);
-            
-            % Normalisation des images avant l'animation
-            image_tiff = normalize_image(image_tiff);
-
-            % Animation avant de lancer Cellpose
-            display_animation(image_tiff, aligned_image);
-            
-            launch_cellpose_from_matlab(aligned_image_path);
-
-            % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-            [~, folder_name, ~] = fileparts(aligned_image_path);
-            npy_file_name = [folder_name, '_seg.npy'];
-            npy_file_path = fullfile(path, npy_file_name);
-            if isfile(npy_file_path)
-                npy_file_path = npy_file_path;
-                fprintf('Fichier NPY trouvé et ajouté\n');
-            else
-                % Si aucun fichier NPY n'est trouvé, afficher un message
-                disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
-                npy_file_path = [];
-            end
-        end
+        fprintf('Cellpose was not launched. Process canceled.\n');
     end
 end

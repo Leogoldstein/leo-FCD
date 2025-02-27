@@ -127,8 +127,6 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             selected_groups(k).animal_group = current_animal_group;
             selected_groups(k).animal_type = unique(type_part(date_indices)); % Save unique types
             selected_groups(k).dates = date_part(date_indices);
-            disp(size(TSeriesPaths));  % Affiche la taille du tableau
-            disp(size(TSeriesPaths));  % Affiche la taille du tableau
             selected_groups(k).pathTSeries = TSeriesPaths(date_indices, :);
             selected_groups(k).folders = TseriesFolders(date_indices, :);
             selected_groups(k).folders_names = lastFolderNames(date_indices, :);
