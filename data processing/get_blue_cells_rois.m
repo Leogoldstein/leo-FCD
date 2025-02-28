@@ -104,35 +104,35 @@ function [all_DF_blue, all_Raster_blue, all_MAct_blue, all_DF_gcamp_not_blue] = 
                     end
                     
                     % Affichage de l'image moyenne à la 50ème image
-                   if page == 50 && tIdx==1
-                        mean_image = mean(mean_image_stack, 3);
-                        
-                        figure;
-                        set(gcf, 'Position', get(0, 'ScreenSize'));  % Met la figure en plein écran
-                        imshow(mean_image, []);
-                        hold on;
-                        title('Appuie sur Espace pour afficher chaque cellule');
-                        
-                        % Boucle pour afficher une cellule à la fois
-                        for ncell = 1:ncells_cellpose
-                            [y, x] = find(mask_cellpose{ncell});
-                            
-                            if ~isempty(x) && ~isempty(y)
-                                plot(x, y, 'r.', 'MarkerSize', 10, 'LineWidth', 2);
-                            else
-                                disp(['⚠ Aucun pixel trouvé pour la cellule ', num2str(ncell)]);
-                            end
-                            
-                            % Attendre un appui sur la touche Espace avant de continuer
-                            waitforbuttonpress;
-                            key = get(gcf, 'CurrentCharacter');
-                            if key ~= ' '  % Si ce n'est pas la touche espace, on sort de la boucle
-                                break;
-                            end
-                        end
-                        %set(gca, 'YDir', 'reverse');
-                        hold off;
-                   end
+                   % if page == 50 && tIdx==1
+                   %      mean_image = mean(mean_image_stack, 3);
+                   % 
+                   %      figure;
+                   %      set(gcf, 'Position', get(0, 'ScreenSize'));  % Met la figure en plein écran
+                   %      imshow(mean_image, []);
+                   %      hold on;
+                   %      title('Appuie sur Espace pour afficher chaque cellule');
+                   % 
+                   %      % Boucle pour afficher une cellule à la fois
+                   %      for ncell = 1:ncells_cellpose
+                   %          [y, x] = find(mask_cellpose{ncell});
+                   % 
+                   %          if ~isempty(x) && ~isempty(y)
+                   %              plot(x, y, 'r.', 'MarkerSize', 10, 'LineWidth', 2);
+                   %          else
+                   %              disp(['⚠ Aucun pixel trouvé pour la cellule ', num2str(ncell)]);
+                   %          end
+                   % 
+                   %          % Attendre un appui sur la touche Espace avant de continuer
+                   %          waitforbuttonpress;
+                   %          key = get(gcf, 'CurrentCharacter');
+                   %          if key ~= ' '  % Si ce n'est pas la touche espace, on sort de la boucle
+                   %              break;
+                   %          end
+                   %      end
+                   %      %set(gca, 'YDir', 'reverse');
+                   %      hold off;
+                   % end
 
                     % Mettre à jour l'indice de l'image
                     image_idx = image_idx + 1;
