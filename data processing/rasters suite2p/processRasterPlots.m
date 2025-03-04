@@ -2,17 +2,21 @@ function [isort1, isort2, Sm] = processRasterPlots(DF, ops)
     % Process raster plots using the rastermap algorithm
     % Input:
     % - DF: Data matrix where rows are neurons and columns are timepoints
-    % - ops: Structure containing parameters for the rastermap algorithm
+    % - ops (optional): Structure containing parameters for the rastermap algorithm
     % Output:
     % - isort1: Sorted neuron indices for the first dimension
     % - isort2: Sorted neuron indices for the second dimension
     % - Sm: Similarity matrix used for sorting
-    
+
     % Define default values
     defaultOps = struct('nC', 20, 'iPC', 1:100, 'isort', [], 'useGPU', 0, 'upsamp', 100, 'sigUp', 1);
     
-    % Merge default options with user provided options
-    ops = mergeStructs(defaultOps, ops);
+    % If ops is not provided or empty, use default options
+    if isempty(ops)
+        ops = defaultOps;
+    else
+        ops = mergeStructs(defaultOps, ops);
+    end
 
     % Check and adjust iPC to be within bounds
     [nNeurons, nTimepoints] = size(DF);
@@ -32,6 +36,9 @@ end
 function ops = mergeStructs(defaultOps, userOps)
     % Merge default options with user provided options
     ops = defaultOps;
+    if isempty(userOps)
+        return;
+    end
     fields = fieldnames(userOps);
     for i = 1:numel(fields)
         ops.(fields{i}) = userOps.(fields{i});

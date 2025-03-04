@@ -1,128 +1,81 @@
-function [all_matched_cellpose_idx, all_matched_gcamp_idx] = show_masks_and_overlaps(all_gcamp_props, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose, all_outline_gcampx, all_outline_gcampy, gcamp_output_folders, valid_indices, all_meanImg, aligned_images) 
+function [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, cellpose_props, meanImg, aligned_image, outline_gcampx, outline_gcampy, outline_x_cellpose, outline_y_cellpose, R, m)
+    try
+        % Extraire les centroids sous forme de matrice Nx2
+        gcamp_centroids = cat(1, gcamp_props.Centroid); % Nx2
+        cellpose_centroids = cat(1, cellpose_props.Centroid); % Mx2
 
-    % Définir un rayon d'influence pour la correspondance des centroids
-    R = 5; % Ajustable en fonction de la résolution et des tailles cellulaires
-
-    % Initialiser les listes pour stocker les indices appariés
-    numFoldersCellpose = length(valid_indices);
-    numFolders = length(gcamp_output_folders); 
-    all_matched_cellpose_idx = cell(1, numFoldersCellpose);
-    all_matched_gcamp_idx = cell(1, numFoldersCellpose);
-    
-    n = 0;
-    for m = 1:numFolders  
-        if ismember(m, valid_indices)
-            try
-                n = n + 1; % Correspondance avec valid_indices
-                
-                % Vérifier que n est valide pour all_props_cellpose et all_meanImg
-                if n > length(all_props_cellpose) || n > size(all_meanImg, 1)
-                    fprintf('Skipping group %d: Index n=%d out of range.\n', m, n);
-                    continue;
-                end
-                
-                % Extraire les données du groupe
-                gcamp_props = all_gcamp_props{m};
-    
-                % Vérifier que gcamp_props et cellpose_props existent
-                if isempty(gcamp_props) || isempty(all_props_cellpose{n})
-                    fprintf('Skipping group %d: No centroids found.\n', m);
-                    continue;
-                end
-                
-                cellpose_props = all_props_cellpose{n};
-                meanImg = all_meanImg{n, 1};
-    
-                % Vérifier si meanImg est vide
-                if isempty(meanImg)
-                    fprintf('Skipping group %d: meanImg is empty.\n', m);
-                    continue;
-                end
-    
-                % Assurer une conversion en uint16 si besoin
-                if isa(meanImg, 'single')
-                    meanImg = uint16(meanImg);
-                end
-    
-                % Extraire les centroids sous forme de matrice Nx2
-                gcamp_centroids = cat(1, gcamp_props.Centroid); % Nx2
-                cellpose_centroids = cat(1, cellpose_props.Centroid); % Mx2
-    
-                % Vérifier si les centroids existent
-                if isempty(gcamp_centroids) || isempty(cellpose_centroids)
-                    fprintf('Skipping group %d: No centroids to match.\n', m);
-                    continue;
-                end
-    
-                % Calculer les distances entre chaque pair de centroids
-                D = pdist2(gcamp_centroids, cellpose_centroids);
-    
-                % Trouver les centroids qui se chevauchent dans le rayon R
-                [matched_gcamp_idx, matched_cellpose_idx] = find(D < R);
-    
-                % Stocker les indices dans les listes globales
-                all_matched_gcamp_idx{n} = matched_gcamp_idx;
-                all_matched_cellpose_idx{n} = matched_cellpose_idx;
-    
-                % Calcul de IoU (Intersection over Union)
-                intersection = length(unique(matched_gcamp_idx));
-                total_gcamp = size(gcamp_centroids, 1);
-                total_cellpose = size(cellpose_centroids, 1);
-                union = total_gcamp + total_cellpose - intersection;
-                IoU = intersection / union;
-    
-                % ---- Affichage des figures ----
-                figure;
-    
-                % ---- Subplot 1: GCaMP sur meanImg ----
-                subplot(1, 2, 1);
-                hold on;
-                imagesc(meanImg);
-                colormap gray;
-                axis image;
-    
-                for ncell = 1:length(all_outline_gcampx{m})
-                    plot(all_outline_gcampx{m}{ncell}, all_outline_gcampy{m}{ncell}, '.', 'MarkerSize', 1, 'Color', 'g');
-                end
-    
-                for ncell = 1:length(gcamp_props)
-                    plot(gcamp_props(ncell).Centroid(1), gcamp_props(ncell).Centroid(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, 'Color', 'g');
-                end
-    
-                plot(gcamp_centroids(matched_gcamp_idx,1), gcamp_centroids(matched_gcamp_idx,2), 'ro', 'MarkerSize', 8, 'LineWidth', 2);
-                title('GCaMP sur meanImg');
-                xlabel('X Coordinate');
-                ylabel('Y Coordinate');
-                set(gca, 'YDir', 'reverse');
-                hold off;
-    
-                % ---- Subplot 2: Cellpose sur aligned_image ----
-                subplot(1, 2, 2);
-                hold on;
-                imagesc(aligned_images{m});
-                colormap gray;
-                axis image;
-    
-                for ncell = 1:length(all_outlines_x_cellpose{n})
-                    plot(all_outlines_x_cellpose{n}{ncell}, all_outlines_y_cellpose{n}{ncell}, '.', 'MarkerSize', 1, 'Color', 'b');
-                end
-    
-                for ncell = 1:length(cellpose_props)
-                    plot(cellpose_props(ncell).Centroid(1), cellpose_props(ncell).Centroid(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, 'Color', 'b');
-                end
-    
-                plot(cellpose_centroids(matched_cellpose_idx,1), cellpose_centroids(matched_cellpose_idx,2), 'ro', 'MarkerSize', 8, 'LineWidth', 2);
-                title(sprintf('Cellpose sur aligned_image (IoU: %.4f)', IoU));
-                xlabel('X Coordinate');
-                ylabel('Y Coordinate');
-                set(gca, 'YDir', 'reverse');
-                hold off;
-    
-                drawnow;
-    
-            catch ME
-                fprintf('Erreur dans le groupe %d: %s\n', m, ME.message);
-            end
+        % Vérifier si les centroids existent
+        if isempty(gcamp_centroids) || isempty(cellpose_centroids)
+            fprintf('Skipping group %d: No centroids to match.\n', m);
+            matched_gcamp_idx = [];
+            matched_cellpose_idx = [];
+            return;
         end
+
+        % Calculer les distances entre chaque pair de centroids
+        D = pdist2(gcamp_centroids, cellpose_centroids);
+
+        % Trouver les centroids qui se chevauchent dans le rayon R
+        [matched_gcamp_idx, matched_cellpose_idx] = find(D < R);
+
+        % Calcul de IoU (Intersection over Union)
+        intersection = length(unique(matched_gcamp_idx));
+        total_gcamp = size(gcamp_centroids, 1);
+        total_cellpose = size(cellpose_centroids, 1);
+        union = total_gcamp + total_cellpose - intersection;
+        IoU = intersection / union;
+
+        % ---- Affichage des figures ----
+        figure;
+
+        % ---- Subplot 1: GCaMP sur meanImg ----
+        subplot(1, 2, 1);
+        hold on;
+        imagesc(meanImg);
+        colormap gray;
+        axis image;
+
+        for ncell = 1:length(outline_gcampx)
+            plot(outline_gcampx{ncell}, outline_gcampy{ncell}, '.', 'MarkerSize', 1, 'Color', 'g');
+        end
+
+        for ncell = 1:length(gcamp_props)
+            plot(gcamp_props(ncell).Centroid(1), gcamp_props(ncell).Centroid(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, 'Color', 'g');
+        end
+
+        plot(gcamp_centroids(matched_gcamp_idx,1), gcamp_centroids(matched_gcamp_idx,2), 'ro', 'MarkerSize', 8, 'LineWidth', 2);
+        title('GCaMP sur meanImg');
+        xlabel('X Coordinate');
+        ylabel('Y Coordinate');
+        set(gca, 'YDir', 'reverse');
+        hold off;
+
+        % ---- Subplot 2: Cellpose sur aligned_image ----
+        subplot(1, 2, 2);
+        hold on;
+        imagesc(aligned_image);
+        colormap gray;
+        axis image;
+
+        for ncell = 1:length(outline_x_cellpose)
+            plot(outline_x_cellpose{ncell}, outline_y_cellpose{ncell}, '.', 'MarkerSize', 1, 'Color', 'b');
+        end
+
+        for ncell = 1:length(cellpose_props)
+            plot(cellpose_props(ncell).Centroid(1), cellpose_props(ncell).Centroid(2), 'x', 'MarkerSize', 8, 'LineWidth', 2, 'Color', 'b');
+        end
+
+        plot(cellpose_centroids(matched_cellpose_idx,1), cellpose_centroids(matched_cellpose_idx,2), 'ro', 'MarkerSize', 8, 'LineWidth', 2);
+        title(sprintf('Cellpose sur aligned_image (IoU: %.4f)', IoU));
+        xlabel('X Coordinate');
+        ylabel('Y Coordinate');
+        set(gca, 'YDir', 'reverse');
+        hold off;
+
+        drawnow;
+    catch ME
+        fprintf('Erreur dans le groupe %d: %s\n', m, ME.message);
+        matched_gcamp_idx = [];
+        matched_cellpose_idx = [];
     end
 end

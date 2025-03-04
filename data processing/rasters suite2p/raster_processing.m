@@ -1,4 +1,8 @@
 function [isort1, isort2, Sm, Raster, MAct, Acttmp2] = raster_processing(DF, ops, MinPeakDistance, sampling_rate, synchronous_frames, directory)
+    if isempty(ops)
+        ops = []; % Valeur par défaut si non fourni
+    end
+    
     % Initialisation des sorties en cas d'erreur
     isort1 = [];
     isort2 = [];

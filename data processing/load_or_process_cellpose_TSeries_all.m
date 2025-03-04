@@ -1,4 +1,4 @@
-function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders, date_group_paths)
+function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpose_TSeries_all(folders_groups, blue_output_folders, date_group_paths)
     
     numFolders = length(date_group_paths);
     npy_file_paths = cell(numFolders, 1);
@@ -279,14 +279,14 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                         fprintf('Aucun fichier aligné trouvé dans : %s\n', blue_output_folders{i});  
                         for j = 1:numChannels
                             try
-                                input_path = string(folders_groups{j}{i, 1});
+                                tif_file_path = string(folders_groups{j}{i, 1});
                                 
-                                [~, ~, ext] = fileparts(input_path);
-                                files = dir(fullfile(input_path, '*.npy'));
+                                [~, ~, ext] = fileparts(tif_file_path);
+                                files = dir(fullfile(tif_file_path, '*.npy'));
                     
                                 if ~isempty(files)
                                     % Unpack .npy file paths
-                                    newOpsPath = fullfile(input_path, 'ops.npy');
+                                    newOpsPath = fullfile(tif_file_path, 'ops.npy');
                     
                                     % Call the Python function to load stats and ops
                                     try
@@ -301,7 +301,7 @@ function [all_meanImg, aligned_images, npy_file_paths] = load_or_process_cellpos
                     
                                 elseif strcmp(ext, '.mat')
                                     % Load .mat files
-                                    data = load(input_path);
+                                    data = load(tif_file_path);
                                     ops = data.ops;
                                     meanImg = ops.meanImg;
                                 else

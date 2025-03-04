@@ -21,7 +21,6 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, date_group_paths, curren
         end
     end
 
-
     for m = 1:length(date_group_paths)
         try
             % Extract data from the input cell arrays

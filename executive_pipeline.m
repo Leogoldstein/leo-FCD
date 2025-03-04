@@ -8,7 +8,7 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
-[animal_date_list, env_paths_a5ll, selected_groups] = pipeline_for_data_preprocessing();
+[animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_preprocessing();
 
 % %
 % for idx = 1:length(env_paths_all)

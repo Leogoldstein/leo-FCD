@@ -1,4 +1,4 @@
-function [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_paths)
+function [all_num_cells_masks, all_mask_cellpose, all_props_cellpose, all_outlines_x_cellpose, all_outlines_y_cellpose] = load_or_process_cellpose_data_all(npy_file_paths)
     
     numFiles = length(npy_file_paths);
     % Initialiser les cellules pour stocker les données
