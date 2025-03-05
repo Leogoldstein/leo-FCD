@@ -206,7 +206,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
             disp(base_path)
             
             if ~isempty(cellpose_files)
-                disp(['Fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
+                disp(['Fichier NPY trouvé directement dans : ', npy_file_path]);
                 if numel(cellpose_files) > 1
                     [selected_file, selected_path] = uigetfile(fullfile(blue_output_folder, '*.npy'), ...
                         'Sélectionnez un fichier .npy');

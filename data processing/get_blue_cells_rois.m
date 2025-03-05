@@ -1,4 +1,4 @@
-function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gcamp_idx, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath, currentgcampOutputPath)
+function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gcamp_idx, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath)
     [~, num_frames] = size(DF_gcamp);
     
     used_gcamp_indices = unique(matched_gcamp_idx);
