@@ -69,6 +69,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
     if ~isempty(gcampdataFolders)
         % Créer une liste des animaux et des dates
         animal_date_list = create_animal_date_list(gcampdataFolders, PathSave);
+        disp(animal_date_list)
     
         % Ensure all parts are strings, replace empty values with empty strings
         type_part = animal_date_list(:, 1);

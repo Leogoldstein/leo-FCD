@@ -62,18 +62,21 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
     
     % Liste pour garder une trace des animaux dont l'âge a été assigné
     animals_with_assigned_ages = {};
-
+    
     % Charger les données existantes si le fichier .mat existe
     type_part = animal_date_list(:, 1);
     save_folder = fullfile(PathSave, type_part{1});
     save_file = 'animal_date_list.mat';
     type_save_path = fullfile(save_folder, save_file);
-
+    
     % Créer le dossier de sauvegarde si nécessaire
     if ~exist(save_folder, 'dir')
         mkdir(save_folder);
     end
-
+    
+    % Initialiser une variable pour stocker les anciennes données
+    existing_data = {};
+    
     % Vérifier si le fichier existe déjà
     if exist(type_save_path, 'file')
         fprintf('File "%s" exists. Loading existing data...\n', type_save_path);
@@ -81,16 +84,13 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
         % Charger les données existantes
         loaded_data = load(type_save_path);
         field_names = fieldnames(loaded_data);
-        loaded_data = loaded_data.(field_names{1}); % Extraire les données
-        
-        % Initialiser les indices pour ajouter ou modifier les données existantes
-        existing_data = loaded_data;
+        existing_data = loaded_data.(field_names{1}); % Extraire les données existantes
         
         % Assigner les âges existants aux animaux
         for i = 1:size(animal_date_list, 1)
             current_animal = animal_date_list{i, 3};
             current_date = animal_date_list{i, 4};
-
+    
             % Chercher l'animal et la date dans les données existantes
             idx = find(strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
             if ~isempty(idx)
@@ -101,7 +101,7 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
     else
         fprintf('No existing file found. Creating new file...\n');
     end
-
+    
     % Parcourir chaque groupe unique
     for g = 1:length(unique_groups)
         group = unique_groups{g};
@@ -126,11 +126,11 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
                         % Si un âge est déjà assigné, passer à la prochaine itération
                         continue;
                     end
-
+    
                     % Afficher les dates uniquement si l'âge n'est pas encore attribué
                     fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list{i, 3}, animal_date_list{i, 2});
                     disp(animal_date_list(animal_indices, 4)); % Afficher les dates associées à cet animal uniquement
-                    
+    
                     % Demander l'âge si nécessaire
                     age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list{i, 3}), 's');
     
@@ -161,8 +161,11 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             end
         end
     end
-
+    
+    % Combiner les anciennes données avec les nouvelles données
+    combined_data = [existing_data; animal_date_list];
+    
     % Sauvegarder les données combinées dans le fichier .mat
-    save(type_save_path, 'animal_date_list');
+    save(type_save_path, 'combined_data');
     fprintf('Data saved to "%s".\n', type_save_path);
 end

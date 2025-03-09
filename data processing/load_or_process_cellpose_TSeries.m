@@ -173,10 +173,10 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                         % Si aucun fichier NPY n'est trouvé, afficher un message
                         disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
                     end
-                end
-                
-                if isempty(meanImg_channels{1})
-                     filePath = fullfile(path, 'meanImg_channels.mat');          
+                end  
+            end
+             if isempty(meanImg_channels{1})
+                 filePath = fullfile(path, 'meanImg_channels.mat');          
                      if exist(filePath, 'file') == 2
                         data = load(filePath);
                         if isfield(data, 'meanImg_channels')
@@ -192,7 +192,6 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                             meanImg = meanImg_channels{1};
                         end
                      end
-                end
             end
         end
     else
