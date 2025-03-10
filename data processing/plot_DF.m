@@ -9,6 +9,9 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
             % Création du chemin pour sauvegarder la figure
             fig_save_path = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot.fig', ...
                 strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{idx}, ' ', '_')));
+
+            fig_save_path2 = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot.png', ...
+                strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{idx}, ' ', '_')));
             
             if exist(fig_save_path, 'file')
                disp(['Figure already exists and was skipped: ' fig_save_path]);
@@ -42,9 +45,15 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
             title(['DF for Animal: ' current_animal_group ...
                    ', Age: ' current_ages_group{idx}]);
 
-            % Sauvegarde de la figure
-            saveas(gcf, fig_save_path);
-            disp(['DF plots saved in: ' fig_save_path]);
+            % Sauvegarde de la figure avec try-catch
+            try
+                saveas(gcf, fig_save_path);
+                saveas(gcf, fig_save_path2);
+                disp(['DF plots saved in: ' fig_save_path]);
+            catch ME
+                disp(['Error saving figure: ' fig_save_path]);
+                disp(['Error message: ' ME.message]);
+            end
             
             close(gcf);
         end
@@ -53,7 +62,10 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
         for idx = 1:length(all_DF_all)
 
             % Création du chemin pour sauvegarder la figure
-            fig_save_path = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot.fig', ...
+            fig_save_path = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot_mtor.fig', ...
+                strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{idx}, ' ', '_')));
+
+            fig_save_path2 = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot_mtor.png', ...
                 strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{idx}, ' ', '_')));
             
             if exist(fig_save_path, 'file')
@@ -107,9 +119,15 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
                    ', Age: ' current_ages_group{idx}]);
             legend show;
 
-            % Sauvegarde de la figure
-            saveas(gcf, fig_save_path);
-            disp(['DF plots saved in: ' fig_save_path]);
+            % Sauvegarde de la figure avec try-catch
+            try
+                saveas(gcf, fig_save_path);
+                saveas(gcf, fig_save_path2);
+                disp(['DF plots saved in: ' fig_save_path]);
+            catch ME
+                disp(['Error saving figure: ' fig_save_path]);
+                disp(['Error message: ' ME.message]);
+            end
             
             close(gcf);
         end

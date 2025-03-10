@@ -1,11 +1,10 @@
-function [isort1, isort2, Sm] = raster_processing(DF, ops)
+function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
     
     % Initialisation des sorties en cas d'erreur
     isort1 = [];
     isort1_blue = [];
     isort2 = [];
     Sm = [];
-  
 
     try 
         % Vérification de la taille de DF
@@ -14,11 +13,9 @@ function [isort1, isort2, Sm] = raster_processing(DF, ops)
         end
         
         % Vérification de la présence de ops
-        if nargin < 2 || isempty(ops)
+        if nargin < 3 || isempty(ops)
             ops = struct(); % Initialisation à une structure vide si non fourni
-        end
-        
-        
+        end       
    
         % Process raster plots
         [isort1, isort2, Sm] = processRasterPlots(DF, ops);
@@ -33,7 +30,7 @@ function [isort1, isort2, Sm] = raster_processing(DF, ops)
 
     catch ME
         % Affichage de l'erreur et assignation de NaN aux sorties
-        warning('Erreur lors du traitement du raster pour %s: %s', directory, ME.message);
+        warning('Erreur lors du traitement du raster pour %s: %s', path, ME.message);
         isort1 = []; isort2 = NaN; Sm = NaN;
         Raster = NaN; MAct = NaN; Acttmp2 = NaN;
     end

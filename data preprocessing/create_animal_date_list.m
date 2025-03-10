@@ -56,16 +56,24 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             animal_date_list{k, 5} = NaN; % Initialiser la colonne des âges à NaN
         end
     end
-
+    %disp(animal_date_list)
     % Identifier les groupes et animaux uniques
-    unique_groups = unique(animal_date_list(:, 2));
+    group_names = animal_date_list(:, 2);
+    
+    % Remove empty character arrays
+    group_names = group_names(~cellfun('isempty', group_names));
+    
+    % Get unique values
+    unique_groups = unique(group_names);
+
     
     % Liste pour garder une trace des animaux dont l'âge a été assigné
     animals_with_assigned_ages = {};
     
     % Charger les données existantes si le fichier .mat existe
     type_part = animal_date_list(:, 1);
-    save_folder = fullfile(PathSave, type_part{1});
+    idx = find(~cellfun(@isempty, type_part), 1, 'first');
+    save_folder = fullfile(PathSave, type_part{idx});
     save_file = 'animal_date_list.mat';
     type_save_path = fullfile(save_folder, save_file);
     
@@ -116,7 +124,7 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             animal_indices = strcmp(animal_date_list(:, 3), animal_group) & group_indices;
     
             % Trouver les indices des lignes où l'âge est NaN
-            nan_indices = find(cellfun(@(x) isnumeric(x) && isnan(x), animal_date_list(:, 5)));
+            nan_indices = find(cellfun(@(x) isnumeric(x) && any(isnan(x)), animal_date_list(:, 5)));
     
             % Parcourir les dates associées à cet animal et demander l'âge
             for i = nan_indices'
@@ -162,10 +170,39 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
         end
     end
     
-    % Combiner les anciennes données avec les nouvelles données
-    combined_data = [existing_data; animal_date_list];
+    % Vérifier les doublons avant d'ajouter les nouvelles lignes
+    for i = 1:size(animal_date_list, 1)
+        current_animal = animal_date_list{i, 3};
+        current_group = animal_date_list{i, 2};
+        current_date = animal_date_list{i, 4};
+        
+        % Vérifier si la ligne existe déjà dans existing_data
+        if size(existing_data, 2) >= 4
+            % Ensure non-empty character values
+            group_col   = existing_data(:, 2);
+            animal_col  = existing_data(:, 3);
+            date_col    = existing_data(:, 4);
+        
+            group_col(cellfun(@isempty, group_col)) = {''};
+            animal_col(cellfun(@isempty, animal_col)) = {''};
+            date_col(cellfun(@isempty, date_col)) = {''};
+        
+            duplicate_idx = find(strcmp(animal_col, current_animal) & ...
+                                 strcmp(group_col, current_group) & ...
+                                 strcmp(date_col, current_date), 1);
+        else
+            warning('existing_data does not have enough columns.');
+            duplicate_idx = [];
+        end
+    
+        % Si la ligne n'existe pas déjà, l'ajouter à existing_data
+        if isempty(duplicate_idx)
+            existing_data = [existing_data; animal_date_list(i, :)];
+        end
+    end
     
     % Sauvegarder les données combinées dans le fichier .mat
-    save(type_save_path, 'combined_data');
+    save(type_save_path, 'existing_data');
     fprintf('Data saved to "%s".\n', type_save_path);
+
 end

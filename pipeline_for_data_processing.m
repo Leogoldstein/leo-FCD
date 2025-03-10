@@ -97,8 +97,8 @@
                         disp(['Performing raster plot analysis for ', current_animal_group]);
                         [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
                         assignin('base', 'gcamp_data', gcamp_data);
-                        build_rasterplot(all_data.DF, all_data.isort1, all_data.blue_indices, gcamp_data.MAct, blue_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group);
-                        plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices)
+                        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct
+                        plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
                         build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
                     
                     case 3
@@ -251,7 +251,7 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
         if isempty(gcamp_data.DF{m})
             [~, DF_gcamp, ops, ~, ~] = load_data(current_gcamp_folders_group{m});
             DF_gcamp = DF_processing(DF_gcamp);
-            [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, ops);
+            [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, current_gcamp_folders_group{m}, ops);
             [Raster_gcamp, MAct_gcamp, ~] = Sumactivity(DF_gcamp, MinPeakDistance, gcamp_data.synchronous_frames{m});
             
             % Sauvegarde des résultats
@@ -355,7 +355,7 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
             blue_indices = (NCells + 1):size(DF_all, 1);
             %disp(blue_indices)
 
-            [isort1_all, isort2_all, Sm_all] = raster_processing(DF_all);
+            [isort1_all, isort2_all, Sm_all] = raster_processing(DF_all, current_gcamp_folders_group{m});
             
             [Raster_all, MAct_all, ~] = Sumactivity(DF_all, MinPeakDistance, gcamp_data.synchronous_frames{m});
 
