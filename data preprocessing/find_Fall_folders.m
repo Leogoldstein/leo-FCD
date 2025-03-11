@@ -1,9 +1,9 @@
 function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
     numFolders = length(selectedFolders);
-    TseriesFolders = cell(numFolders, 4);
-    TSeriesPaths = cell(numFolders, 4);
-    true_env_paths = cell(numFolders, 1);
-    lastFolderNames = cell(numFolders, 4);
+    TseriesFolders = cell(numFolders, 4);  % Store paths for Gcamp, Red, Blue, Green
+    TSeriesPaths = cell(numFolders, 4);    % Store the paths for each type of folder
+    true_env_paths = cell(numFolders, 1);  % Store the environment paths
+    lastFolderNames = cell(numFolders, 4); % Store the names of the last folders
 
     for idx = 1:numFolders
         selectedFolder = selectedFolders{idx};
@@ -18,9 +18,9 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
             continue;
         end
         
-        TSeriesPathsTemp = {'' '' '' ''};
+        TSeriesPathsTemp = {'' '' '' ''};  % Initialize as empty strings
         labels = {'Gcamp', 'Red', 'Blue', 'Green'};
-        foundFolders = {{} {} {} {}};
+        foundFolders = {{} {} {} {}};  % Store the paths for Gcamp, Red, Blue, Green
         
         for i = 1:length(TSeriesFoldersList)
             folderName = TSeriesFoldersList(i).name;
@@ -35,13 +35,25 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
             end
             
             if ~matched
-                foundFolders{1}{end+1} = fullPath;
+                foundFolders{1}{end+1} = fullPath;  % If no match, assign to Gcamp
             end
         end
         
         for k = 1:length(labels)
             if ~isempty(foundFolders{k})
-                TSeriesPathsTemp{k} = foundFolders{k}{1};
+                if length(foundFolders{k}) == 1
+                    TSeriesPathsTemp{k} = foundFolders{k}{1};  % Assign single folder
+                else
+                    % If there are multiple folders, use listdlg for selection
+                    [~, lastFolderNamesList] = cellfun(@(x) fileparts(x), foundFolders{k}, 'UniformOutput', false);
+                    choice = listdlg('ListString', lastFolderNamesList, 'SelectionMode', 'single', ...
+                                     'PromptString', ['Select the ', labels{k}, ' folder:']);
+                    if ~isempty(choice)
+                        TSeriesPathsTemp{k} = foundFolders{k}{choice};
+                    else
+                        TSeriesPathsTemp{k} = '';  % If user cancels selection, set to empty string
+                    end
+                end
             end
         end
         
@@ -52,7 +64,7 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
                 [~, lastFolderName] = fileparts(TSeriesPathsTemp{k});
                 lastFolderNames{idx, k} = lastFolderName;
             else
-                lastFolderNames{idx, k} = '';
+                lastFolderNames{idx, k} = '';  % If path is empty, store empty string
             end
         end
         
@@ -88,7 +100,7 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
         
         true_env_paths{idx} = env_path;
         
-        dataFolders = {'' '' '' ''};
+        dataFolders = {'' '' '' ''};  % Initialize dataFolders with empty strings
         for j = 1:4
             currentPath = TSeriesPaths{idx, j};
             if ~isempty(currentPath)
@@ -109,6 +121,8 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
                 TseriesFolders{idx, 1} = '';
                 disp(['Error: No Fall.mat found in folder: ', dataFolders{1}]);
             end
+        else
+            TseriesFolders{idx, 1} = '';  % If no Gcamp folder, set as empty string
         end
     end
 end

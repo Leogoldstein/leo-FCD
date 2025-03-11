@@ -28,13 +28,10 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
         if isempty(specificSubfolders)
             % For gcamp
             newSubfolderPath_gcamp = fullfile(date_group_paths{k}, daytime, current_gcamp_folders_names_group{k});
-            if ischar(newSubfolderPath_gcamp) && ~isempty(newSubfolderPath_gcamp)
+            if isempty(newSubfolderPath_gcamp) || ~ischar(newSubfolderPath_gcamp)
                 mkdir(newSubfolderPath_gcamp);
                 disp(['No subfolder found. Created new gcamp folder: ', newSubfolderPath_gcamp]);
                 chosen_folder_processing_gcamp{k} = newSubfolderPath_gcamp;
-            else
-                disp('Error: Invalid folder path for gcamp. Check input variables.');
-                chosen_folder_processing_gcamp{k} = [];
             end
             % For blue (only if the name exists)
             if ~isempty(current_blue_folders_names_group) && ~isempty(current_blue_folders_names_group{k})

@@ -1,4 +1,4 @@
-function save_mean_images(current_animal_group, all_ops, current_dates_group, tseries_results_path)
+function save_mean_images(current_animal_group, all_ops, current_dates_group, tseries_results_path, current_ages_group)
     % save_mean_images generates and saves mean images based on input data.
 
     % Import necessary Python module if using Python dictionaries
@@ -25,37 +25,30 @@ function save_mean_images(current_animal_group, all_ops, current_dates_group, ts
                 mkdir(tseries_results_path{m}); % Create directory if it doesn’t exist
             end
 
-            % Ensure the file path is correctly formed
-            png_filename = fullfile(tseries_results_path{m}, 'Mean_image.png');
+            png_filename = fullfile(tseries_results_path{m}, ...
+                sprintf('Mean_image_of_%s_%s.png', ...
+                strrep(current_animal_group, ' ', '_'), ...
+                strrep(current_ages_group{m}, ' ', '_')));
+
             disp(['Saving image to: ' png_filename]);
 
             % Check if the file already exists to avoid overwriting
-            % if ~isfile(png_filename)
-            %     % Display and save the mean image
-            %     figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]); 
-            %     imagesc(meanImg);  
-            %     colormap('gray');
-            %     title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
-            % 
-            %     % Save the mean image
-            %     saveas(gcf, png_filename);
-            %     disp(['Mean image saved in: ' png_filename]);
-            % 
-            %     % Close the figure after saving
-            %     close(gcf);
-            % else
-            %     disp(['File already exists, skipping save: ' png_filename]);
-            % end
+            if ~isfile(png_filename)
+                % Display and save the mean image
+                figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]); 
+                imagesc(meanImg);  
+                colormap('gray');
+                title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
 
-            % Display and save the mean image
-            figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]); 
-            imagesc(meanImg);  
-            colormap('gray');
-            title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
+                % Save the mean image
+                saveas(gcf, png_filename);
+                disp(['Mean image saved in: ' png_filename]);
 
-            % Save the mean image
-            saveas(gcf, png_filename);
-            disp(['Mean image saved in: ' png_filename]);
+                % Close the figure after saving
+                close(gcf);
+            else
+                disp(['File already exists, skipping save: ' png_filename]);
+            end
 
             % Close the figure after saving
             close(gcf);

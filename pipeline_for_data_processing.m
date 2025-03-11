@@ -91,14 +91,19 @@
                 case 1
                     disp(['Performing mean images for ', current_animal_group]);                
                     all_ops = load_ops(current_gcamp_folders_group);
-                    save_mean_images(current_animal_group, all_ops, current_dates_group, gcamp_output_folders);
+                    save_mean_images(current_animal_group, all_ops, current_dates_group, gcamp_output_folders, current_ages_group);
                     
                     case 2
                         disp(['Performing raster plot analysis for ', current_animal_group]);
                         [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
                         assignin('base', 'gcamp_data', gcamp_data);
-                        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct
-                        plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
+                        if strcmpi(include_blue_cells, '1')
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct);
+                            plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices);
+                        else
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct
+                            plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
+                        end
                         build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
                     
                     case 3
@@ -159,10 +164,10 @@
     % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (y/n): ', 's');
-    % if strcmpi(create_ppt, 'y')
-    %     create_ppt_from_figs(current_group_paths)
-    % end
+    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
+    if strcmpi(create_ppt, '1')
+        create_ppt_from_figs(current_group_paths, daytime)
+    end
 end
 
 %% Helper Functions (loading and processing)
@@ -205,6 +210,11 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
 
     for m = 1:numFolders
         filePath = fullfile(gcamp_output_folders{m}, 'results_raster.mat');
+
+        % Ensure the directory exists
+        if ~isfolder(gcamp_output_folders{m})
+            mkdir(gcamp_output_folders{m}); % Create directory if it doesn’t exist
+        end
         
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);

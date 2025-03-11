@@ -1,10 +1,12 @@
-function create_ppt_from_figs(current_group_paths)
+function create_ppt_from_figs(current_group_paths, daytime)
 
         % Importer la bibliothèque pour PowerPoint
         import mlreportgen.ppt.*;
         
         % Créer et ouvrir une présentation PowerPoint
-        ppt = Presentation('AnalysisFigures.pptx');
+        pptFileName = sprintf('AnalysisFigures_%s.pptx', daytime);
+        ppt = Presentation(pptFileName);
+        
         open(ppt);
         
         % Ajouter une diapositive de titre initiale
