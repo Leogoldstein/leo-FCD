@@ -17,7 +17,7 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
                     continue;
                 end
 
-            elseif nargin > 6 && ~isempty(all_DF_all)
+            elseif nargin > 6 && ~isempty(all_blue_indices)
                 DF = all_DF_all{m};
                 isort1  = all_isort1_all{m};
                 blue_indices = all_blue_indices{m};

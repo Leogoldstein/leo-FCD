@@ -58,7 +58,7 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
             close(gcf);
         end
 
-    elseif ~isempty(all_DF_all)  % Vérifie si all_DF_all est non vide
+    elseif ~isempty(all_blue_indices)  % Vérifie si all_DF_all est non vide
         for idx = 1:length(all_DF_all)
 
             % Création du chemin pour sauvegarder la figure

@@ -6,6 +6,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
     meanImg = [];
 
     % Vérifier si le dossier date_group_path existe
+    disp(blue_output_folder)
     if isempty(blue_output_folder)
         path = fullfile(date_group_path, 'Single images');
         if isfolder(path)
@@ -198,7 +199,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
         try
             cellpose_files = dir(fullfile(blue_output_folder, '*_seg.npy'));
             aligned_image_path = fullfile(blue_output_folder, 'aligned_image.tif');
-            npy_file_path = fullfile(blue_output_folder, 'aligned_image_seg.npy');
+            npy_file_path = [];
             
             split_path = strsplit(blue_output_folder, filesep); 
             base_path = fullfile(split_path{1:7});
@@ -251,31 +252,28 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
             
             else
                 for j = 1:numChannels
-                    try
-                        tif_file_path = string(folders_groups{j}{m, 1});
-                        [~, ~, ext] = fileparts(tif_file_path);
-                        files = dir(fullfile(tif_file_path, '*.npy'));
-                        
-                        if ~isempty(files)
-                            newOpsPath = fullfile(tif_file_path, 'ops.npy');
-                            mod = py.importlib.import_module('python_function');
-                            py.importlib.import_module('numpy');
-                            ops = mod.read_npy_file(newOpsPath);
-                            meanImg = double(ops{'meanImg'});
-                        elseif strcmp(ext, '.mat')
-                            data = load(tif_file_path);
-                            ops = data.ops;
-                            meanImg = ops.meanImg;
-                        else
-                            error('Unsupported file type: %s', ext);
-                        end
-                        
-                        meanImg_channels{j} = meanImg;
-                        save(fullfile(base_path, 'meanImg_channels.mat'), 'meanImg_channels');
-                    catch ME
-                        disp('Erreur lors du traitement des fichiers :');
-                        disp(ME.message);
+        
+                    tif_file_path = string(folders_groups{j}{m, 1});
+                    [~, ~, ext] = fileparts(tif_file_path);
+                    files = dir(fullfile(tif_file_path, '*.npy'));
+                    
+                    if ~isempty(files)
+                        newOpsPath = fullfile(tif_file_path, 'ops.npy');
+                        mod = py.importlib.import_module('python_function');
+                        py.importlib.import_module('numpy');
+                        ops = mod.read_npy_file(newOpsPath);
+                        meanImg = double(ops{'meanImg'});
+                    elseif strcmp(ext, '.mat')
+                        data = load(tif_file_path);
+                        ops = data.ops;
+                        meanImg = ops.meanImg;
+                    else
+                        % Add a message if no .npy files are found
+                        disp(['Le fichier est introuvable: ', tif_file_path]);
                     end
+                    
+                    meanImg_channels{j} = meanImg;
+                    save(fullfile(base_path, 'meanImg_channels.mat'), 'meanImg_channels');
                 end
                 
                 if all(cellfun(@(x) ~isempty(x) && isnumeric(x), {meanImg_channels{1}, meanImg_channels{4}}))

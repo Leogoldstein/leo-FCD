@@ -37,6 +37,7 @@
     all_sces_distances_groups = cell(num_groups, 1);
     all_RasterRace_groups = cell(num_groups, 1);
     current_group_paths = cell(num_groups, 1);
+    all_max_corr_groups = cell(num_groups, 1);
 
     % Perform analyses
     for k = 1:length(selected_groups)
@@ -97,19 +98,20 @@
                         disp(['Performing raster plot analysis for ', current_animal_group]);
                         [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
                         assignin('base', 'gcamp_data', gcamp_data);
+
                         if strcmpi(include_blue_cells, '1')
                             build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct);
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices);
                         else
                             build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
+                            build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
                         end
-                        build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-                    
+    
                     case 3
                         disp(['Performing Global analysis of activity for ', current_animal_group]);
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
-                        [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                                          
+                        [gcamp_data, blue_data, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                                          
                         [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
                         [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                     
@@ -147,9 +149,9 @@
                     
                     case 6
                         [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);  
-                        plot_raster(date_group_paths, gcamp_data.MAct, gcamp_data.Raster, blue_data.MAct, blue_data.Raster);
+                        all_max_corr = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
 
-
+                        all_max_corr_groups{k} = all_max_corr;
 
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
@@ -163,11 +165,14 @@
     %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     % end
 
+    corr_groups_analysis(selected_groups, all_max_corr_groups, daytime)
+
+
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
-    if strcmpi(create_ppt, '1')
-        create_ppt_from_figs(current_group_paths, daytime)
-    end
+    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
+    % if strcmpi(create_ppt, '1')
+    %     create_ppt_from_figs(current_group_paths, daytime)
+    % end
 end
 
 %% Helper Functions (loading and processing)
@@ -280,7 +285,8 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
         if strcmpi(include_blue_cells, '1') && isempty(blue_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
-
+            
+            disp(npy_file_path)
             if ~isempty(npy_file_path)
      
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);

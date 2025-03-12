@@ -183,10 +183,11 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             animal_col  = existing_data(:, 3);
             date_col    = existing_data(:, 4);
         
+            % Nettoyer les colonnes pour éviter les erreurs de comparaison
             group_col(cellfun(@isempty, group_col)) = {''};
             animal_col(cellfun(@isempty, animal_col)) = {''};
             date_col(cellfun(@isempty, date_col)) = {''};
-        
+
             duplicate_idx = find(strcmp(animal_col, current_animal) & ...
                                  strcmp(group_col, current_group) & ...
                                  strcmp(date_col, current_date), 1);
@@ -197,8 +198,14 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
     
         % Si la ligne n'existe pas déjà, l'ajouter à existing_data
         if isempty(duplicate_idx)
-            existing_data = [existing_data; animal_date_list(i, :)];
+            % Vérifier si animal_date_list(i, :) contient des données valides avant l'ajout
+            if all(~cellfun(@isempty, animal_date_list(i, :)))
+                existing_data = [existing_data; animal_date_list(i, :)];
+            else
+                warning('Une ligne vide ou invalide a été détectée et ignorée.');
+            end
         end
+
     end
     
     % Sauvegarder les données combinées dans le fichier .mat
