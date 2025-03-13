@@ -53,6 +53,7 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
 
     % Iterate through ages to plot boxplots
     for ageIdx = 1:numel(age_labels)
+        disp(['Age: ', age_labels{ageIdx}]);
         data_group = {data_by_age_gcamp_gcamp, data_by_age_gcamp_mtor, data_by_age_mtor_mtor};
         offsets = [-0.25, 0, 0.25]; % Offset for side-by-side boxplots
         % Custom colors for each type
@@ -63,10 +64,16 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
             boxplot_groups = [];
 
             for groupIdx = 1:num_animals
+                disp(['Group: ', animal_group{groupIdx}]);
+                disp(['gcamp-gcamp data for ', age_labels{ageIdx}, ':']);
+                disp(data_by_age_gcamp_gcamp{ageIdx, groupIdx});
+                disp(['gcamp-mtor data for ', age_labels{ageIdx}, ':']);
+                disp(data_by_age_gcamp_mtor{ageIdx, groupIdx});
+                disp(['mtor-mtor data for ', age_labels{ageIdx}, ':']);
+                disp(data_by_age_mtor_mtor{ageIdx, groupIdx});
+                
                 if ~isempty(data_group{typeIdx}{ageIdx, groupIdx})
                     max_corr_values = data_group{typeIdx}{ageIdx, groupIdx};
-                    
-                    % Filter NaN values before adding to boxplots
                     max_corr_values = max_corr_values(~isnan(max_corr_values)); % Filter NaN
                     
                     if ~isempty(max_corr_values) % Check if there is data after filtering
@@ -80,9 +87,13 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
                 end
             end
 
+            % Display boxplot data for debugging
+            disp(['Boxplot data for age ', age_labels{ageIdx}]);
+            disp(boxplot_data);
+
             % Check if there is data before plotting
             if ~isempty(boxplot_data)
-                b = boxplot(boxplot_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{typeIdx});
+                b = boxplot(boxplot_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{typeIdx}, 'symbol', '');
                 % Store the handle for the legend
                 h(typeIdx) = plot(NaN, NaN, 's', 'MarkerEdgeColor', plot_colors{typeIdx}, 'MarkerFaceColor', plot_colors{typeIdx});
             end
@@ -99,7 +110,7 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
     legend(h, {'gcamp-gcamp', 'gcamp-mtor', 'mtor-mtor'}, 'Location', 'northwest');
 
     % Save figure
-        save_path = fullfile('D:', 'after_processing', 'Correlation analysis', ['Correlation_boxplots_' daytime '.png']);
+    save_path = fullfile('D:', 'after_processing', 'Correlation analysis', ['Correlation_boxplots_' daytime '.png']);
     saveas(gcf, save_path);
     close(gcf);
 end

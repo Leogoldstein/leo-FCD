@@ -205,8 +205,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
             base_path = fullfile(split_path{1:7});
             disp(base_path)
             
-            if ~isempty(cellpose_files)
-                disp(['Fichier NPY trouvé directement dans : ', npy_file_path]);
+            if ~isempty(cellpose_files)                
                 if numel(cellpose_files) > 1
                     [selected_file, selected_path] = uigetfile(fullfile(blue_output_folder, '*.npy'), ...
                         'Sélectionnez un fichier .npy');
@@ -216,6 +215,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                     npy_file_path = fullfile(selected_path, selected_file);
                 else
                     npy_file_path = fullfile(cellpose_files(1).folder, cellpose_files(1).name);
+                    disp(['Fichier NPY trouvé directement dans : ', npy_file_path]);
                 end
                 
                 if isfile(aligned_image_path) 

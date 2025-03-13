@@ -286,13 +286,13 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.Raster{m} = Raster_gcamp;
             gcamp_data.MAct{m} = MAct_gcamp;
         end
-        
+
         % Traitement des cellules bleues
         if strcmpi(include_blue_cells, '1') && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
             
-            disp(npy_file_path)
+            assignin('base', 'npy_file_path', npy_file_path);
             if ~isempty(npy_file_path)
      
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);
@@ -305,11 +305,21 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                     % Charger les données existantes
                     data = load(filePath2); 
                 
-                    if isfield(data, 'outlines_gcampx') 
-                        outlines_gcampx = data.outlines_gcampx;
-                    end
-                    if isfield(data, 'outlines_gcampy') 
-                        outlines_gcampy = data.outlines_gcampy; 
+                    if isfield(data, 'outlines_gcampx') || isfield(data, 'outline_gcampx')
+                        % Vérifier et affecter 'outlines_gcampx' ou 'outline_gcampx'
+                        if isfield(data, 'outlines_gcampx')
+                            outlines_gcampx = data.outlines_gcampx;
+                        elseif isfield(data, 'outline_gcampx')
+                            outlines_gcampx = data.outline_gcampx;
+                        end
+                    end                   
+                    if isfield(data, 'outlines_gcampy') || isfield(data, 'outline_gcampy')
+                        % Vérifier et affecter 'outlines_gcampy' ou 'outline_gcampy'
+                        if isfield(data, 'outlines_gcampy')
+                            outlines_gcampy = data.outlines_gcampy;
+                        elseif isfield(data, 'outline_gcampy')
+                            outlines_gcampy = data.outline_gcampy;
+                        end
                     end
                     if isfield(data, 'gcamp_mask') 
                         gcamp_mask = data.gcamp_mask;
@@ -351,7 +361,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                     meanImg = uint16(meanImg);
                 end
                    
-                [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, props_cellpose, meanImg, aligned_image, outlines_gcampx, outlines_gcampy, outlines_x_cellpose, outlines_y_cellpose, R, m);
+                [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, props_cellpose, meanImg, aligned_image, outlines_gcampx, outlines_gcampy, outlines_x_cellpose, outlines_y_cellpose, R, m, blue_output_folders);
                 currentTSeriesPath = current_gcamp_TSeries_path{m};
                 [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(gcamp_data.DF{m}, matched_gcamp_idx, matched_cellpose_idx, num_cells_mask, mask_cellpose, currentTSeriesPath); 
                 

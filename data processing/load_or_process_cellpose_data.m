@@ -1,8 +1,20 @@
 function [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path)
     % Initialiser les variables pour stocker les résultats
     try
+        % Vérifier si le module existe avec find_spec
+        module_name = 'python_function';  % Remplacer par le nom correct du module
+        spec = py.importlib.util.find_spec(module_name);
+
+        if isempty(spec)
+            error('Le module Python "%s" n''a pas été trouvé.', module_name);
+        else
+            disp('Le module Python a été importé avec succès.');
+        end
+
+        % Importer le module Python
+        mod = py.importlib.import_module(module_name);
+
         % Utiliser readNPY pour lire le fichier (nécessite la bibliothèque npy-matlab)
-        mod = py.importlib.import_module('python_function');
         image = mod.read_npy_file(npy_file_path);
 
         % Extraire la clé 'masks'
@@ -47,8 +59,8 @@ function [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, ou
             [outline_y, outline_x] = find(bwperim(mask_cellpose{i}));
 
             % Stocker les contours
-            outline_x_cellpose{i} = outline_x;
-            outline_y_cellpose{i} = outline_y; % Ne pas inverser Y
+            outlines_x_cellpose{i} = outline_x;
+            outlines_y_cellpose{i} = outline_y; % Ne pas inverser Y
         end
 
     catch ME

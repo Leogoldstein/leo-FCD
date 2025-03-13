@@ -1,4 +1,4 @@
-function [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, cellpose_props, meanImg, aligned_image, outline_gcampx, outline_gcampy, outline_x_cellpose, outline_y_cellpose, R, m)
+function [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, cellpose_props, meanImg, aligned_image, outline_gcampx, outline_gcampy, outline_x_cellpose, outline_y_cellpose, R, m, blue_output_folders)
     try
         % Extraire les centroids sous forme de matrice Nx2
         gcamp_centroids = cat(1, gcamp_props.Centroid); % Nx2
@@ -27,6 +27,9 @@ function [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gca
 
         % ---- Affichage des figures ----
         figure;
+
+        % Définir la taille de la figure (par exemple, 12x8 pouces)
+        set(gcf, 'Position', [100, 100, 1200, 800]);  % [left bottom width height]
 
         % ---- Subplot 1: GCaMP sur meanImg ----
         subplot(1, 2, 1);
@@ -73,6 +76,13 @@ function [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gca
         hold off;
 
         drawnow;
+        
+        % Sauvegarder la figure avec un nom et un chemin donné
+        fig_name = 'GCaMP_vs_mtor';
+        save_path = fullfile(blue_output_folders{m}, [fig_name, '.png']);
+        saveas(gcf, save_path);
+        close(gcf);
+
     catch ME
         fprintf('Erreur dans le groupe %d: %s\n', m, ME.message);
         matched_gcamp_idx = [];
