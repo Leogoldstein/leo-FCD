@@ -37,7 +37,9 @@
     all_sces_distances_groups = cell(num_groups, 1);
     all_RasterRace_groups = cell(num_groups, 1);
     current_group_paths = cell(num_groups, 1);
-    all_max_corr_groups = cell(num_groups, 1);
+    all_max_corr_gcamp_gcamp_groups = cell(num_groups, 1);
+    all_max_corr_gcamp_mtor_groups = cell(num_groups, 1);
+    all_max_corr_mtor_mtor_groups = cell(num_groups, 1);
 
     % Perform analyses
     for k = 1:length(selected_groups)
@@ -96,14 +98,14 @@
                     
                     case 2
                         disp(['Performing raster plot analysis for ', current_animal_group]);
-                        [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
+                        [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
                         assignin('base', 'gcamp_data', gcamp_data);
 
                         if strcmpi(include_blue_cells, '1')
-                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct);
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct);
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices);
                         else
-                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, blue_data.MAct
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
                             build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
                         end
@@ -111,12 +113,12 @@
                     case 3
                         disp(['Performing Global analysis of activity for ', current_animal_group]);
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
-                        [gcamp_data, blue_data, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                                          
+                        [gcamp_data, mtor_data, ~] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                                          
                         [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
                         [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                     
                         if strcmpi(include_blue_cells, '1')
-                            [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue, mean_max_corr_all_blue] = basic_metrics(blue_data.DF, blue_data.Raster, blue_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
+                            [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue, mean_max_corr_all_blue] = basic_metrics(mtor_data.DF, mtor_data.Raster, mtor_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                         end
                     
                         export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
@@ -148,10 +150,16 @@
                         plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
                     
                     case 6
-                        [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);  
-                        all_max_corr = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
-
-                        all_max_corr_groups{k} = all_max_corr;
+                        [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);  
+                        if strcmpi(include_blue_cells, '1')
+                           [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
+                        else
+                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
+                        end
+                        
+                        all_max_corr_gcamp_gcamp_groups{k} = all_max_corr_gcamp_gcamp;
+                        all_max_corr_gcamp_mtor_groups{k} = all_max_corr_gcamp_mtor;
+                        all_max_corr_mtor_mtor_groups{k} = all_max_corr_mtor_mtor;
 
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
@@ -165,7 +173,7 @@
     %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     % end
 
-    corr_groups_analysis(selected_groups, all_max_corr_groups, daytime)
+    corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
 
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
@@ -194,7 +202,7 @@ function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] 
 end
 
 
-function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice)
+function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice)
 
     % Initialisation des structures
     numFolders = length(gcamp_output_folders);
@@ -206,7 +214,7 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
     
     % Initialiser les structures avec les champs spécifiés
     gcamp_data = init_data_struct(numFolders, gcamp_fields);
-    blue_data = init_data_struct(numFolders, blue_fields);
+    mtor_data = init_data_struct(numFolders, blue_fields);
     all_data = init_data_struct(numFolders, all_fields);
     
     MinPeakDistance = 5;
@@ -236,20 +244,18 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.MAct{m} = getFieldOrDefault(data, 'MAct_gcamp', []);
             
             if strcmpi(include_blue_cells, '1')
-                blue_data.DF{m} = getFieldOrDefault(data, 'DF_blue', []);
-                blue_data.DF_not_blue{m} = getFieldOrDefault(data, 'DF_gcamp_not_blue', []);
-                blue_data.Raster{m} = getFieldOrDefault(data, 'Raster_blue', []);
-                blue_data.MAct{m} = getFieldOrDefault(data, 'MAct_blue', []);
+                mtor_data.DF{m} = getFieldOrDefault(data, 'DF_blue', []);
+                mtor_data.DF_not_blue{m} = getFieldOrDefault(data, 'DF_gcamp_not_blue', []);
+                mtor_data.Raster{m} = getFieldOrDefault(data, 'Raster_blue', []);
+                mtor_data.MAct{m} = getFieldOrDefault(data, 'MAct_blue', []);
                 
-                if isequal(analysis_choice, 2)
-                    all_data.DF{m} = getFieldOrDefault(data, 'DF_all', []);
-                    all_data.isort1{m} = getFieldOrDefault(data, 'isort1_all', []);
-                    all_data.blue_indices{m} = getFieldOrDefault(data, 'blue_indices', []);
-                    all_data.isort2{m} = getFieldOrDefault(data, 'isort2_all', []);
-                    all_data.Sm{m} = getFieldOrDefault(data, 'Sm_all', []);
-                    all_data.Raster{m} = getFieldOrDefault(data, 'Raster_all', []);
-                    all_data.MAct{m} = getFieldOrDefault(data, 'MAct_all', []);
-                end
+                all_data.DF{m} = getFieldOrDefault(data, 'DF_all', []);
+                all_data.isort1{m} = getFieldOrDefault(data, 'isort1_all', []);
+                all_data.blue_indices{m} = getFieldOrDefault(data, 'blue_indices', []);
+                all_data.isort2{m} = getFieldOrDefault(data, 'isort2_all', []);
+                all_data.Sm{m} = getFieldOrDefault(data, 'Sm_all', []);
+                all_data.Raster{m} = getFieldOrDefault(data, 'Raster_all', []);
+                all_data.MAct{m} = getFieldOrDefault(data, 'MAct_all', []);
             end
         end
         
@@ -282,7 +288,7 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
         end
         
         % Traitement des cellules bleues
-        if strcmpi(include_blue_cells, '1') && isempty(blue_data.DF{m})
+        if strcmpi(include_blue_cells, '1') && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
             
@@ -354,10 +360,10 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
 
                 save(filePath, "DF_blue", "DF_gcamp_not_blue", "Raster_blue", "MAct_blue", '-append');
 
-                blue_data.DF{m} = DF_blue;
-                blue_data.DF_not_blue{m} = DF_gcamp_not_blue;
-                blue_data.Raster{m} = Raster_blue;
-                blue_data.MAct{m} = MAct_blue;
+                mtor_data.DF{m} = DF_blue;
+                mtor_data.DF_not_blue{m} = DF_gcamp_not_blue;
+                mtor_data.Raster{m} = Raster_blue;
+                mtor_data.MAct{m} = MAct_blue;
             end
         end
         
@@ -365,9 +371,9 @@ function [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_o
 
         % Traitement des données combinées si analysis_choice == 2
         if strcmpi(include_blue_cells, '1') && isequal(analysis_choice, 2) && isempty(all_data.DF{m})
-            all_data.DF{m} = [blue_data.DF_not_blue{m}; blue_data.DF{m}];
+            all_data.DF{m} = [mtor_data.DF_not_blue{m}; mtor_data.DF{m}];
             DF_all = all_data.DF{m};
-            NCells = size(blue_data.DF_not_blue{m}, 1);
+            NCells = size(mtor_data.DF_not_blue{m}, 1);
             blue_indices = (NCells + 1):size(DF_all, 1);
             %disp(blue_indices)
 
@@ -415,7 +421,7 @@ function [all_DF_gcamp, all_Raster_gcamp,all_sampling_rate, all_synchronous_fram
     all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
-    [gcamp_data, blue_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice); 
+    [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice); 
 
     % Initialize a flag to track if processing is needed
     process_needed = false;
