@@ -172,15 +172,15 @@
     % if analysis_choice == 3
     %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     % end
-
+     
     corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
 
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
-    % if strcmpi(create_ppt, '1')
-    %     create_ppt_from_figs(current_group_paths, daytime)
-    % end
+    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
+    if strcmpi(create_ppt, '1')
+        create_ppt_from_figs(current_group_paths, daytime)
+    end
 end
 
 %% Helper Functions (loading and processing)
@@ -380,7 +380,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         %all_data.DF{m} = [];
 
         % Traitement des données combinées si analysis_choice == 2
-        if strcmpi(include_blue_cells, '1') && isequal(analysis_choice, 2) && isempty(all_data.DF{m})
+        if strcmpi(include_blue_cells, '1') && isempty(all_data.DF{m}) && ~isempty(mtor_data.DF{m})
             all_data.DF{m} = [mtor_data.DF_not_blue{m}; mtor_data.DF{m}];
             DF_all = all_data.DF{m};
             NCells = size(mtor_data.DF_not_blue{m}, 1);

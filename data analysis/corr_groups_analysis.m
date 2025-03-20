@@ -1,115 +1,96 @@
 function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
     num_animals = length(selected_groups);
-    animal_group = cell(num_animals, 1);
-    colors = lines(num_animals); % Generate distinct colors
-
-    % Data containers for aggregation
     age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};
     age_values = 7:15;  % Numeric age representation
-
-    % Data structure to store correlation values by age
-    data_by_age_gcamp_gcamp = cell(numel(age_labels), num_animals);
-    data_by_age_gcamp_mtor = cell(numel(age_labels), num_animals);
-    data_by_age_mtor_mtor = cell(numel(age_labels), num_animals);
-
-    % Iterate over each unique animal-group combination
+    
+    % Data structure to store aggregated correlation values by age
+    data_by_age = cell(numel(age_labels), 3);
+    animal_names_by_age = cell(numel(age_labels), 1);
+    
+    % Iterate over each animal group
     for groupIdx = 1:num_animals
         current_animal_group = selected_groups(groupIdx).animal_group;
-        animal_group{groupIdx} = current_animal_group;
         current_ages_group = selected_groups(groupIdx).ages;
-
-        % Extract ages and map them to age indices
-        current_ages = cellfun(@(x) str2double(x(2:end)), current_ages_group); % Remove 'P' and convert to number
+        current_ages = cellfun(@(x) str2double(x(2:end)), current_ages_group);
         [~, x_indices] = ismember(current_ages, age_values);
-
+        
         all_max_corr_gcamp_gcamp = all_max_corr_gcamp_gcamp_groups{groupIdx};
         all_max_corr_gcamp_mtor = all_max_corr_gcamp_mtor_groups{groupIdx};
         all_max_corr_mtor_mtor = all_max_corr_mtor_mtor_groups{groupIdx};
-
-        % Iterate over sessions for the current animal
+        
         for sessionIdx = 1:length(current_ages_group)
             try
-                if sessionIdx <= numel(all_max_corr_gcamp_gcamp)
-                    data_by_age_gcamp_gcamp{x_indices(sessionIdx), groupIdx} = all_max_corr_gcamp_gcamp{sessionIdx};
+                ageIdx = x_indices(sessionIdx);
+                data_added = false;
+                
+                if sessionIdx <= numel(all_max_corr_gcamp_gcamp) && ~isempty(all_max_corr_gcamp_gcamp{sessionIdx})
+                    data_by_age{ageIdx, 1} = [data_by_age{ageIdx, 1}; all_max_corr_gcamp_gcamp{sessionIdx}(:)];
+                    data_added = true;
                 end
-                if sessionIdx <= numel(all_max_corr_gcamp_mtor)
-                    data_by_age_gcamp_mtor{x_indices(sessionIdx), groupIdx} = all_max_corr_gcamp_mtor{sessionIdx};
+                if sessionIdx <= numel(all_max_corr_gcamp_mtor) && ~isempty(all_max_corr_gcamp_mtor{sessionIdx})
+                    data_by_age{ageIdx, 2} = [data_by_age{ageIdx, 2}; all_max_corr_gcamp_mtor{sessionIdx}(:)];
+                    data_added = true;
                 end
-                if sessionIdx <= numel(all_max_corr_mtor_mtor)
-                    data_by_age_mtor_mtor{x_indices(sessionIdx), groupIdx} = all_max_corr_mtor_mtor{sessionIdx};
+                if sessionIdx <= numel(all_max_corr_mtor_mtor) && ~isempty(all_max_corr_mtor_mtor{sessionIdx})
+                    data_by_age{ageIdx, 3} = [data_by_age{ageIdx, 3}; all_max_corr_mtor_mtor{sessionIdx}(:)];
+                    data_added = true;
+                end
+                
+                if data_added && ~any(strcmp(animal_names_by_age{ageIdx}, current_animal_group))
+                    animal_names_by_age{ageIdx} = [animal_names_by_age{ageIdx}, {current_animal_group}];
                 end
             catch ME
-                fprintf('Error in group %s, session %d: %s\n', current_animal_group, sessionIdx, ME.message);
+                fprintf('Error in session %d: %s\n', sessionIdx, ME.message);
             end
         end
     end
-
-    % Create a single figure for embedded boxplots
+    
+    % Plotting
     figure('Position', [100, 100, 1200, 600]);
     hold on;
-
+    
     % Store handles for the legend
-    h = zeros(1, 3); % Handle for the three plot types
-
-    % Iterate through ages to plot boxplots
+    h = zeros(1, 3);  % Initialize the handles for the three plot types (gcamp-gcamp, gcamp-mtor, mtor-mtor)
+    plot_colors = {'g', 'c', 'b'};
+    
     for ageIdx = 1:numel(age_labels)
-        disp(['Age: ', age_labels{ageIdx}]);
-        data_group = {data_by_age_gcamp_gcamp, data_by_age_gcamp_mtor, data_by_age_mtor_mtor};
-        offsets = [-0.25, 0, 0.25]; % Offset for side-by-side boxplots
-        % Custom colors for each type
-        plot_colors = {'g', 'c', 'b'}; % Green for gcamp-gcamp, Cyan for gcamp-mtor, Blue for mtor-mtor
-
-        for typeIdx = 1:3
-            boxplot_data = [];
-            boxplot_groups = [];
-
-            for groupIdx = 1:num_animals
-                disp(['Group: ', animal_group{groupIdx}]);
-                disp(['gcamp-gcamp data for ', age_labels{ageIdx}, ':']);
-                disp(data_by_age_gcamp_gcamp{ageIdx, groupIdx});
-                disp(['gcamp-mtor data for ', age_labels{ageIdx}, ':']);
-                disp(data_by_age_gcamp_mtor{ageIdx, groupIdx});
-                disp(['mtor-mtor data for ', age_labels{ageIdx}, ':']);
-                disp(data_by_age_mtor_mtor{ageIdx, groupIdx});
-                
-                if ~isempty(data_group{typeIdx}{ageIdx, groupIdx})
-                    max_corr_values = data_group{typeIdx}{ageIdx, groupIdx};
-                    max_corr_values = max_corr_values(~isnan(max_corr_values)); % Filter NaN
-                    
-                    if ~isempty(max_corr_values) % Check if there is data after filtering
-                        boxplot_data = [boxplot_data; max_corr_values(:)];
-                        boxplot_groups = [boxplot_groups; repmat(ageIdx + offsets(typeIdx), length(max_corr_values), 1)];
-                    end
-                else
-                    % If no data, add a NaN value to guarantee plotting
-                    boxplot_data = [boxplot_data; NaN];
-                    boxplot_groups = [boxplot_groups; repmat(ageIdx + offsets(typeIdx), 1, 1)];
-                end
-            end
-
-            % Display boxplot data for debugging
-            disp(['Boxplot data for age ', age_labels{ageIdx}]);
-            disp(boxplot_data);
-
-            % Check if there is data before plotting
+        data_group = data_by_age(ageIdx, :);
+        available_types = find(~cellfun(@isempty, data_group));
+        num_types = numel(available_types);
+        offsets = linspace(-0.25, 0.25, num_types); % Reset offsets for each new age
+        
+        % Flag to track if animal names have been plotted
+        animal_names_plotted = false;
+        
+        for typeIdx = 1:num_types
+            type = available_types(typeIdx);
+            boxplot_data = data_by_age{ageIdx, type};
             if ~isempty(boxplot_data)
-                b = boxplot(boxplot_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{typeIdx}, 'symbol', '');
-                % Store the handle for the legend
-                h(typeIdx) = plot(NaN, NaN, 's', 'MarkerEdgeColor', plot_colors{typeIdx}, 'MarkerFaceColor', plot_colors{typeIdx});
+                boxplot_groups = repmat(ageIdx + offsets(typeIdx), length(boxplot_data), 1);
+                boxplot(boxplot_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{type}, 'symbol', '');
+                
+                if h(type) == 0  % If the handle is not yet assigned
+                    h(type) = plot(NaN, NaN, 's', 'MarkerEdgeColor', plot_colors{type}, 'MarkerFaceColor', plot_colors{type});
+                end
+                
+                % Plot animal names only for the first typeIdx
+                if ~animal_names_plotted && ~isempty(animal_names_by_age{ageIdx})
+                    % Use the 25th percentile instead of min for positioning the text
+                    percentile_25th = prctile(boxplot_data, 25);  % Calculate the 25th percentile
+                    text(ageIdx + offsets(typeIdx), percentile_25th - 0.2, strjoin(animal_names_by_age{ageIdx}, '\n'), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 8);
+                    animal_names_plotted = true;  % Mark as plotted to avoid repetition
+                end
             end
         end
     end
-
+    
     % Configure plot
     xlabel('Age');
     ylabel('Max Correlation');
-    title('Maximum Correlation by Age and Group');
+    title('Maximum Correlation by Age (Aggregated)');
     set(gca, 'XTick', 1:numel(age_labels), 'XTickLabel', age_labels);
+    legend(h(h ~= 0), {'gcamp-gcamp', 'gcamp-mtor', 'mtor-mtor'}, 'Location', 'northwest');  % Use non-zero handles
     
-    % Add the legend manually
-    legend(h, {'gcamp-gcamp', 'gcamp-mtor', 'mtor-mtor'}, 'Location', 'northwest');
-
-    % Save figure
     save_path = fullfile('D:', 'after_processing', 'Correlation analysis', ['Correlation_boxplots_' daytime '.png']);
     saveas(gcf, save_path);
     close(gcf);

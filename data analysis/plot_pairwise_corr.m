@@ -111,7 +111,7 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 set(gca, 'FontSize', 12);
 
                 % Close the figure after displaying
-                % close(gcf);
+                close(gcf);
 
             elseif nargin > 3 && isempty(all_max_corr_mtor_mtor{m})
                 disp(['Processing pairwise correlation for mtor-mtor in file: ', filePath]);
@@ -148,7 +148,7 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 set(gca, 'FontSize', 12);
 
                 % Close the figure after displaying
-                % close(gcf);
+                close(gcf);
             end
 
         catch ME

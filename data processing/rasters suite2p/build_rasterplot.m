@@ -2,7 +2,7 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
     for m = 1:length(gcamp_output_folders)
         try
             % Extraction des données
-            if nargin < 7 && ~isempty(all_DF)   
+            if (nargin < 7 && ~isempty(all_DF)) || (nargin > 6 && isempty(all_blue_indices))
                 DF = all_DF{m};   
                 isort1 = all_isort1{m};
                 blue_indices = [];

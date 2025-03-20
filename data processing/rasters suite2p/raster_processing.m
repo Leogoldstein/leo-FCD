@@ -9,7 +9,8 @@ function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
     try 
         % Vérification de la taille de DF
         if isempty(DF) || size(DF, 1) < 2 || size(DF, 2) < 2
-            error('DF est vide ou ses dimensions sont incorrectes.');
+            fprintf('DF est vide ou ses dimensions sont incorrectes pour: %s\n', path);
+            return
         end
         
         % Vérification de la présence de ops

@@ -134,13 +134,13 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                     % Select the most recent subfolder
                     most_recent_subfolder_gcamp = specificSubfolders(1);
                     chosen_folder_processing_gcamp{l} = fullfile(date_group_paths{l}, most_recent_subfolder_gcamp.name, current_gcamp_folders_names_group{l});
-                    disp(['Automatically selected the most recent gcamp subfolder: ', chosen_folder_processing_gcamp{l}]);
+                    %disp(['Automatically selected the most recent gcamp subfolder: ', chosen_folder_processing_gcamp{l}]);
         
                     % Processing for the blue folder (if applicable)
                     if ~isempty(current_blue_folders_names_group{l}) && ~isempty(current_blue_folders_names_group{l}{1})
                         most_recent_subfolder_blue = specificSubfolders(1);
                         chosen_folder_processing_blue{l} = fullfile(date_group_paths{l}, most_recent_subfolder_blue.name, current_blue_folders_names_group{l});
-                        disp(['Automatically selected the most recent blue subfolder: ', chosen_folder_processing_blue{l}]);
+                        %disp(['Automatically selected the most recent blue subfolder: ', chosen_folder_processing_blue{l}]);
                     else
                         chosen_folder_processing_blue{l} = [];
                     end
