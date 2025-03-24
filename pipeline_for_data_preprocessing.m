@@ -37,7 +37,8 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
             disp('Traitement des données JM...');
             dataFolders = select_folders(jm_folder);
             [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
-            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
+            [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);  
+            assignin('base', 'gcampdataFolders', gcampdataFolders);
             disp('Traitement JM terminé.');
 
         case 2
@@ -124,14 +125,20 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
     
         % Get indices of dates for the current animal group
         date_indices = find(strcmp(animal_group, current_animal_group));
+        %disp(['Indices trouvés pour ', current_animal_group, ': ', num2str(date_indices')]);
 
         % Save the selected dates and folders for this group
         selected_groups(k).animal_group = current_animal_group;
         selected_groups(k).animal_type = unique(type_part(date_indices)); % Save unique types
         selected_groups(k).dates = date_part(date_indices);
         selected_groups(k).pathTSeries = TSeriesPaths(date_indices, :);
-        selected_groups(k).folders = TseriesFolders(date_indices, :);
-        selected_groups(k).folders_names = lastFolderNames(date_indices, :);
+
+        if choice ~= 1
+            selected_groups(k).folders = TseriesFolders(date_indices, :);
+            selected_groups(k).folders_names = lastFolderNames(date_indices, :);
+        else
+            selected_groups(k).folders = gcampdataFolders(date_indices, :);
+        end
         selected_groups(k).env = true_env_paths(date_indices);
         selected_groups(k).ages = age_part(date_indices);
         selected_groups(k).path = ani_path;

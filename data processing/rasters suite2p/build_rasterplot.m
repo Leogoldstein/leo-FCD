@@ -1,27 +1,12 @@
-function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_DF_all, all_isort1_all, all_blue_indices, all_MAct_blue)
+function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_blue_indices, all_MAct_blue)
     for m = 1:length(gcamp_output_folders)
         try
             % Extraction des données
-            if (nargin < 7 && ~isempty(all_DF)) || (nargin > 6 && isempty(all_blue_indices))
+            if (nargin < 8 && ~isempty(all_DF{m}))
                 DF = all_DF{m};   
                 isort1 = all_isort1{m};
                 blue_indices = [];
                 MActblue = [];
-
-                % Création du chemin pour sauvegarder la figure
-                fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
-                    strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
-                
-                if exist(fig_save_path, 'file')
-                    disp(['Figure already exists and was skipped: ' fig_save_path]);
-                    continue;
-                end
-
-            elseif nargin > 6 && ~isempty(all_blue_indices)
-                DF = all_DF_all{m};
-                isort1  = all_isort1_all{m};
-                blue_indices = all_blue_indices{m};
-                MActblue = all_MAct_blue{m}; % Ajout de MActblue ici
 
                 % Création du chemin pour sauvegarder la figure
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap.png', ...
@@ -31,6 +16,22 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
                     disp(['Figure already exists and was skipped: ' fig_save_path]);
                     continue;
                 end
+
+            elseif nargin > 7 && ~isempty(all_blue_indices{m})
+                DF = all_DF_all{m};
+                isort1  = all_isort1_all{m};
+                blue_indices = all_blue_indices{m};
+                MActblue = all_MAct_blue{m}; % Ajout de MActblue ici
+                sampling_rate = all_sampling_rate{m};
+
+                % Création du chemin pour sauvegarder la figure
+                fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
+                    strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
+                
+                % if exist(fig_save_path, 'file')
+                %     disp(['Figure already exists and was skipped: ' fig_save_path]);
+                %     continue;
+                % end
 
              end
     
@@ -47,13 +48,12 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
 
             if ~isempty(MActblue)   
                 % Calcul du nombre de cellules bleues
-                prop_MActblue = MActblue / NCell; % Proportion de cellules bleues actives
-                % Calculer la corrélation pour des bins de 50 frames
-                bin_size = 50;
-                DF_blue = DF(blue_indices,:);    % Données pour les cellules bleues
+                DF_blue = DF(blue_indices,:); 
+                [NCell_blue, ~] = size(DF_blue);
+                prop_MActblue = MActblue / NCell_blue; % Proportion de cellules bleues actives
                 blue_indices_logical = ismember(1:size(DF, 1), blue_indices);
                 DF_not_blue = DF(~blue_indices_logical,:);   % Données pour les autres cellules
-                [bin_centers, correlation_binned] = calculate_binned_correlation(DF_not_blue, DF_blue, bin_size);
+                
             end
 
             % Création de la figure
@@ -61,8 +61,8 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             screen_size = get(0, 'ScreenSize');
             set(gcf, 'Position', screen_size);
             
-            % Premier subplot : Raster Plot
-            subplot(2, 1, 1);
+            % Premier subplot : Raster Ploty
+            subplot(3, 1, 1);
             imagesc(DF(isort1, :));
             
             % Ajustements d'affichage
@@ -81,75 +81,55 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             ax1.XTick = tick_positions;
             ax1.XTickLabel = tick_labels;
             
-            % Initialisation des positions et des labels pour l'axe Y
+            % Initialisation des positions et labels pour l'axe Y
             ytick_positions = [];
             ytick_labels = {};
             
-            % Trouver les indices où isort1(i) correspond à blue_indices(j)
+            % Marquer les neurones bleus
             if ~isempty(blue_indices)
                 for i = 1:length(isort1)
-                    % Trouver la correspondance dans blue_indices
-                    idx = find(blue_indices == isort1(i));  % Recherche de l'index où isort1(i) correspond à blue_indices(j)
-                    
-                    if ~isempty(idx)  % Si une correspondance est trouvée
-                        ytick_positions = [ytick_positions, i];  % Ajouter la position correspondante sur l'axe Y
-                        ytick_labels = [ytick_labels, {sprintf('Neuron %d (mtor)', blue_indices(idx))}];  % Ajouter le label pour ce neurone
+                    idx = find(blue_indices == isort1(i));
+                    if ~isempty(idx)
+                        ytick_positions = [ytick_positions, i];
+                        ytick_labels = [ytick_labels, {sprintf('Neuron %d (mtor)', blue_indices(idx))}];
                     end
                 end
-            
-                % Appliquer les positions et les labels sur l'axe Y
                 ax1.YTick = ytick_positions;
                 ax1.YTickLabel = ytick_labels;
             end
             
             ylabel('Neurons');
             xlabel('Number of frames');
-            set(gca, 'Position', [0.1, 0.55, 0.85, 0.4]);
-                        
-            % Deuxième subplot : Courbe d'activité et corrélation
-            subplot(2, 1, 2);
+            title('Raster Plot');
+            set(gca, 'Position', [0.1, 0.7, 0.85, 0.25]);
             
-            % Plotting prop_MAct
-            plot(prop_MAct, 'LineWidth', 2, 'DisplayName', 'Proportion of Active Cells', 'Color', 'g');
-            hold on;
-            
-            % If MActblue exists, overlay it on the same plot with distinct style
-            if ~isempty(MActblue)
-                plot(prop_MActblue, 'LineWidth', 2, 'DisplayName', 'Proportion of Active Blue Cells', 'Color', 'b');
-            
-                % Utiliser la seconde échelle y pour la corrélation
-                yyaxis right; % Passer à l'échelle y droite
-                ylabel('Correlation coefficient');
-                plot(bin_centers, correlation_binned, '-', 'DisplayName', sprintf('Correlation of DF gcamp vs DF blue (bin size = %d)', bin_size), 'Color', 'm');
-                
-                % Check for NaNs in correlation_binned and set the Y-limits accordingly
-                valid_correlation = correlation_binned(~isnan(correlation_binned));
-                
-                if ~isempty(valid_correlation)
-                    % Ajuster dynamiquement les limites de l'axe droit
-                    ylim([min(valid_correlation) max(valid_correlation)]);
-                else
-                    % Default limits if correlation is NaN
-                    ylim([-1 1]);
-                end
-
-                % Ajuster les limites des axes Y pour les deux axes
-                yyaxis left;  % Retour à l'échelle y gauche
-                ylim([0 1]);  % Limite pour la proportion des cellules actives
-            end
-
-            xlabel('Frame');
+            % Deuxième subplot : Proportion de cellules actives
+            subplot(3, 1, 2);
+            plot(prop_MAct, 'LineWidth', 2, 'Color', 'g');
             ylabel('Proportion of Active Cells');
-            title('Activity Over Consecutive Frames & Time-Lagged Correlation');
+            title('Proportion of Active Cells (All)');
             grid on;
             
-            % Ajouter une légende
-            legend('show');
+            set(gca, 'Position', [0.1, 0.4, 0.85, 0.25]);
+
+            % Lier les axes X des subplots pour un alignement parfait
+            linkaxes([ax1, gca], 'x');
+            xlim([0 num_columns]);
             
-            % Ajuster la position du graphique pour s'assurer que les deux axes sont visibles
-            set(gca, 'Position', [0.1, 0.1, 0.85, 0.35]);
+            % Troisième subplot : Proportion de cellules actives bleues
+            subplot(3, 1, 3);
+            if ~isempty(MActblue)
+                plot(prop_MActblue, 'LineWidth', 2, 'Color', 'b');
+                ylim([0 1]); 
+            end
+            xlabel('Frame');
+            ylabel('Proportion of Active Blue Cells');
+            title('Proportion of Active Blue Cells');
+            grid on;
             
-            % Lier les axes X des deux subplots
+            set(gca, 'Position', [0.1, 0.1, 0.85, 0.25]);
+            
+            % Lier les axes X des subplots pour un alignement parfait
             linkaxes([ax1, gca], 'x');
             xlim([0 num_columns]);
             
@@ -159,6 +139,27 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             
             % Fermeture pour libérer la mémoire
             close(gcf);
+
+
+            figure;
+            scatter(prop_MAct, prop_MActblue, 'filled');
+            xlabel('Proportion de cellules actives (totales)');
+            ylabel('Proportion de cellules actives (bleues)');
+            title('Relation entre prop_MActblue et prop_MAct');
+            grid on;
+            
+            % Calcul et affichage de la corrélation
+            corr_coeff = corr(prop_MAct', prop_MActblue'); % Transposés pour vecteurs colonnes
+            fprintf('Coefficient de corrélation : %.4f\n', corr_coeff);
+            
+            % Ajustement linéaire pour voir la tendance
+            p = polyfit(prop_MAct, prop_MActblue, 1);
+            hold on;
+            x_fit = linspace(min(prop_MAct), max(prop_MAct), 100);
+            y_fit = polyval(p, x_fit);
+            plot(x_fit, y_fit, 'r', 'LineWidth', 2);
+            legend('Données', sprintf('Ajustement linéaire: y = %.2fx + %.2f', p(1), p(2)));
+            hold off;
 
         catch ME
             fprintf('\nError: %s\n', ME.message);
@@ -180,12 +181,14 @@ function [min_val, max_val] = calculate_scaling(data)
     end
 end
 
-function [bin_centers, correlation_binned] = calculate_binned_correlation(DF_not_blue, DF_blue, bin_size)
+function [bin_centers, correlation_binned] = calculate_binned_correlation(DF_not_blue, DF_blue, sampling_rate)
     
     % Calculer le nombre total de frames
     total_frames = size(DF_not_blue, 2); % Nombre de frames (colonnes)
     
-    % Nombre de bins
+    % Convert 200 ms to frames
+    bin_size = round(sampling_rate * 0.2);
+
     num_bins = floor(total_frames / bin_size);
     
     % Initialiser les variables pour stocker les résultats

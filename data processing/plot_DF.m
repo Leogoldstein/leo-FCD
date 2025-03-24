@@ -1,10 +1,10 @@
 function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_folders, all_DF_all, all_blue_indices)
 
-    % Vérifie si all_DF est non vide
-    if nargin < 5 && ~isempty(all_DF)
-      
-        % Boucle sur chaque élément de all_DF
-        for idx = 1:length(all_DF)
+    % Boucle sur chaque élément de all_DF
+    for idx = 1:length(all_DF)
+
+        % Vérifie si all_DF est non vide
+        if nargin < 5 && ~isempty(all_DF{idx})
 
             % Création du chemin pour sauvegarder la figure
             fig_save_path = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot.fig', ...
@@ -56,10 +56,8 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
             end
             
             close(gcf);
-        end
 
-    elseif ~isempty(all_blue_indices)  % Vérifie si all_DF_all est non vide
-        for idx = 1:length(all_DF_all)
+        elseif ~isempty(all_DF_all{idx})  % Vérifie si all_DF_all est non vide
 
             % Création du chemin pour sauvegarder la figure
             fig_save_path = fullfile(gcamp_output_folders{idx}, sprintf('%s_%s_DF_plot_mtor.fig', ...
@@ -129,7 +127,8 @@ function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_
                 disp(['Error message: ' ME.message]);
             end
             
-            close(gcf);
+             close(gcf);
         end
     end
 end
+

@@ -31,6 +31,19 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 end
             end
             
+
+            % Extract non-NaN correlation values
+            valid_corr_values = all_max_corr_gcamp_gcamp{m}(~isnan(all_max_corr_gcamp_gcamp{m}));
+            
+            % Plot histogram
+            figure;
+            histogram(valid_corr_values, 20); % 20 bins, adjust as needed
+            xlabel('Correlation Coefficient');
+            ylabel('Frequency');
+            title(['Histogram of Pairwise Correlations for gcamp-gcamp - Group ', num2str(m)]);
+            set(gca, 'FontSize', 12);
+            grid on;
+
             sampling_rate = all_sampling_rate{m};
             % Convert 200 ms to frames
             lag_200ms = round(sampling_rate * 0.2);
@@ -69,7 +82,7 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 set(gca, 'FontSize', 12);
     
                 % Close the figure after displaying
-                % close(gcf);
+                %close(gcf);
             end
 
             % Compute pairwise correlation for gcamp-mtor
@@ -111,7 +124,7 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 set(gca, 'FontSize', 12);
 
                 % Close the figure after displaying
-                close(gcf);
+                %close(gcf);
 
             elseif nargin > 3 && isempty(all_max_corr_mtor_mtor{m})
                 disp(['Processing pairwise correlation for mtor-mtor in file: ', filePath]);
@@ -148,7 +161,7 @@ function [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_m
                 set(gca, 'FontSize', 12);
 
                 % Close the figure after displaying
-                close(gcf);
+                %close(gcf);
             end
 
         catch ME

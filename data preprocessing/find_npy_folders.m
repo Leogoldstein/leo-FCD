@@ -1,15 +1,16 @@
 function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
-    true_env_paths = {};
-    env_paths_all = {};
-    statPaths = {};
-    FPaths = {};
-    iscellPaths = {};
-    opsPaths = {};
-    spksPaths = {};
-    TSeriesPaths = {};  % Initialize the TSeriesPaths array
+    numFolders = length(selectedFolders);
+    true_env_paths = cell(numFolders, 1);
+    env_paths_all = cell(numFolders, 1);
+    statPaths = cell(numFolders, 1);
+    FPaths = cell(numFolders, 1);
+    iscellPaths = cell(numFolders, 1);
+    opsPaths = cell(numFolders, 1);
+    spksPaths = cell(numFolders, 1);
+    TSeriesPaths = cell(numFolders, 1);  % Initialize the TSeriesPaths array
 
-    for idx = 1:length(selectedFolders)
+    for idx = 1:numFolders
         selectedFolder = selectedFolders{idx};
         
         TSeriesFolder = dir(fullfile(selectedFolder, 'TSeries*'));
@@ -72,12 +73,12 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
         env_file = dir(fullfile(TSeriesPath, '*.env'));
         if isscalar(env_file) % Check if exactly one .env file is found
             env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
-            env_paths_all{end+1} = env_path; % Add to env_paths
+            env_paths_all{idx} = env_path; % Add to env_paths
         else
            env_path = ''; % Set to empty if no .env file is found or multiple files exist
-           env_paths_all{end+1} = ''; % Add an empty entry for consistency
+           env_paths_all{idx} = ''; % Add an empty entry for consistency
         end
-        true_env_paths{end+1} = env_path;
+        true_env_paths{idx} = env_path;
 
         % Construct file paths
         stat_path = fullfile(selectedFolder, 'stat.npy');
@@ -101,13 +102,13 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
 
         % If at least one file exists, store the TSeriesPath
         if filesExist
-            TSeriesPaths{end+1} = TSeriesPath;  % Add TSeriesPath to the list
+            TSeriesPaths{idx} = TSeriesPath;  % Add TSeriesPath to the list
             % Add the paths to the corresponding lists
-            statPaths{end+1} = filePaths{1};
-            FPaths{end+1} = filePaths{2};
-            iscellPaths{end+1} = filePaths{3};
-            opsPaths{end+1} = filePaths{4};
-            spksPaths{end+1} = filePaths{5};
+            statPaths{idx} = filePaths{1};
+            FPaths{idx} = filePaths{2};
+            iscellPaths{idx} = filePaths{3};
+            opsPaths{idx} = filePaths{4};
+            spksPaths{idx} = filePaths{5};
         end
     end
 end

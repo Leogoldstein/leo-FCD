@@ -1,9 +1,16 @@
 function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, truedataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder)
+    % Remove empty entries from input paths
+    FPaths = FPaths(~cellfun('isempty', FPaths));
+    statPaths = statPaths(~cellfun('isempty', statPaths));
+    iscellPaths = iscellPaths(~cellfun('isempty', iscellPaths));
+    opsPaths = opsPaths(~cellfun('isempty', opsPaths));
+    spksPaths = spksPaths(~cellfun('isempty', spksPaths));
+
     % Store all path variables in a cell array
     allPaths = {FPaths, statPaths, iscellPaths, opsPaths, spksPaths};  % Added spksPaths
 
     % Initialize a cell array to store the paths of directories (both new and existing)
-    allFolders = {};
+    allFolders = {}; % This will store the directories in a row format initially
 
     % Initialize new path variables to store the new paths
     newFPaths = cell(size(FPaths));
@@ -85,8 +92,8 @@ function [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, tr
         end
     end
 
-    % Get the unique directories
-    truedataFolders = unique(allFolders);
+    % Get the unique directories and ensure it's in a column format
+    truedataFolders = unique(allFolders)'; % The transpose ensures it is 1xN row, now transpose to 7x1 column
 
     % Display the unique directories
     disp('Directories with npy files:');

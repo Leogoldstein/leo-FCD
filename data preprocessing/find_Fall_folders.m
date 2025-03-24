@@ -41,7 +41,7 @@ function [TseriesFolders, TSeriesPaths, env_paths_all, true_env_paths, lastFolde
         
         for k = 1:length(labels)
             if ~isempty(foundFolders{k})
-                if length(foundFolders{k}) == 1
+                if isscalar(foundFolders{k})
                     TSeriesPathsTemp{k} = foundFolders{k}{1};  % Assign single folder
                 else
                     % If there are multiple folders, use listdlg for selection

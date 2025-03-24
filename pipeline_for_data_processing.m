@@ -7,11 +7,8 @@
     
     PathSave = 'D:\after_processing\Presentations\';
     
-    % Ask if the user wants to include blue cells in the analysis
-    include_blue_cells = input('Do you want to include blue cells in your analysis? (1/2): ', 's');
-
     % Ask for analysis types, multiple choices separated by spaces
-    analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), clusters analysis (5), or code development (6)? ', 's');
+    analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), clusters analysis (5), or pairwise correlations (6)? ', 's');
     
     % Prompt for the first choice
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
@@ -45,6 +42,20 @@
     for k = 1:length(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
         current_animal_type = selected_groups(k).animal_type;
+
+        % Check if the animal type is 'FCD'
+        if strcmp(current_animal_type, 'FCD')
+            include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
+            % Ensure input is either '1' or '2'
+            if ~ismember(include_blue_cells, {'1', '2'})
+                disp('Invalid input, defaulting to 2 (No).');
+                include_blue_cells = '2'; % Default to '2' if the input is invalid
+            end
+        else
+            % For non-'FCD' types, set include_blue_cells to 2 by default
+            include_blue_cells = '2';
+        end
+
         current_ani_path_group = selected_groups(k).path;
         current_dates_group = selected_groups(k).dates;
         date_group_paths = cell(length(current_dates_group), 1);  % Store paths for each date
@@ -56,24 +67,36 @@
         % Convertir les dossiers et les noms de dossiers en cellules de chaînes
         current_gcamp_TSeries_path = cellfun(@string, selected_groups(k).pathTSeries(:, 1), 'UniformOutput', false);
 
-        current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders(:, 1), 'UniformOutput', false);
-        current_red_folders_group = cellfun(@string, selected_groups(k).folders(:, 2), 'UniformOutput', false);
-        current_blue_folders_group = cellfun(@string, selected_groups(k).folders(:, 3), 'UniformOutput', false);
-        current_green_folders_group = cellfun(@string, selected_groups(k).folders(:, 4), 'UniformOutput', false);
-        
-        current_gcamp_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 1), 'UniformOutput', false);
-        current_red_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 2), 'UniformOutput', false);
-        current_blue_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 3), 'UniformOutput', false);
-        current_green_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 4), 'UniformOutput', false);
-        
-        folders_groups = {
-            [current_gcamp_folders_group, current_gcamp_folders_names_group],  % Group gCamp
-            [current_red_folders_group, current_red_folders_names_group],      % Group Red
-            [current_blue_folders_group, current_blue_folders_names_group],    % Group Blue
-            [current_green_folders_group, current_green_folders_names_group]   % Group Green
-        };
-        assignin('base', 'folders_groups', folders_groups);
-   
+         if ~strcmp(current_animal_type, 'jm')
+            current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders(:, 1), 'UniformOutput', false);
+            current_red_folders_group = cellfun(@string, selected_groups(k).folders(:, 2), 'UniformOutput', false);
+            current_blue_folders_group = cellfun(@string, selected_groups(k).folders(:, 3), 'UniformOutput', false);
+            current_green_folders_group = cellfun(@string, selected_groups(k).folders(:, 4), 'UniformOutput', false);
+            
+            current_gcamp_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 1), 'UniformOutput', false);
+            current_red_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 2), 'UniformOutput', false);
+            current_blue_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 3), 'UniformOutput', false);
+            current_green_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 4), 'UniformOutput', false);
+            
+            folders_groups = {
+                [current_gcamp_folders_group, current_gcamp_folders_names_group],  % Group gCamp
+                [current_red_folders_group, current_red_folders_names_group],      % Group Red
+                [current_blue_folders_group, current_blue_folders_names_group],    % Group Blue
+                [current_green_folders_group, current_green_folders_names_group]   % Group Green
+            };
+            assignin('base', 'folders_groups', folders_groups);
+         else    
+            current_gcamp_folders_group = selected_groups(k).folders;
+            current_gcamp_folders_names_group = cell(1, length(current_gcamp_TSeries_path)); % Preallocate the cell array
+            current_blue_folders_names_group = cell(1, length(current_gcamp_TSeries_path));
+            for l = 1:length(current_gcamp_TSeries_path)
+                [~, lastFolderName] = fileparts(current_gcamp_TSeries_path{l}); % Extract last folder name              
+                current_gcamp_folders_names_group{l} = lastFolderName; % Store the folder name at index l
+                current_blue_folders_names_group{l} = [];
+            end
+             folders_groups = [];
+        end
+
         current_ages_group = selected_groups(k).ages;
         current_env_group = selected_groups(k).env;
         
@@ -102,10 +125,10 @@
                         assignin('base', 'gcamp_data', gcamp_data);
 
                         if strcmpi(include_blue_cells, '1')
-                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct);
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct);
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices);
                         else
-                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group); %all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct
+                            build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate); %all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct
                             plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
                             build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
                         end
@@ -150,6 +173,7 @@
                         plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
                     
                     case 6
+                        disp(['Performing pairwise correlation analysis for ', current_animal_group]);
                         [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);  
                         if strcmpi(include_blue_cells, '1')
                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
@@ -172,15 +196,16 @@
     % if analysis_choice == 3
     %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     % end
-     
-    corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
-
+    
+    if analysis_choice == 6
+        corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
+    end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
-    if strcmpi(create_ppt, '1')
-        create_ppt_from_figs(current_group_paths, daytime)
-    end
+    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
+    % if strcmpi(create_ppt, '1')
+        %create_ppt_from_figs(current_group_paths, daytime)
+    % end
 end
 
 %% Helper Functions (loading and processing)
