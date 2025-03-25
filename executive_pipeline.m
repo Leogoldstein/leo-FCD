@@ -1,6 +1,6 @@
 %% Preprocessing
 
-clear vars
+clear var
 
 % Chemin où se trouve le fichier python_function.py
 new_path = 'D:/local-repo/data preprocessing';
@@ -10,7 +10,7 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
-[animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_preprocessing();
+[results, animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
 
 % 
 % for idx = 1:length(env_paths_all)

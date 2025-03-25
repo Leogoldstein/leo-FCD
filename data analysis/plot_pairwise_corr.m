@@ -1,4 +1,4 @@
-function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_mtor_mtor] = plot_pairwise_corr(all_DF, gcamp_output_folders, all_sampling_rate, all_DF_all, all_mtor_indices)
+function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_mtor_mtor] = plot_pairwise_corr(all_DF, gcamp_output_folders, all_DF_all, all_mtor_indices)
     
     numFolders = length(gcamp_output_folders);
     all_cross_corr_gcamp_gcamp = cell(numFolders, 1);
@@ -32,8 +32,8 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
             if isempty(all_cross_corr_gcamp_gcamp{m})
                 disp(['Processing pairwise correlation for gcamp-gcamp in file: ', filePath]);
                 DF = all_DF{m};
+                
                 cross_corr_gcamp_gcamp = corrcoef(DF');
-
                 save(filePath, 'cross_corr_gcamp_gcamp');
                 all_cross_corr_gcamp_gcamp{m} = cross_corr_gcamp_gcamp;
             end
@@ -45,8 +45,8 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
                 DF_mtor = DF_all(mtor_indices,:);
                 mtor_indices_logical = ismember(1:size(DF_all, 1), mtor_indices);
                 DF_gcamp = DF_all(~mtor_indices_logical,:);
-                cross_corr_gcamp_mtor = corrcoef(DF_gcamp', DF_mtor');
 
+                cross_corr_gcamp_mtor = corrcoef(DF_gcamp', DF_mtor');
                 save(filePath, 'cross_corr_gcamp_mtor', '-append');
                 all_cross_corr_gcamp_mtor{m} = cross_corr_gcamp_mtor;
             end
@@ -56,8 +56,8 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
                 DF_all = all_DF_all{m};
                 mtor_indices = all_mtor_indices{m};
                 DF_mtor = DF_all(mtor_indices,:);
+                
                 cross_corr_mtor_mtor = corrcoef(DF_mtor');
-
                 save(filePath, 'cross_corr_mtor_mtor', '-append');
                 all_cross_corr_mtor_mtor{m} = cross_corr_mtor_mtor;
             end

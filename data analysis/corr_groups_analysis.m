@@ -3,14 +3,15 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
     age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};
     age_values = 7:15;  % Numeric age representation
     
-    % Data structure to store aggregated correlation values by age
+    % Data structure to store aggregated correlation values by age and animal type
     data_by_age = cell(numel(age_labels), 3);
     animal_names_by_age = cell(numel(age_labels), 1);
     
     % Iterate over each animal group
     for groupIdx = 1:num_animals
-        current_animal_group = selected_groups(groupIdx).animal_group;
-        current_ages_group = selected_groups(groupIdx).ages;
+        current_animal_group = selected_groups(groupIdx).animal_group; 
+        current_animal_type = selected_groups(groupIdx).animal_type;
+        current_ages_group = selected_groups(groupIdx).ages;  
         current_ages = cellfun(@(x) str2double(x(2:end)), current_ages_group);
         [~, x_indices] = ismember(current_ages, age_values);
         
@@ -23,16 +24,17 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
                 ageIdx = x_indices(sessionIdx);
                 data_added = false;
                 
+                % Grouping based on animal type
                 if sessionIdx <= numel(all_max_corr_gcamp_gcamp) && ~isempty(all_max_corr_gcamp_gcamp{sessionIdx})
-                    data_by_age{ageIdx, 1} = [data_by_age{ageIdx, 1}; all_max_corr_gcamp_gcamp{sessionIdx}(:)];
+                    data_by_age{ageIdx, 1} = [data_by_age{ageIdx, 1}; {current_animal_type, all_max_corr_gcamp_gcamp{sessionIdx}}];
                     data_added = true;
                 end
                 if sessionIdx <= numel(all_max_corr_gcamp_mtor) && ~isempty(all_max_corr_gcamp_mtor{sessionIdx})
-                    data_by_age{ageIdx, 2} = [data_by_age{ageIdx, 2}; all_max_corr_gcamp_mtor{sessionIdx}(:)];
+                    data_by_age{ageIdx, 2} = [data_by_age{ageIdx, 2}; {current_animal_type, all_max_corr_gcamp_mtor{sessionIdx}}];
                     data_added = true;
                 end
                 if sessionIdx <= numel(all_max_corr_mtor_mtor) && ~isempty(all_max_corr_mtor_mtor{sessionIdx})
-                    data_by_age{ageIdx, 3} = [data_by_age{ageIdx, 3}; all_max_corr_mtor_mtor{sessionIdx}(:)];
+                    data_by_age{ageIdx, 3} = [data_by_age{ageIdx, 3}; {current_animal_type, all_max_corr_mtor_mtor{sessionIdx}}];
                     data_added = true;
                 end
                 
@@ -65,20 +67,30 @@ function corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp
         for typeIdx = 1:num_types
             type = available_types(typeIdx);
             boxplot_data = data_by_age{ageIdx, type};
-            if ~isempty(boxplot_data)
-                boxplot_groups = repmat(ageIdx + offsets(typeIdx), length(boxplot_data), 1);
-                boxplot(boxplot_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{type}, 'symbol', '');
+            
+            % Separate data by animal type
+            animal_types = unique(cellfun(@(x) x{1}, boxplot_data, 'UniformOutput', false));
+            for animalTypeIdx = 1:length(animal_types)
+                % Extract data for this specific animal type
+                current_animal_type_data = cellfun(@(x) x{2}, boxplot_data(strcmp(cellfun(@(x) x{1}, boxplot_data), animal_types{animalTypeIdx})), 'UniformOutput', false);
+                current_animal_type_data = vertcat(current_animal_type_data{:});
                 
-                if h(type) == 0  % If the handle is not yet assigned
-                    h(type) = plot(NaN, NaN, 's', 'MarkerEdgeColor', plot_colors{type}, 'MarkerFaceColor', plot_colors{type});
-                end
-                
-                % Plot animal names only for the first typeIdx
-                if ~animal_names_plotted && ~isempty(animal_names_by_age{ageIdx})
-                    % Use the 25th percentile instead of min for positioning the text
-                    percentile_25th = prctile(boxplot_data, 25);  % Calculate the 25th percentile
-                    text(ageIdx + offsets(typeIdx), percentile_25th - 0.2, strjoin(animal_names_by_age{ageIdx}, '\n'), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 8);
-                    animal_names_plotted = true;  % Mark as plotted to avoid repetition
+                % Create boxplot for this animal type
+                if ~isempty(current_animal_type_data)
+                    boxplot_groups = repmat(ageIdx + offsets(typeIdx), length(current_animal_type_data), 1);
+                    boxplot(current_animal_type_data, boxplot_groups, 'Positions', ageIdx + offsets(typeIdx), 'Colors', plot_colors{type}, 'symbol', '');
+                    
+                    if h(type) == 0  % If the handle is not yet assigned
+                        h(type) = plot(NaN, NaN, 's', 'MarkerEdgeColor', plot_colors{type}, 'MarkerFaceColor', plot_colors{type});
+                    end
+                    
+                    % Plot animal names only for the first typeIdx
+                    if ~animal_names_plotted && ~isempty(animal_names_by_age{ageIdx})
+                        % Use the 25th percentile instead of min for positioning the text
+                        percentile_25th = prctile(current_animal_type_data, 25);  % Calculate the 25th percentile
+                        text(ageIdx + offsets(typeIdx), percentile_25th - 0.2, strjoin(animal_names_by_age{ageIdx}, '\n'), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 8);
+                        animal_names_plotted = true;  % Mark as plotted to avoid repetition
+                    end
                 end
             end
         end

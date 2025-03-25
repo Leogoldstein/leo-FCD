@@ -1,4 +1,4 @@
-function animal_date_list = create_animal_date_list(dataFolders, PathSave)
+function updated_animal_date_list = create_animal_date_list(dataFolders, PathSave)
     % Cette fonction extrait des informations à partir de chemins de fichiers et
     % stocke les résultats dans une liste structurée. Elle demande et affecte les âges avant la sauvegarde.
     %
@@ -56,160 +56,170 @@ function animal_date_list = create_animal_date_list(dataFolders, PathSave)
             animal_date_list{k, 5} = NaN; % Initialiser la colonne des âges à NaN
         end
     end
-    %disp(animal_date_list)
-    % Identifier les groupes et animaux uniques
-    group_names = animal_date_list(:, 2);
-    
-    % Remove empty character arrays
-    group_names = group_names(~cellfun('isempty', group_names));
-    
-    % Get unique values
-    unique_groups = unique(group_names);
 
-    
-    % Liste pour garder une trace des animaux dont l'âge a été assigné
-    animals_with_assigned_ages = {};
-    
-    % Charger les données existantes si le fichier .mat existe
-    type_part = animal_date_list(:, 1);
-    idx = find(~cellfun(@isempty, type_part), 1, 'first');
-    save_folder = fullfile(PathSave, type_part{idx});
-    save_file = 'animal_date_list.mat';
-    type_save_path = fullfile(save_folder, save_file);
-    
-    % Créer le dossier de sauvegarde si nécessaire
-    if ~exist(save_folder, 'dir')
-        mkdir(save_folder);
-    end
-    
-    % Initialiser une variable pour stocker les anciennes données
-    existing_data = {};
-    
-    % Vérifier si le fichier existe déjà
-    if exist(type_save_path, 'file')
-        fprintf('File "%s" exists. Loading existing data...\n', type_save_path);
+    %disp(animal_date_list)
+
+    % Identifier les types uniques
+    unique_types = unique(animal_date_list(:, 1));
+    updated_animal_date_list = {}; % Initialisation
+
+    % Itérer sur chaque type pour gérer les âges indépendamment
+    for h = 1:length(unique_types)
+        current_type = unique_types{h};
+        type_indices = strcmp(animal_date_list(:, 1), current_type);
+        animal_date_list_type = animal_date_list(type_indices, :);
+
+        save_folder = fullfile(PathSave, current_type);
+        save_file = 'animal_date_list.mat';
+        type_save_path = fullfile(save_folder, save_file);
         
-        % Charger les données existantes
-        loaded_data = load(type_save_path);
-        field_names = fieldnames(loaded_data);
-        existing_data = loaded_data.(field_names{1}); % Extraire les données existantes
-        
-        % Assigner les âges existants aux animaux
-        for i = 1:size(animal_date_list, 1)
-            current_animal = animal_date_list{i, 3};
-            current_date = animal_date_list{i, 4};
-    
-            % Chercher l'animal et la date dans les données existantes
-            idx = find(strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
-            if ~isempty(idx)
-                % Récupérer l'âge existant
-                animal_date_list{i, 5} = existing_data{idx, 5};
-            end
+        % Créer le dossier de sauvegarde si nécessaire
+        if ~exist(save_folder, 'dir')
+            mkdir(save_folder);
         end
-    else
-        fprintf('No existing file found. Creating new file...\n');
-    end
-    
-    % Parcourir chaque groupe unique
-    for g = 1:length(unique_groups)
-        group = unique_groups{g};
-        group_indices = strcmp(animal_date_list(:, 2), group);
-    
-        % Trouver les animaux uniques dans ce groupe
-        unique_animals_in_group = unique(animal_date_list(group_indices, 3));
-    
-        % Parcourir chaque animal unique dans le groupe
-        for a = 1:length(unique_animals_in_group)
-            animal_group = unique_animals_in_group{a};
-            animal_indices = strcmp(animal_date_list(:, 3), animal_group) & group_indices;
-    
-            % Trouver les indices des lignes où l'âge est NaN
-            nan_indices = find(cellfun(@(x) isnumeric(x) && any(isnan(x)), animal_date_list(:, 5)));
-    
-            % Parcourir les dates associées à cet animal et demander l'âge
-            for i = nan_indices'
-                if strcmp(animal_date_list{i, 3}, animal_group) && strcmp(animal_date_list{i, 2}, group)
-                    % Vérifier si un âge a déjà été assigné pour cet animal
-                    if ~isnan(animal_date_list{i, 5})
-                        % Si un âge est déjà assigné, passer à la prochaine itération
-                        continue;
-                    end
-    
-                    % Afficher les dates uniquement si l'âge n'est pas encore attribué
-                    fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list{i, 3}, animal_date_list{i, 2});
-                    disp(animal_date_list(animal_indices, 4)); % Afficher les dates associées à cet animal uniquement
-    
-                    % Demander l'âge si nécessaire
-                    age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list{i, 3}), 's');
-    
-                    % Traiter l'entrée utilisateur
-                    if contains(age_input, ':')
-                        age_range = str2double(strsplit(age_input, ':'));
-                        age_list = num2cell(age_range(1):age_range(2));
-                    else
-                        age_list = num2cell(str2double(strsplit(age_input)));
-                    end
-    
-                    % Assigner les âges
-                    for j = 1:length(age_list)
-                        if isnan(age_list{j})
-                            continue; % Skip if age is NaN
+        
+        % Initialiser une variable pour stocker les anciennes données
+        existing_data = {};
+        
+        % Vérifier si le fichier existe déjà
+        if exist(type_save_path, 'file')
+            fprintf('File "%s" exists. Loading existing data...\n', type_save_path);
+            
+            % Charger les données existantes
+            loaded_data = load(type_save_path);
+            field_names = fieldnames(loaded_data);
+            existing_data = loaded_data.(field_names{1}); % Extraire les données existantes
+            
+            % Assigner les âges existants aux animaux
+            for i = 1:size(animal_date_list_type, 1)
+                current_animal = animal_date_list_type{i, 3};
+                current_date = animal_date_list_type{i, 4};
+        
+                % Chercher l'animal et la date dans les données existantes
+                idx = find(strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
+                if ~isempty(idx)
+                    % Récupérer l'âge existant
+                    animal_date_list_type{i, 5} = existing_data{idx, 5};
+                end
+            end
+        else
+            fprintf('No existing file found. Creating new file...\n');
+        end
+        
+        % Identifier les groupes et animaux uniques
+        group_names = animal_date_list_type(:, 2);
+        
+        % Remove empty character arrays
+        group_names = group_names(~cellfun('isempty', group_names));
+        
+        % Get unique values
+        unique_groups = unique(group_names);
+        
+        % Liste pour garder une trace des animaux dont l'âge a été assigné
+        animals_with_assigned_ages = {};
+
+        % Parcourir chaque groupe unique
+        for g = 1:length(unique_groups)
+            group = unique_groups{g};
+            group_indices = strcmp(animal_date_list_type(:, 2), group);
+        
+            % Trouver les animaux uniques dans ce groupe
+            unique_animals_in_group = unique(animal_date_list_type(group_indices, 3));
+        
+            % Parcourir chaque animal unique dans le groupe
+            for a = 1:length(unique_animals_in_group)
+                animal_group = unique_animals_in_group{a};
+                animal_indices = strcmp(animal_date_list_type(:, 3), animal_group) & group_indices;
+        
+                % Trouver les indices des lignes où l'âge est NaN
+                nan_indices = find(cellfun(@(x) isnumeric(x) && any(isnan(x)), animal_date_list_type(:, 5)));
+        
+                % Parcourir les dates associées à cet animal et demander l'âge
+                for i = nan_indices'
+                    if strcmp(animal_date_list_type{i, 3}, animal_group) && strcmp(animal_date_list_type{i, 2}, group)
+                        % Vérifier si un âge a déjà été assigné pour cet animal
+                        if ~isnan(animal_date_list_type{i, 5})
+                            % Si un âge est déjà assigné, passer à la prochaine itération
+                            continue;
+                        end
+        
+                        % Afficher les dates uniquement si l'âge n'est pas encore attribué
+                        fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list_type{i, 3}, animal_date_list_type{i, 2});
+                        disp(animal_date_list_type(animal_indices, 4)); % Afficher les dates associées à cet animal uniquement
+        
+                        % Demander l'âge si nécessaire
+                        age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list_type{i, 3}), 's');
+        
+                        % Traiter l'entrée utilisateur
+                        if contains(age_input, ':')
+                            age_range = str2double(strsplit(age_input, ':'));
+                            age_list = num2cell(age_range(1):age_range(2));
                         else
-                            if i + j - 1 <= size(animal_date_list, 1)
-                                animal_date_list{i + j - 1, 5} = sprintf('P%d', age_list{j});
+                            age_list = num2cell(str2double(strsplit(age_input)));
+                        end
+        
+                        % Assigner les âges
+                        for j = 1:length(age_list)
+                            if isnan(age_list{j})
+                                continue; % Skip if age is NaN
                             else
-                                animal_date_list{i + j - 1, 5} = NaN; % Placeholder si nécessaire
+                                if i + j - 1 <= size(animal_date_list_type, 1)
+                                    animal_date_list_type{i + j - 1, 5} = sprintf('P%d', age_list{j});
+                                else
+                                    animal_date_list_type{i + j - 1, 5} = NaN; % Placeholder si nécessaire
+                                end
                             end
                         end
+        
+                        % Ajouter l'animal à la liste des animaux traités
+                        animals_with_assigned_ages = [animals_with_assigned_ages, animal_group];
                     end
-    
-                    % Ajouter l'animal à la liste des animaux traités
-                    animals_with_assigned_ages = [animals_with_assigned_ages, animal_group];
                 end
             end
         end
-    end
-    
-    % Vérifier les doublons avant d'ajouter les nouvelles lignes
-    for i = 1:size(animal_date_list, 1)
-        current_animal = animal_date_list{i, 3};
-        current_group = animal_date_list{i, 2};
-        current_date = animal_date_list{i, 4};
         
-        % Vérifier si la ligne existe déjà dans existing_data
-        if size(existing_data, 2) >= 4
-            % Ensure non-empty character values
-            group_col   = existing_data(:, 2);
-            animal_col  = existing_data(:, 3);
-            date_col    = existing_data(:, 4);
-        
-            % Nettoyer les colonnes pour éviter les erreurs de comparaison
-            group_col(cellfun(@isempty, group_col)) = {''};
-            animal_col(cellfun(@isempty, animal_col)) = {''};
-            date_col(cellfun(@isempty, date_col)) = {''};
-
-            duplicate_idx = find(strcmp(animal_col, current_animal) & ...
-                                 strcmp(group_col, current_group) & ...
-                                 strcmp(date_col, current_date), 1);
-        else
-            warning('existing_data does not have enough columns.');
-            duplicate_idx = [];
-        end
+        % Vérifier les doublons avant d'ajouter les nouvelles lignes
+        for i = 1:size(animal_date_list_type, 1)
+            current_animal = animal_date_list_type{i, 3};
+            current_group = animal_date_list_type{i, 2};
+            current_date = animal_date_list_type{i, 4};
+            
+            % Vérifier si la ligne existe déjà dans existing_data
+            if size(existing_data, 2) >= 4
+                % Ensure non-empty character values
+                group_col   = existing_data(:, 2);
+                animal_col  = existing_data(:, 3);
+                date_col    = existing_data(:, 4);
+            
+                % Nettoyer les colonnes pour éviter les erreurs de comparaison
+                group_col(cellfun(@isempty, group_col)) = {''};
+                animal_col(cellfun(@isempty, animal_col)) = {''};
+                date_col(cellfun(@isempty, date_col)) = {''};
     
-        % Si la ligne n'existe pas déjà, l'ajouter à existing_data
-        if isempty(duplicate_idx)
-            % Vérifier si animal_date_list(i, :) contient des données valides avant l'ajout
-            if all(~cellfun(@isempty, animal_date_list(i, :)))
-                existing_data = [existing_data; animal_date_list(i, :)];
+                duplicate_idx = find(strcmp(animal_col, current_animal) & ...
+                                     strcmp(group_col, current_group) & ...
+                                     strcmp(date_col, current_date), 1);
             else
-                warning('Une ligne vide ou invalide a été détectée et ignorée.');
+                warning('existing_data does not have enough columns.');
+                duplicate_idx = [];
+            end
+        
+            % Si la ligne n'existe pas déjà, l'ajouter à existing_data
+            if isempty(duplicate_idx)
+                % Vérifier si animal_date_list(i, :) contient des données valides avant l'ajout
+                if all(~cellfun(@isempty, animal_date_list_type(i, :)))
+                    existing_data = [existing_data; animal_date_list_type(i, :)];
+                else
+                    warning('Une ligne vide ou invalide a été détectée et ignorée.');
+                end
             end
         end
-
-    end
+        
+        % Sauvegarder les données combinées dans le fichier .mat
+        save(type_save_path, 'existing_data');
+        fprintf('Data saved to "%s".\n', type_save_path);
+        
+        updated_animal_date_list = [updated_animal_date_list; animal_date_list_type];
     
-    % Sauvegarder les données combinées dans le fichier .mat
-    save(type_save_path, 'existing_data');
-    fprintf('Data saved to "%s".\n', type_save_path);
-
+    end
 end
