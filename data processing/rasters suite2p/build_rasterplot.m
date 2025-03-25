@@ -28,10 +28,10 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
                 
-                % if exist(fig_save_path, 'file')
-                %     disp(['Figure already exists and was skipped: ' fig_save_path]);
-                %     continue;
-                % end
+                if exist(fig_save_path, 'file')
+                    disp(['Figure already exists and was skipped: ' fig_save_path]);
+                    continue;
+                end
 
              end
     
@@ -139,7 +139,6 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             
             % Fermeture pour libérer la mémoire
             close(gcf);
-
 
             figure;
             scatter(prop_MAct, prop_MActblue, 'filled');

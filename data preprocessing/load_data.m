@@ -23,7 +23,8 @@ function [F, DF, ops, stat, iscell] = load_data(workingFolder)
         catch ME
             error('Failed to call Python function: %s', ME.message);
         end
-
+        
+        F = F(:, 1:3600);
         DF = double(F(iscell(:,1) > 0, :));  
 
     elseif strcmp(ext, '.mat')

@@ -1,4 +1,4 @@
- function pipeline_for_data_processing(selected_groups)
+function pipeline_for_data_processing(selected_groups)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved
@@ -292,16 +292,16 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         if isempty(gcamp_data.synchronous_frames{m})
             gcamp_data.synchronous_frames{m} = round(0.2 * gcamp_data.sampling_rate{m});
         end
-        
+
         % Si DF_gcamp est vide, traiter les données
         if isempty(gcamp_data.DF{m})
-            [~, DF_gcamp, ops, ~, ~] = load_data(current_gcamp_folders_group{m});
+            [F, DF_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
             DF_gcamp = DF_processing(DF_gcamp);
             [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, current_gcamp_folders_group{m}, ops);
             [Raster_gcamp, MAct_gcamp, ~] = Sumactivity(DF_gcamp, MinPeakDistance, gcamp_data.synchronous_frames{m});
             
             % Sauvegarde des résultats
-            save(filePath, 'MinPeakDistance', 'DF_gcamp', 'isort1_gcamp', ...
+            save(filePath, 'MinPeakDistance', 'F', 'iscell', 'DF_gcamp', 'isort1_gcamp', ...
                 'isort2_gcamp', 'Sm_gcamp', 'Raster_gcamp', 'MAct_gcamp');
 
             gcamp_data.DF{m} = DF_gcamp;

@@ -35,7 +35,8 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
         case 1
             % Traitement JM (Jure's data)
             disp('Traitement des données JM...');
-            dataFolders = select_folders(jm_folder);
+            initial_folder = jm_folder;
+            dataFolders = select_folders(initial_folder);
             [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
             [newFPaths, newStatPaths, newIscellPaths, newOpsPaths, newSpksPaths, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);  
             assignin('base', 'gcampdataFolders', gcampdataFolders);
@@ -66,10 +67,7 @@ function [animal_date_list, env_paths_all, selected_groups] = pipeline_for_data_
         otherwise
             % Option invalide
             error('Choix invalide. Veuillez relancer la fonction et choisir 1, 2 ou 3.');
-    end  
-
-    % Créer une liste des animaux et des dates
-    PathSave = 'D:\after_processing';
+    end
     
     % Créer une liste des animaux et des dates
     animal_date_list = create_animal_date_list(gcampdataFolders, PathSave);

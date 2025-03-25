@@ -1,5 +1,7 @@
 %% Preprocessing
 
+clear vars
+
 % Chemin où se trouve le fichier python_function.py
 new_path = 'D:/local-repo/data preprocessing';
 
