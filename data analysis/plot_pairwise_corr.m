@@ -26,19 +26,13 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
                     all_cross_corr_mtor_mtor{m} = [];
                 end
             end
+            
+            all_cross_corr_gcamp_gcamp{m} = {};
 
             if isempty(all_cross_corr_gcamp_gcamp{m})
                 disp(['Processing pairwise correlation for gcamp-gcamp in file: ', filePath]);
                 DF = all_DF{m};
-                [num_cells, ~] = size(DF);
-                cross_corr_gcamp_gcamp = NaN(num_cells, num_cells);
-
-                for i = 1:num_cells-1
-                    for j = i+1:num_cells
-                        corr_matrix = corrcoef(DF(i,:), DF(j,:));
-                        cross_corr_gcamp_gcamp(i,j) = corr_matrix(1,2);
-                    end
-                end
+                cross_corr_gcamp_gcamp = corrcoef(DF');
 
                 save(filePath, 'cross_corr_gcamp_gcamp');
                 all_cross_corr_gcamp_gcamp{m} = cross_corr_gcamp_gcamp;
@@ -51,18 +45,8 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
                 DF_mtor = DF_all(mtor_indices,:);
                 mtor_indices_logical = ismember(1:size(DF_all, 1), mtor_indices);
                 DF_gcamp = DF_all(~mtor_indices_logical,:);
-                
-                [num_gcamp_cells, ~] = size(DF_gcamp);
-                [num_mtor_cells, ~] = size(DF_mtor);
-                cross_corr_gcamp_mtor = NaN(num_gcamp_cells, num_mtor_cells);
+                cross_corr_gcamp_mtor = corrcoef(DF_gcamp', DF_mtor');
 
-                for i = 1:num_gcamp_cells
-                    for j = 1:num_mtor_cells
-                        corr_matrix = corrcoef(DF_gcamp(i,:), DF_mtor(j,:));
-                        cross_corr_gcamp_mtor(i,j) = corr_matrix(1,2);
-                    end
-                end
-                
                 save(filePath, 'cross_corr_gcamp_mtor', '-append');
                 all_cross_corr_gcamp_mtor{m} = cross_corr_gcamp_mtor;
             end
@@ -72,17 +56,8 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
                 DF_all = all_DF_all{m};
                 mtor_indices = all_mtor_indices{m};
                 DF_mtor = DF_all(mtor_indices,:);
-                
-                [num_mtor_cells, ~] = size(DF_mtor);
-                cross_corr_mtor_mtor = NaN(num_mtor_cells, num_mtor_cells);
+                cross_corr_mtor_mtor = corrcoef(DF_mtor');
 
-                for i = 1:num_mtor_cells-1
-                    for j = i+1:num_mtor_cells
-                        corr_matrix = corrcoef(DF_mtor(i,:), DF_mtor(j,:));
-                        cross_corr_mtor_mtor(i,j) = corr_matrix(1,2);
-                    end
-                end
-                
                 save(filePath, 'cross_corr_mtor_mtor', '-append');
                 all_cross_corr_mtor_mtor{m} = cross_corr_mtor_mtor;
             end
