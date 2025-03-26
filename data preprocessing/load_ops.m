@@ -17,8 +17,7 @@ function all_ops = load_ops(current_folders_group)
             if ~isempty(files)
                 % Unpack .npy file paths
                 newOpsPath = fullfile(current_folder, 'ops.npy');
-                disp(newOpsPath)
-
+                
                 % Call the Python function to load stats and ops
                 try
                     mod = py.importlib.import_module('python_function');

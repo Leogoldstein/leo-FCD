@@ -20,6 +20,18 @@ function pipeline_for_data_processing(selected_groups)
     else
         processing_choice2 = [];
     end
+
+    if any(strcmp({selected_groups.animal_type}, 'FCD'))
+        include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
+        % Assurez-vous que la réponse est '1' ou '2'
+        if ~ismember(include_blue_cells, {'1', '2'})
+            disp('Invalid input, defaulting to 2 (No).');
+            include_blue_cells = '2'; % Défaut à '2' (Non) si l'entrée est invalide
+        end
+    else
+        % Pour les types non 'FCD', on ne pose pas la question
+        include_blue_cells = '2'; % Valeur par défaut (Ne pas inclure les cellules bleues)
+    end
       
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
@@ -42,20 +54,6 @@ function pipeline_for_data_processing(selected_groups)
     for k = 1:length(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
         current_animal_type = selected_groups(k).animal_type;
-
-        % Check if the animal type is 'FCD'
-        if strcmp(current_animal_type, 'FCD')
-            include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
-            % Ensure input is either '1' or '2'
-            if ~ismember(include_blue_cells, {'1', '2'})
-                disp('Invalid input, defaulting to 2 (No).');
-                include_blue_cells = '2'; % Default to '2' if the input is invalid
-            end
-        else
-            % For non-'FCD' types, set include_blue_cells to 2 by default
-            include_blue_cells = '2';
-        end
-
         current_ani_path_group = selected_groups(k).path;
         current_dates_group = selected_groups(k).dates;
         date_group_paths = cell(length(current_dates_group), 1);  % Store paths for each date
