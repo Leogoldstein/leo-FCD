@@ -84,7 +84,7 @@ function pipeline_for_data_processing(selected_groups)
             };
             assignin('base', 'folders_groups', folders_groups);
          else    
-            current_gcamp_folders_group = selected_groups(k).folders;
+            current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders, 'UniformOutput', false);
             current_gcamp_folders_names_group = cell(1, length(current_gcamp_TSeries_path)); % Preallocate the cell array
             current_blue_folders_names_group = cell(1, length(current_gcamp_TSeries_path));
             for l = 1:length(current_gcamp_TSeries_path)
@@ -290,11 +290,12 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         if isempty(gcamp_data.synchronous_frames{m})
             gcamp_data.synchronous_frames{m} = round(0.2 * gcamp_data.sampling_rate{m});
         end
-
+       
         % Si DF_gcamp est vide, traiter les données
         if isempty(gcamp_data.DF{m})
             [F, DF_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
             DF_gcamp = DF_processing(DF_gcamp);
+            assignin('base', 'DF_gcamp', DF_gcamp);
             [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, current_gcamp_folders_group{m}, ops);
             [Raster_gcamp, MAct_gcamp, ~] = Sumactivity(DF_gcamp, MinPeakDistance, gcamp_data.synchronous_frames{m});
             

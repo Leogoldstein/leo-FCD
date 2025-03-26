@@ -12,7 +12,7 @@ function [F, DF, ops, stat, iscell] = load_data(workingFolder)
         newOpsPath = fullfile(workingFolder, 'ops.npy');
 
         % Load .npy files
-        F = readNPY(newFPath);  % Assuming only one folder, so the 1st entry is used
+        F = readNPY(newFPath);
         iscell = readNPY(newIscellPath);
 
         % Call the Python function to load stats and ops

@@ -7,7 +7,7 @@ new_path = 'D:/local-repo/data preprocessing';
 
 %Vérifiez si le 2che2min est déjà dans le sys.path Python, sinon l'ajouter
 if count(py.sys.path, new_path) == 0
-    i1nsert(py.sys.path, int32(0), new_path);
+    insert(py.sys.path, int32(0), new_path);
 end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
