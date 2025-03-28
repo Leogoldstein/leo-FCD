@@ -7,7 +7,7 @@ function selectedFolders = select_folders(initial_folder)
     % Ask the user if they want to select specific folders or all folders
     choice = questdlg('Do you want to select specific folders or all folders?', ...
         'Folder Selection Mode', ...
-        'Specific Folders', 'All Folders', 'Cancel', 'Cancel');
+        'Specific Folders', 'All Good Folders', 'Cancel', 'Cancel');
 
     % Initialize an empty cell array to store the selected folders
     selectedFolders = {};
@@ -36,24 +36,86 @@ function selectedFolders = select_folders(initial_folder)
                 end
             end
             
-        case 'All Folders'
-            % Get a list of all items (files and folders) in the initial folder
-            items = dir(initial_folder);
+        case 'All Good Folders'
+            
+            [~, lastFolderName] = fileparts(initial_folder);
+            
+            if lastFolderName == "jm"         
+                folder_names = {'jm031', 'jm032', 'jm038', 'jm039', 'jm040', 'jm046'};
+            
+            elseif lastFolderName == "FCD"   
+                folder_names = {
+                    'ani1\2024-06-27';
+                    'ani3\2024-06-26';
+                    'ani3\2024-06-28';
+                    'ani4\2024-06-27';
+                    'ani4\2024-06-28';
+                    'ani4\2024-06-29';
+                    'ani4\2024-07-02';
+                
+                    'mTor13\ani2\2024-06-27';
+                    'mTor13\ani2\2024-10-24';
+                    'mTor13\ani2\2024-10-25';
+                    'mTor13\ani3\2024-10-26';
+                
+                    'mTor14\ani1\2024-06-27';
+                    'mTor14\ani1\2024-10-21';
+                    'mTor14\ani1\2024-10-23';
+                    'mTor14\ani1\2024-10-24';
+                    'mTor14\ani1\2024-10-25';
+                    'mTor14\ani1\2024-10-26';
+                    'mTor14\ani3\2024-10-24';
+                    'mTor14\ani3\2024-10-26';
+                    'mTor14\ani3\2024-10-27';
+                    'mTor14\ani3\2024-10-28';
+                
+                    'mTor15\ani5\2024-11-24';
+                    'mTor15\ani5\2024-11-25';
+                    'mTor15\ani5\2024-11-26';
+                
+                    'mTor16\ani2\2024-11-19';
+                    'mTor16\ani3\2024-11-21';
+                    'mTor16\ani4\2024-11-21';
+                    'mTor16\ani4\2024-11-22';
+                
+                    'mTor17\ani1\2024-12-21';
+                    'mTor17\ani3\2024-12-19';
+                    'mTor17\ani3\2024-12-21';
+                    'mTor17\ani3\2024-12-22';
+                    'mTor17\ani3\2024-12-23';
+                };
 
-            % Iterate through all items
-            for idx = 1:length(items)
-                % Get the name of the item
-                item_name = items(idx).name;
-
-                % Get the full path of the item
-                item_path = fullfile(initial_folder, item_name);
-
-                % Check if the item is a directory and not '.' or '..'
-                if items(idx).isdir && ~strcmp(item_name, '.') && ~strcmp(item_name, '..')
-                    % Process the folder and append results
-                    selectedFolders = [selectedFolders, process_folder(item_path)];
-                end
+            
+            elseif lastFolderName == "CTRL"   
+                folder_names = {
+                    'an1\2024-03-04';
+                    'an2\2024-04-29';
+                    'an2\2024-04-30';
+                    'an4\2024-06-07';
+                    'an5\2024-06-12';
+                    'an5\2024-06-13';
+                    'an5\2024-06-14';
+                    'an7\2024-09-24';
+                    'an7\2024-09-25';
+                    'an7\2024-09-26';
+                    'an7\2024-09-27';
+                };
             end
+
+           for idx = 1:length(folder_names)
+                item_name = folder_names{idx}; % Nom du dossier
+                item_path = fullfile(initial_folder, item_name); % Chemin complet
+            
+                % Vérifier si le dossier existe avant de le traiter
+                if isfolder(item_path)
+                    fprintf('Traitement du dossier : %s\n', item_path);
+                    
+                    % Appeler une fonction pour traiter le dossier (exemple)
+                    selectedFolders = [selectedFolders, process_folder(item_path)];
+                else
+                    fprintf('Dossier non trouvé : %s\n', item_path);
+                end
+           end
 
         otherwise
             disp('User canceled the selection. No folders selected.');

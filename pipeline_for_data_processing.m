@@ -84,7 +84,7 @@ function pipeline_for_data_processing(selected_groups)
             };
             assignin('base', 'folders_groups', folders_groups);
          else    
-            current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders, 'UniformOutput', false);
+            current_gcamp_folders_group = selected_groups(k).folders;
             current_gcamp_folders_names_group = cell(1, length(current_gcamp_TSeries_path)); % Preallocate the cell array
             current_blue_folders_names_group = cell(1, length(current_gcamp_TSeries_path));
             for l = 1:length(current_gcamp_TSeries_path)
@@ -196,7 +196,7 @@ function pipeline_for_data_processing(selected_groups)
     % end
     
     if analysis_choice == 6
-        corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups)
+        corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
     end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint

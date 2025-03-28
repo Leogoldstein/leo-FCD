@@ -1,8 +1,8 @@
 function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     % Définition des chemins de base
-    jm_folder = '\\10.51.106.5\data\Data\jm\'; 
+    jm_folder = '\\10.51.106.5\data\Data\jm'; 
     destinationFolder = 'D:/imaging/jm/'; 
-    fcd_folder = 'D:\imaging\FCD\'; 
+    fcd_folder = 'D:\imaging\FCD'; 
     ctrl_folder = 'D:\imaging\CTRL'; 
     PathSave = 'D:\after_processing';
 
@@ -26,6 +26,8 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         disp('Processing JM data...');
         dataFolders = select_folders(jm_folder);
         [true_env_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+        TSeriesPaths_jm = TSeriesPaths_jm(~cellfun('isempty', TSeriesPaths_jm)); % Remove empty cells
+        true_env_paths_jm = true_env_paths_jm(~cellfun('isempty', true_env_paths_jm)); % Remove empty cells
         [~, ~, ~, ~, ~, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);  
         gcampdataFolders_all = [gcampdataFolders_all; gcampdataFolders(:)];
         disp('Traitement JM terminé.');
@@ -52,6 +54,7 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     end
 
     % Création de la liste des animaux et des dates
+    gcampdataFolders_all = gcampdataFolders_all(~cellfun('isempty', gcampdataFolders_all));
     animal_date_list = create_animal_date_list(gcampdataFolders_all, PathSave);
 
     % Trier animal_date_list selon l'ordre des choix utilisateur
@@ -98,13 +101,20 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 continue;
             end
             
-            % Créer le chemin d'animal
-            ani_path = fullfile(PathSave, group_type, current_animal_group);
+            parts = strsplit(current_animal_group, '_');
+    
+            if isscalar(parts)
+                ani_path = fullfile(PathSave, group_type, parts{1});
+            else
+                ani_path = fullfile(PathSave, group_type, parts{2}, parts{1});
+            end
+
+            ani_path = string(ani_path); % Convertir ani_path a string
         
             % Stockage structuré selon le type
             selected_groups(idx).animal_group = current_animal_group;
             selected_groups(idx).dates = date_part_all(date_indices);
-            selected_groups(idx).animal_type = group_type;
+            selected_groups(idx).animal_type = string(group_type);
         
             % Traitement par type d'animal
             if group_type == "jm"
