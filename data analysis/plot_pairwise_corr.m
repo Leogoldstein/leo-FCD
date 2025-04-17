@@ -10,20 +10,25 @@ function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_
             filePath = fullfile(gcamp_output_folders{m}, 'results_corr.mat');
             if exist(filePath, 'file') == 2
                 data = load(filePath);
+            else 
+                data = [];
             end                         
 
             if nargin < 4 
                
-                % if isfield(data, 'cross_corr_gcamp_gcamp')
-                %     all_cross_corr_gcamp_gcamp{m} = data.cross_corr_gcamp_gcamp;
-                % else                
+                if isfield(data, 'cross_corr_gcamp_gcamp')
+                    all_cross_corr_gcamp_gcamp{m} = data.cross_corr_gcamp_gcamp;
+
+                    % cross_corr_gcamp_gcamp = data.cross_corr_gcamp_gcamp;
+                    % all_cross_corr_gcamp_gcamp{m} = mean(cross_corr_gcamp_gcamp, "all", "omitmissing");
+                else                
                     disp(['Processing pairwise correlation for gcamp-gcamp in file: ', filePath]);
                     DF = all_DF{m};
                     
                     cross_corr_gcamp_gcamp = corrcoef(DF');
                     save(filePath, 'cross_corr_gcamp_gcamp');
                     all_cross_corr_gcamp_gcamp{m} = cross_corr_gcamp_gcamp;
-                % end
+                end
             end
 
             if nargin > 3 && isempty(all_cross_corr_gcamp_mtor{m})

@@ -19,15 +19,18 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
             % If there is only one 'TSeries' folder, automatically select it
             TSeriesPath = fullfile(selectedFolder, TSeriesFolder(1).name);
             
-            suite2pFolder = fullfile(selectedFolder, 'suite2p');
+            suite2pFolder1 = fullfile(selectedFolder, 'suite2p');
+            suite2pFolder2 = fullfile(TSeriesPath, 'suite2p');
             
-            % If 'suite2p' subfolder exists, append it to the selected folder
-            if exist(suite2pFolder, 'dir') == 7
-                selectedFolder = suite2pFolder;
+            if exist(suite2pFolder1, 'dir') == 7
+                suite2pFolder = suite2pFolder1;
+            elseif exist(suite2pFolder2, 'dir') == 7
+                suite2pFolder = suite2pFolder2;
             else
                 disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
                 continue;
             end
+
         else
             % If there are multiple 'TSeries' folders or none, prompt the user to select one
             TSeriesPath = uigetdir(selectedFolder, 'Select a TSeries folder');
@@ -43,9 +46,7 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
                 suite2pFolder = fullfile(selectedFolder, 'suite2p');
                 
                 % If 'suite2p' subfolder exists, append it to the selected folder
-                if exist(suite2pFolder, 'dir') == 7
-                    selectedFolder = suite2pFolder;
-                else
+                if ~exist(suite2pFolder, 'dir') == 7
                     disp('Error: No ''suite2p'' subfolder found. Skipping this folder.');
                     continue;  % Skip to the next iteration of the loop
                 end
@@ -53,17 +54,17 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
         end
         
         % List 'plane' folders in suite2pFolder
-        planeFolders = dir(fullfile(suite2pFolder, 'plane*'));
+        planeFolders = dir(fullfile(suite2pFolder, 'plane*')); 
         
         if isscalar(planeFolders) && planeFolders(1).isdir
             % If there is only one 'plane' folder, automatically select it
-            selectedFolder = fullfile(suite2pFolder, planeFolders(1).name);
+            planeFolder = fullfile(suite2pFolder, planeFolders(1).name);
         else
             % If there are multiple 'plane' folders or none, prompt the user to select one
-            selectedFolder = uigetdir(suite2pFolder, 'Select a plane folder');
+            planeFolder = uigetdir(suite2pFolder, 'Select a plane folder');
             
             % Check if the user canceled the selection
-            if isequal(selectedFolder, 0)
+            if isequal(planeFolder, 0)
                 disp('User clicked Cancel. Skipping this folder.');
                 continue;
             end
@@ -81,11 +82,11 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
         true_env_paths{idx} = env_path;
 
         % Construct file paths
-        stat_path = fullfile(selectedFolder, 'stat.npy');
-        F_path = fullfile(selectedFolder, 'F.npy');
-        iscell_path = fullfile(selectedFolder, 'iscell.npy');
-        ops_path = fullfile(selectedFolder, 'ops.npy');
-        spks_path = fullfile(selectedFolder, 'spks.npy');
+        stat_path = fullfile(planeFolder, 'stat.npy');
+        F_path = fullfile(planeFolder, 'F.npy');
+        iscell_path = fullfile(planeFolder, 'iscell.npy');
+        ops_path = fullfile(planeFolder, 'ops.npy');
+        spks_path = fullfile(planeFolder, 'spks.npy');
 
         % Create a list of all file paths
         filePaths = {stat_path, F_path, iscell_path, ops_path, spks_path};

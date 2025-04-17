@@ -13,9 +13,9 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
     animal_date_list = cell(length(dataFolders), 5); % {type, group, animal, date, age}
 
     % Définition des patterns pour extraire les informations
-    pattern_mTOR = 'D:\\imaging\\FCD(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
-    pattern_ani = 'D:\\imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
-    pattern_jm = 'D:\\imaging\\jm\\([^\\]+)\\([^\\]+)';
+    pattern_mTOR = 'D:\\Imaging\\FCD(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    pattern_ani = 'D:\\Imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    pattern_jm = 'D:\\Imaging\\jm\\([^\\]+)\\([^\\]+)';
 
     % Parcourir les chemins des fichiers
     for k = 1:length(dataFolders)

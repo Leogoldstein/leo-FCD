@@ -27,7 +27,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
         % If no subfolders match the format, create a new folder
         if isempty(specificSubfolders)
             % For gcamp
-            newSubfolderPath_gcamp = fullfile(date_group_paths{k}, daytime, current_gcamp_folders_names_group{k});
+            newSubfolderPath_gcamp = fullfile(date_group_paths{k}, current_gcamp_folders_names_group{k}, 'after processing', daytime);
             if isempty(newSubfolderPath_gcamp) || ~ischar(newSubfolderPath_gcamp)
                 mkdir(newSubfolderPath_gcamp);
                 disp(['No subfolder found. Created new gcamp folder: ', newSubfolderPath_gcamp]);
@@ -35,7 +35,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
             end
             % For blue (only if the name exists)
             if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}{1})
-                newSubfolderPath_blue = fullfile(date_group_paths{k}, daytime, current_blue_folders_names_group{k});
+                newSubfolderPath_blue = fullfile(date_group_paths{k}, current_blue_folders_names_group{k}, 'after processing', daytime);
                 mkdir(newSubfolderPath_blue);
                 disp(['No subfolder found. Created new folder for analysis: ', newSubfolderPath_blue]);
                 chosen_folder_processing_blue{k} = newSubfolderPath_blue;
@@ -104,13 +104,13 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                 
             elseif ~isempty(user_choice2) && strcmpi(user_choice2, '2')
                 for l = 1:length(date_group_paths)
-                    newFolderPath_gcamp = fullfile(date_group_paths{l}, daytime, current_gcamp_folders_names_group{l});
+                    newFolderPath_gcamp = fullfile(date_group_paths{l}, current_gcamp_folders_names_group{l}, 'after processing', daytime);
                     mkdir(newFolderPath_gcamp);
                     disp(['Created new gcamp saving folder: ', newFolderPath_gcamp]);
                     chosen_folder_processing_gcamp{l} = newFolderPath_gcamp;
     
                     if ~isempty(current_blue_folders_names_group{l}) && ~isempty(current_blue_folders_names_group{l}{1})
-                        newFolderPath_blue = fullfile(date_group_paths{l}, daytime, current_blue_folders_names_group{l});
+                        newFolderPath_blue = fullfile(date_group_paths{l}, current_blue_folders_names_group{k}, 'after processing', daytime);
                         mkdir(newFolderPath_blue);
                         disp(['Created new blue saving folder: ', newFolderPath_blue]);
                         chosen_folder_processing_blue{l} = newFolderPath_blue;

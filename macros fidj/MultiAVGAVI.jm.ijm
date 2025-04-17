@@ -27,10 +27,10 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
 
     for (var l = 0; l < tseriesFoldersList.length; l++) {
         if (startsWith(tseriesFoldersList[l], "TSeries") 
-		    && indexOf(tseriesFoldersList[l], "gcamp") >= 0 
+		    && indexOf(tseriesFoldersList[l], "blue") <= 0 
 		    && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
             tseriesFolderFound = true;
-            tseriesFolders = Array.concat(tseriesFolders, subDir + File.separator + tseriesFoldersList[l]);
+            tseriesFolders = Array.concat(tseriesFolders, subDir + tseriesFoldersList[l]);
         }
     }
 
@@ -48,11 +48,13 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
         var tseriesFolderName = File.getName(tseriesFolder);
         var aviFileName = "AVG_concat_groupZ.avi";  // Nom du fichier AVI à enregistrer
         var ConcatTifFileName = "Concatenated.tif";
-        var fullPath = saveRegisVidDir ;//+ tseriesFolderName + File.separator;
-        createDirectory(fullPath);
         
-        var fullPathTiff = fullPath + ConcatTifFileName;
-        var fullPathAvi = fullPath + aviFileName;
+        var path = saveRegisVidDir + tseriesFolderName + File.separator;
+        createDirectory(path);
+
+        var fullPathTiff = path + ConcatTifFileName;
+        var fullPathAvi = path + aviFileName;
+
 		if (File.exists(fullPathAvi)) {
 			print("Le fichier AVI existe déjà : " + fullPathAvi);
 			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
@@ -190,54 +192,51 @@ function createDirectory(path) {
 // Fonction pour traiter un fichier TIFF
 function processTifFile(tifFilePath, saveDir) {
     var tifFileName = File.getName(tifFilePath);
+    print("tifFileName : " + tifFileName);
     	
-    var pattern = "(.*)_(.*)_(.*)_(.*)\\.ome.tif";
-    
+    var pattern = "(.*)_(Cycle[0-9]+)_(Ch[0-9]+)_(\\d{6})\\.ome.tif"; // Adjusted for 5 underscores
     if (matches(tifFileName, pattern)) {
         var values = split(tifFileName, "_");
-        var channel = values[2];
-        
+        var channel = values[2]; // Now correctly points to Ch1, Ch2, Ch3
+
+        var newFileName = replace(tifFileName, ".ome.tif", ".tif");
+        var fullPath = saveDir + File.separator + newFileName;
+
+        if (File.exists(fullPath)) {
+            print("L'image " + channel + " existe déjà : " + fullPath); 
+            return;
+        }
+
+        open(tifFilePath);
+
         if (channel == "Ch2") {
-		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
-		        print("L'image verte existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
-		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
-		    }
-		    open(tifFilePath);
-		    run("Green");
-		    saveAs("Tiff", saveDir + File.separator + tifFileName);
-		    
-		} else if (channel == "Ch1") {
-		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
-		        print("L'image rouge existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
-		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
-		    }
-		    open(tifFilePath);
-		    run("Red");
-		    saveAs("Tiff", saveDir + File.separator + tifFileName);
-		
-		} else if (channel == "Ch3") {
-		    if (File.exists(saveDir + File.separator + tifFileName + ".Tiff")) { 
-		        print("L'image rouge existe déjà : " + saveDir + File.separator + tifFileName + ".Tiff"); 
-		        return; // Passer à l'itération suivante sans faire de calculs supplémentaires
-		    }
-		    open(tifFilePath);
-		    run("Blue");
-		    saveAs("Tiff", saveDir + File.separator + tifFileName);
-		}
-		
+            run("Green");
+        } else if (channel == "Ch1") {
+            run("Red");
+        } else if (channel == "Ch3") {
+            run("Blue");
+        } else {
+            print("Canal non reconnu : " + channel);
+            return;
+        }
+
+        print("Saving to: " + fullPath);
+        saveAs("Tiff", fullPath);
+
     } else {
         print("Nom du fichier ne correspond pas au modèle attendu.");
     }
 }
 
+
 // Main logic pour gérer les sous-dossiers en fonction de 'name'
-var PathSave = "D:" + File.separator + "after_processing" + File.separator;
+var PathSave = "D:" + File.separator + "Imaging" + File.separator;
 var dir = getDirectory("Choose Source Directory ");
 var list = getFileList(dir);
 setBatchMode(true);
 
 for (var i = 0; i < list.length; i++) {
-    var filename = dir + File.separator + list[i];
+    var filename = dir + list[i];
     print("Traitement du fichier : " + filename);
     
     var name = File.getName(filename);
@@ -254,7 +253,7 @@ for (var i = 0; i < list.length; i++) {
         var subDir = filename + subDirList[j];
         
         // Si le nom commence par "mTor", traitement des sous-dossiers niveau 2
-        if (name.startsWith("mTor")) {
+        if (matches(name, "^m[Tt]or.*")) {
         	var ani = subDirList[j];
 			var ani = replace(ani, "/", "");
 			
@@ -272,13 +271,13 @@ for (var i = 0; i < list.length; i++) {
 						var date = subSubDirList[k];
 						var date = replace(date, "/", "");
 						
-                        var saveDir = aniDir + File.separator + date;
+                        var saveDir = aniDir + File.separator + date + File.separator ;
                         createDirectory(saveDir);
                         
-                        var saveSingleImDir = saveDir + File.separator + "Single images";
+                        var saveSingleImDir = saveDir + "Single images";
                         createDirectory(saveSingleImDir);
                         
-                        var saveRegisVidDir = saveDir + File.separator;
+                        var saveRegisVidDir = saveDir;
                         createDirectory(saveRegisVidDir);
                     
                         // Traiter les dossiers "SingleImage" dans subSubDir
@@ -293,13 +292,16 @@ for (var i = 0; i < list.length; i++) {
         
         // Si le nom commence par "ani", traitement des sous-dossiers niveau 1
         else if (name.startsWith("an")) {
-            var saveDir = rootDir + subDirList[j];
+        	var date = subDirList[j];
+			var date = replace(date, "/", "");
+			
+            var saveDir = rootDir + date + File.separator;
             createDirectory(saveDir);
         
-            var saveSingleImDir = saveDir + File.separator + "Single images";
+            var saveSingleImDir = saveDir + "Single images";
             createDirectory(saveSingleImDir);
         
-            var saveRegisVidDir = saveDir + File.separator;
+            var saveRegisVidDir = saveDir ;
             createDirectory(saveRegisVidDir);
         
             // Traiter les dossiers "SingleImage" dans subDir

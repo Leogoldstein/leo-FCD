@@ -5,7 +5,7 @@ function pipeline_for_data_processing(selected_groups)
     % - animal_date_list: Cell array containing animal information (type, group, animal, date, etc.)
     % - truedataFolders: List of paths to the true data folders
     
-    PathSave = 'D:\after_processing\Presentations\';
+    PathSave = 'D:\Imaging\Outputs\';
     
     % Ask for analysis types, multiple choices separated by spaces
     analysis_choices_str = input('Choose analysis types (separated by spaces): mean images (1), raster plot (2), global analysis of activity (3), SCEs (4), clusters analysis (5), or pairwise correlations (6)? ', 's');
@@ -20,18 +20,23 @@ function pipeline_for_data_processing(selected_groups)
     else
         processing_choice2 = [];
     end
-
-    if any(strcmp({selected_groups.animal_type}, 'FCD'))
+    
+    % Extraire et aplatir directement les valeurs en un cell array de strings
+    animal_type = string([selected_groups.animal_type]);
+    
+    % Vérifier si 'FCD' est présent
+    if any(animal_type == "FCD")
         include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
-        % Assurez-vous que la réponse est '1' ou '2'
+        
+        % Vérification de l'entrée
         if ~ismember(include_blue_cells, {'1', '2'})
             disp('Invalid input, defaulting to 2 (No).');
-            include_blue_cells = '2'; % Défaut à '2' (Non) si l'entrée est invalide
+            include_blue_cells = '2';
         end
     else
-        % Pour les types non 'FCD', on ne pose pas la question
-        include_blue_cells = '2'; % Valeur par défaut (Ne pas inclure les cellules bleues)
+        include_blue_cells = '2'; % Valeur par défaut
     end
+
       
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
@@ -120,7 +125,7 @@ function pipeline_for_data_processing(selected_groups)
                     case 2
                         disp(['Performing raster plot analysis for ', current_animal_group]);
                         [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);                    
-                        assignin('base', 'gcamp_data', gcamp_data);
+                        %assignin('base', 'gcamp_data', gcamp_data);
 
                         if strcmpi(include_blue_cells, '1')
                             build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct);
@@ -148,20 +153,23 @@ function pipeline_for_data_processing(selected_groups)
                     
                     case 4
                         disp(['Performing SCEs analysis for ', current_animal_group]);
-                        [gcamp_data.DF, gcamp_data.Raster, all_sampling_rate, ~, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_gcamp_folders_group, current_env_group, current_dates_group, gcamp_output_folders);
-                        [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, gcamp_data.Raster, all_sces_distances, gcamp_output_folders);
-                    
-                        export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
-                            all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
-                    
+                        gcamp_data = load_or_process_sce_data(current_animal_group, current_gcamp_folders_group, current_env_group, current_dates_group, gcamp_output_folders, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);
+                        
+                        assignin('base', 'gcamp_data', gcamp_data);
+
+                        % [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, gcamp_data.Raster, all_sces_distances, gcamp_output_folders);
+                        % 
+                        % export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
+                        %     all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
+                        % 
                         % Initialiser les cellules pour ce groupe
                         all_DF_groups{k} = gcamp_data.DF;
-                        all_sampling_rate_groups{k} = all_sampling_rate;
+                        all_sampling_rate_groups{k} = gcamp_data.sampling_rate;
                         all_Raster_groups{k} = gcamp_data.Raster;
-                        all_Race_groups{k} = all_Race;
-                        all_TRace_groups{k} = all_TRace;
-                        all_sces_distances_groups{k} = all_sces_distances;
-                        all_RasterRace_groups{k} = all_RasterRace;
+                        all_Race_groups{k} = gcamp_data.Race;
+                        all_TRace_groups{k} = gcamp_data.TRace;
+                        all_sces_distances_groups{k} = gcamp_data.sces_distances;
+                        all_RasterRace_groups{k} = gcamp_data.RasterRace;
                     
                     case 5
                         disp(['Performing clusters analysis for ', current_animal_group]);
@@ -191,9 +199,9 @@ function pipeline_for_data_processing(selected_groups)
     end
 
     % % Analyses globales après la boucle (une meme mesure pour plusieurs animaux)
-    % if analysis_choice == 3
-    %     SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
-    % end
+    if analysis_choice == 4
+        SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
+    end
     
     if analysis_choice == 6
         corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
@@ -290,7 +298,9 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         if isempty(gcamp_data.synchronous_frames{m})
             gcamp_data.synchronous_frames{m} = round(0.2 * gcamp_data.sampling_rate{m});
         end
-       
+
+        %delete(filePath);
+
         % Si DF_gcamp est vide, traiter les données
         if isempty(gcamp_data.DF{m})
             [F, DF_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
@@ -445,20 +455,23 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
 end
 
 
-function [all_DF_gcamp, all_Raster_gcamp,all_sampling_rate, all_synchronous_frames, all_sce_n_cells_threshold, all_Race, all_TRace, all_sces_distances, all_RasterRace] = load_or_process_sce_data(current_animal_group, current_gcamp_folders_group, current_env_group, current_dates_group, gcamp_output_folders)
+function gcamp_data = load_or_process_sce_data(current_animal_group, current_gcamp_folders_group, current_env_group, current_dates_group, gcamp_output_folders, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice)
     % Initialize output cell arrays to store results for each directory
     numFolders = length(gcamp_output_folders);  % Number of groups
-    all_sce_n_cells_threshold = cell(numFolders, 1);
-    all_Race = cell(numFolders, 1);
-    all_TRace = cell(numFolders, 1);
-    all_sces_distances = cell(numFolders, 1);
-    all_RasterRace = cell(numFolders, 1);
 
     % Load or process raster data
     [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice); 
+    
+    % Ajouter dynamiquement les nouveaux champs à gcamp_fields
+    new_fields = {'Race', 'TRace', 'sces_distances', 'RasterRace', 'sce_n_cells_threshold'};
 
-    % Initialize a flag to track if processing is needed
-    process_needed = false;
+    % Vérifier et ajouter les nouveaux champs dans gcamp_data
+    for i = 1:length(new_fields)
+        if ~isfield(gcamp_data, new_fields{i})
+            gcamp_data.(new_fields{i}) = cell(numFolders, 1);  % Créer les nouveaux champs s'ils n'existent pas
+            [gcamp_data.(new_fields{i}){:}] = deal([]);  % Initialiser chaque cellule à []
+        end
+    end
 
     % First loop: Check if results exist and load them
     for m = 1:numFolders
@@ -470,63 +483,30 @@ function [all_DF_gcamp, all_Raster_gcamp,all_sampling_rate, all_synchronous_fram
             % Try to load the pre-existing results from the file
             data = load(filePath);
             
-            % Assign the relevant fields to the output variables
-            if isfield(data, 'Race')
-                all_Race{m} = data.Race;
-            end
-            if isfield(data, 'TRace')
-                all_TRace{m} = data.TRace;
-            end
-            if isfield(data, 'sces_distances')
-                all_sces_distances{m} = data.sces_distances;
-            end
-            if isfield(data, 'RasterRace')
-                all_RasterRace{m} = data.RasterRace;
-            end
-            if isfield(data, 'sce_n_cells_threshold')
-                all_sce_n_cells_threshold{m} = data.sce_n_cells_threshold;
-            end
-        else
-            % If at least one file is missing, mark that processing is needed
-            process_needed = true;
+            gcamp_data.Race{m} = getFieldOrDefault(data, 'Race', []);
+            gcamp_data.TRace{m} = getFieldOrDefault(data, 'TRace', []);
+            gcamp_data.sces_distances{m} = getFieldOrDefault(data, 'sces_distances', []);
+            gcamp_data.RasterRace{m} = getFieldOrDefault(data, 'RasterRace', []);
+            gcamp_data.sce_n_cells_threshold{m} = getFieldOrDefault(data, 'sce_n_cells_threshold', []);
+
         end
-    end
 
-    % If processing is needed, handle it outside the loop
-    if process_needed
-        disp('Processing missing files...');
-
-        % Process data for missing files and save results
-        for m = 1:numFolders
-            % Create the full file path for results_SCEs.mat
-            filePath = fullfile(gcamp_output_folders{m}, 'results_SCEs.mat');
-
-            % Skip already loaded files
-            if exist(filePath, 'file') == 2
-                continue;
-            end
-
-            % Process and save the missing results
-            disp(['Processing folder: ', gcamp_output_folders{m}]);
-
-            % Extract relevant data for the current folder
-            Raster = all_Raster{m};
-            MAct = all_MAct{m};
-            synchronous_frames = all_synchronous_frames{m};
-
+        % If processing is needed, handle it outside the loop
+        if isempty(gcamp_data.Race{m})
+            disp('Processing SCEs...');
+    
             MinPeakDistancesce=3;
             WinActive=[];%find(speed>1);
 
-            % Call the processing function
             [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = ...
-                select_synchronies(gcamp_output_folders{m}, synchronous_frames, WinActive, all_DF{m}, MAct, MinPeakDistancesce, Raster, current_animal_group, current_dates_group{m});
+                select_synchronies(gcamp_output_folders{m}, gcamp_data.synchronous_frames{m}, WinActive, gcamp_data.DF{m}, gcamp_data.MAct{m}, MinPeakDistancesce, gcamp_data.Raster{m}, current_animal_group, current_dates_group{m});
+            
+            gcamp_data.Race{m} = Race;
+            gcamp_data.TRace{m} = TRace;
+            gcamp_data.sces_distances{m} = sces_distances;
+            gcamp_data.RasterRace{m} = RasterRace;
+            gcamp_data.sce_n_cells_threshold{m} = sce_n_cells_threshold;
 
-            % Store results in output variables
-            all_sce_n_cells_threshold{m} = sce_n_cells_threshold;
-            all_Race{m} = Race;
-            all_TRace{m} = TRace;
-            all_sces_distances{m} = sces_distances;
-            all_RasterRace{m} = RasterRace;
         end
     end
 end

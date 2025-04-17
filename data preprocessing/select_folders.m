@@ -45,20 +45,19 @@ function selectedFolders = select_folders(initial_folder)
             
             elseif lastFolderName == "FCD"   
                 folder_names = {
-                    'ani1\2024-06-27';
                     'ani3\2024-06-26';
                     'ani3\2024-06-28';
-                    'ani4\2024-06-27';
                     'ani4\2024-06-28';
                     'ani4\2024-06-29';
+                    'ani4\2024-07-01';
                     'ani4\2024-07-02';
                 
-                    'mTor13\ani2\2024-06-27';
+                    'mTor13\ani2\2024-10-22';
                     'mTor13\ani2\2024-10-24';
                     'mTor13\ani2\2024-10-25';
                     'mTor13\ani3\2024-10-26';
                 
-                    'mTor14\ani1\2024-06-27';
+                    'mTor14\ani1\2024-10-20';
                     'mTor14\ani1\2024-10-21';
                     'mTor14\ani1\2024-10-23';
                     'mTor14\ani1\2024-10-24';
@@ -83,6 +82,14 @@ function selectedFolders = select_folders(initial_folder)
                     'mTor17\ani3\2024-12-21';
                     'mTor17\ani3\2024-12-22';
                     'mTor17\ani3\2024-12-23';
+
+                    'mTor19\ani6\2025-01-30'
+                    'mTor19\ani6\2025-01-31'
+
+                    'mTor20\ani5\2025-01-30'
+
+                    'mTor23\ani2\2025-02-19'
+
                 };
 
             

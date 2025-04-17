@@ -1,10 +1,10 @@
 function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     % Définition des chemins de base
     jm_folder = '\\10.51.106.5\data\Data\jm'; 
-    destinationFolder = 'D:/imaging/jm/'; 
-    fcd_folder = 'D:\imaging\FCD'; 
-    ctrl_folder = 'D:\imaging\CTRL'; 
-    PathSave = 'D:\after_processing';
+    destinationFolder = 'D:/Imaging/jm/'; 
+    fcd_folder = 'D:\Imaging\FCD'; 
+    ctrl_folder = 'D:\Imaging\CTRL'; 
+    PathSave = 'D:\Imaging';
 
     % Initialisation des variables globales
     gcampdataFolders_all = string([]);
