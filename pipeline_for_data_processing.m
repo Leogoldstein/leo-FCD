@@ -96,6 +96,7 @@ function pipeline_for_data_processing(selected_groups)
                 [~, lastFolderName] = fileparts(current_gcamp_TSeries_path{l}); % Extract last folder name              
                 current_gcamp_folders_names_group{l} = lastFolderName; % Store the folder name at index l
                 current_blue_folders_names_group{l} = [];
+                current_blue_folders_group{l} = [];
             end
              folders_groups = [];
         end
