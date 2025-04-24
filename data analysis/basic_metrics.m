@@ -56,70 +56,7 @@ function [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all
             areas_microm2 = pixel_size_microm^2 * imgHeight * imgWidth;
 
             % Calculer la densité cellulaire (NCell / aire en micromètres carrés)
-            cell_density_per_microm2_all(m) = num_cells / areas_microm2;
-            
-            % % Création d'une figure pour ce groupe
-            % figure;
-            % screen_size = get(0, 'ScreenSize');  % Taille de l'écran
-            % set(gcf, 'Position', screen_size);   % Ajustement de la figure à la taille de l'écran
-            % 
-            % % Histogramme des fréquences
-            % subplot(3, 1, 1);
-            % histogram(frequency_per_minute, 'FaceColor', [0.2, 0.6, 0.8], 'EdgeColor', 'k');
-            % title('Distribution des fréquences d’activité (par minute)', 'FontSize', 14);
-            % ylabel('Nombre de neurones', 'FontSize', 12);
-            % xlabel('Fréquence d’activité (par minute)', 'FontSize', 12);
-            % grid on;
-            % 
-            % % Données brutes des 10 premiers neurones
-            % subplot(3, 1, 2);
-            % time_minutes = (0:Nframes-1) / sampling_rate / 60;  % Temps en minutes
-            % plot(time_minutes, DF(1:min(10, size(DF, 1)), :)');  % Afficher les données des 10 premiers neurones
-            % title('Données brutes des 10 premiers neurones', 'FontSize', 14);
-            % ylabel('Activité', 'FontSize', 12);
-            % xlabel('Temps (minutes)', 'FontSize', 12);
-            % xlim([min(time_minutes), max(time_minutes)]);
-            % grid on;
-            % 
-            % % Matrice de corrélation maximale pour les 10 premiers neurones
-            % subplot(3, 1, 3);
-            % 
-            % num_cells_to_analyze = num_cells;
-            % max_lag = 100;
-            % lag=[-100:-1 1:100];
-            % max_corr_values = zeros(num_cells_to_analyze);  % Matrice de corrélations
-            % 
-            % % Calcul des corrélations entre les paires
-            % for i = 1:num_cells_to_analyze
-            %     for j = 1:num_cells_to_analyze
-            %         [cross_corr, ~] = xcorr(DF(i, :), DF(j, :), max_lag, 'coeff');
-            % 
-            %         % Find maximum correlation and corresponding lag
-            %         [max_corr, idx_max_corr] = max(cross_corr);
-            %         %lag_at_max_corr = lags(idx_max_corr);
-            % 
-            %         % Store results
-            %         max_corr_values(i,j) = max_corr;
-            %         %lags_at_max_corr(i,j) = lag_at_max_corr;
-            % 
-            %     end
-            % end
-            % 
-            % % Mettre les valeurs diagonales à NaN pour éviter les corrélations de soi-même
-            % max_corr_values(logical(eye(size(max_corr_values)))) = NaN;
-            % 
-            % % Calculer la moyenne des corrélations hors diagonale
-            % mean_max_corr_all(m) = mean(max_corr_values(:), 'omitnan');
-            % 
-            % % Afficher la matrice de corrélations
-            % imagesc(max_corr_values);  % Matrice comme image
-            % colorbar;
-            % colormap(jet);
-            % clim([0, 1]);  % Limiter l'échelle entre 0 et 1
-            % title('Max Pairwise Correlation (10 premiers neurones)', 'FontSize', 14);
-            % xlabel('Neurones', 'FontSize', 12);
-            % ylabel('Neurones', 'FontSize', 12);
-            % axis square;
+            cell_density_per_microm2_all(m) = num_cells / areas_microm2;        
 
         catch ME
             % Afficher un message d'erreur en cas de problème

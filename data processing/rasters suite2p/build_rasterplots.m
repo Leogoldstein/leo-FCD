@@ -18,7 +18,7 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group,
     % Create a new figure for the current unique animal group
     fig_save_path = fullfile(current_ani_path_group, sprintf('%s_rastermap.png', strrep(current_animal_group, ' ', '_')));
 
-    %if ~exist(fig_save_path, 'file')  % Check if the figure already exists
+    if ~exist(fig_save_path, 'file')  % Check if the figure already exists
         % Create the figure and set it to fullscreen
         figure;
         set(gcf, 'Position', get(0, 'ScreenSize'));
@@ -131,7 +131,7 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_ani_path_group,
 
         % Close the figure to free up memory
         close(gcf);
-    % else
-    %     disp(['Figure already exists and was skipped: ' fig_save_path]);
-    % end
+    else
+        disp(['Figure already exists and was skipped: ' fig_save_path]);
+    end
 end
