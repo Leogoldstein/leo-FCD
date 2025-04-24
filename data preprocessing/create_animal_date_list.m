@@ -70,6 +70,9 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
         type_indices = strcmp(animal_date_list(:, 1), current_type);
         animal_date_list_type = animal_date_list(type_indices, :);
 
+        disp(animal_date_list_type);
+        disp(size(animal_date_list_type, 1))
+
         save_folder = fullfile(PathSave, current_type);
         save_file = 'animal_date_list.mat';
         type_save_path = fullfile(save_folder, save_file);
@@ -108,8 +111,6 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
                     % Récupérer l'âge et le sexe existant
                     animal_date_list_type{i, 5} = existing_data{idx, 5};
                     animal_date_list_type{i, 6} = existing_data{idx, 6};
-                    disp(animal_date_list_type{i, 5});
-                    disp(animal_date_list_type{i, 6});
                 end
             end
         else
@@ -185,26 +186,17 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
                     end
                 end
                 
-                % Traitement pour le sexe
-                for j = nan_sex_indices'
-                    if strcmp(animal_date_list_type{j, 3}, animal_group) && strcmp(animal_date_list_type{j, 2}, group)
-                        if ~isnan(animal_date_list_type{j, 6})
-                                % Si un sexe est déjà assigné, passer à la prochaine itération
-                                continue;
-                        end
-                        
-                        if j == 1
-                            % Récupérer la valeur actuelle
-                            sexe_input = input(sprintf('Enter sex for animal "%s" (M/F/IND): ', animal_date_list_type{j, 3}), 's');
-                
-                            % Normaliser l’entrée
-                            sexe_input = upper(strtrim(sexe_input));
-                        end
+                if ~isempty(nan_sex_indices)
+                    % Demander une seule fois le sexe pour tout l'animal
+                    sexe_input = input(sprintf('Enter sex for animal "%s" (M/F/IND): ', animal_group), 's');
+                    sexe_input = upper(strtrim(sexe_input));  % Normaliser
 
+                    % Traitement pour le sexe
+                    for j = nan_sex_indices'
                         % Valider l’entrée
                         if ismember(sexe_input, {'M', 'F', 'IND'})
                             % Appliquer le sexe à toutes les entrées de cet animal pour le groupe donné
-                            animal_date_list_type{j, 6} = {sexe_input};   
+                            animal_date_list_type{j, 6} = sexe_input;   
                         else
                             warning('Invalid sex entered. Please use "M", "F", or "IND".');
                         end
@@ -240,6 +232,18 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
             end
         
             % Si la ligne n'existe pas déjà, l'ajouter à existing_data
+            if ~isempty(duplicate_idx)
+                % Mettre à jour le sexe si la cellule correspondante dans existing_data est vide
+                if isempty(existing_data{duplicate_idx, 6}) || (ischar(existing_data{duplicate_idx, 6}) && strcmpi(existing_data{duplicate_idx, 6}, 'nan'))
+                    existing_data{duplicate_idx, 6} = animal_date_list_type{i, 6};
+                end
+            
+                % Mettre à jour l'âge si manquant
+                if isempty(existing_data{duplicate_idx, 5}) || (ischar(existing_data{duplicate_idx, 5}) && strcmpi(existing_data{duplicate_idx, 5}, 'nan'))
+                    existing_data{duplicate_idx, 5} = animal_date_list_type{i, 5};
+                end
+            end
+
             if isempty(duplicate_idx)
                 % Vérifier si animal_date_list(i, :) contient des données valides avant l'ajout
                 if all(~cellfun(@isempty, animal_date_list_type(i, :)))

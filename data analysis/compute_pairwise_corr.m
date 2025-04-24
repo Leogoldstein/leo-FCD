@@ -1,4 +1,4 @@
-function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_mtor_mtor] = plot_pairwise_corr(all_DF, gcamp_output_folders, all_DF_all, all_mtor_indices)
+function [all_cross_corr_gcamp_gcamp, all_cross_corr_gcamp_mtor, all_cross_corr_mtor_mtor] = compute_pairwise_corr(all_DF, gcamp_output_folders, all_DF_all, all_mtor_indices)
     
     numFolders = length(gcamp_output_folders);
     all_cross_corr_gcamp_gcamp = cell(numFolders, 1);

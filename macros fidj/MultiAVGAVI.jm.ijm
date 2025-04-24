@@ -18,6 +18,90 @@ function handleSingleImages(subDir, saveSingleImDir) {
     }
 }
 
+// Fonction pour gérer les images dans "camera"
+function handleCamImages(saveCamImDir) {
+	
+	var saveCamConcatImDir = saveCamImDir + "Concatenated";
+    createDirectory(saveCamConcatImDir);
+     
+	var finalConcatName = saveCamConcatImDir + File.separator + "cam_crop.tif";	
+	if (File.exists(finalConcatName)) {
+			print("Le fichier cam_crop.tif existe déjà : " + finalConcatName);
+			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
+	}
+		 
+    var tifFiles = getFileList(saveCamImDir);               
+    var hasTifFiles = false;
+
+    var batchSize = 500;
+    var batchIndex = 1;
+    var intermediateFiles = newArray();
+    
+    var totalFiles = tifFiles.length;
+	var numBatches = Math.ceil(totalFiles / batchSize);
+	var finalFilesToConcat = newArray();
+	
+	for (var batch = 0; batch < numBatches; batch++) {
+	    var startIndex = batch * batchSize;
+	    var endIndex = Math.min(startIndex + batchSize - 1, totalFiles - 1);
+	    var filesToConcatenate = newArray();
+	
+	    print("Batch " + (batch + 1) + " : " + startIndex + " à " + endIndex);
+	
+	    for (var i = startIndex; i <= endIndex; i++) {        
+	        if (endsWith(tifFiles[i], ".tif") || endsWith(tifFiles[i], ".tiff")) {
+	            var file = saveCamImDir + File.separator + tifFiles[i];
+	            open(file);
+	            filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
+	            hasTifFiles = true;
+	        } else {
+	            print("Skipping non-TIFF file: " + tifFiles[i]);
+	        }
+	    }
+	
+	    if (filesToConcatenate.length > 0) {
+	        var ConcatTifFileName;
+	
+	        if (numBatches == 1) {
+	            ConcatTifFileName = "cam_crop.tif";  // nom final direct si un seul batch
+	        } else {
+	            ConcatTifFileName = "cam_crop_" + batchIndex + ".tif";
+	            intermediateFiles = Array.concat(intermediateFiles, ConcatTifFileName);
+	        }
+	
+	        var fullPathTiff = saveCamConcatImDir + File.separator + ConcatTifFileName;
+	
+	        concatenateTiffFiles(filesToConcatenate);
+	        saveAs("Tiff", fullPathTiff);
+	        run("Close All");
+	        batchIndex++;
+	    }
+	}
+	
+	// Concaténation finale uniquement si plusieurs batches
+	if (numBatches > 1) {
+	    for (var k = 0; k < intermediateFiles.length; k++) {
+	        var filePath = saveCamConcatImDir + File.separator + intermediateFiles[k];
+	        print("Open file to concatenate : " + filePath);
+	        open(filePath);
+	        finalFilesToConcat = Array.concat(finalFilesToConcat, getTitle());
+	    }
+	
+	    if (finalFilesToConcat.length > 1) {
+	        concatenateTiffFiles(finalFilesToConcat);
+	        saveAs("Tiff", finalConcatName);
+	        run("Close All");
+	        print("Concaténation finale terminée : " + finalConcatName);
+	
+	        // Suppression des fichiers intermédiaires
+	        for (var d = 0; d < intermediateFiles.length; d++) {
+	            File.delete(saveCamConcatImDir + File.separator + intermediateFiles[d]);
+	        }
+	        print("Fichiers intermédiaires supprimés.");
+	    }
+	}
+}
+
 // Fonction pour gérer les TSeries et l'AVI enregistré
 function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
 
@@ -93,7 +177,7 @@ function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
             // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
             var regTifFolder = planeFolder + File.separator + "reg_tif" + File.separator;
             if (File.isDirectory(regTifFolder)) {
-            	File.delete(regTifFolder + "AVG_concat.tif");
+            	//File.delete(regTifFolder + "AVG_concat.tif");
                 var tifFiles = getFileList(regTifFolder);
                 var arr_num = extract_digits(tifFiles);
                 Array.sort(arr_num, tifFiles);
@@ -277,6 +361,22 @@ for (var i = 0; i < list.length; i++) {
                         var saveSingleImDir = saveDir + "Single images";
                         createDirectory(saveSingleImDir);
                         
+                        var proceed = false;
+                        if (File.isDirectory(saveDir + "cam" + File.separator)) {
+						    var saveCamImDir = saveDir + "cam" + File.separator;
+						    var proceed = true;				    
+						} else if (File.isDirectory(saveDir + "camera" + File.separator)) {
+						    var saveCamImDir = saveDir + "camera" + File.separator;
+						    var proceed = true;
+						} else {
+						    print("No Camera images found in " + saveDir + ".");
+						}
+						
+						if (proceed){
+							createDirectory(saveCamImDir);
+							handleCamImages(saveCamImDir);
+                        }
+                        
                         var saveRegisVidDir = saveDir;
                         createDirectory(saveRegisVidDir);
                     
@@ -300,6 +400,22 @@ for (var i = 0; i < list.length; i++) {
         
             var saveSingleImDir = saveDir + "Single images";
             createDirectory(saveSingleImDir);
+            
+            var proceed = false;
+            if (File.isDirectory(saveDir + "cam" + File.separator)) {
+				var saveCamImDir = saveDir + "cam" + File.separator;
+				var proceed = true;				    
+			 } else if (File.isDirectory(saveDir + "camera" + File.separator)) {
+				var saveCamImDir = saveDir + "camera" + File.separator ;
+				var proceed = true;
+			 } else {
+				print("No Camera images found in " + saveDir + ".");
+			 }
+						
+			 if (proceed){
+				createDirectory(saveCamImDir);
+				handleCamImages(saveCamImDir);
+           }					   								    
         
             var saveRegisVidDir = saveDir ;
             createDirectory(saveRegisVidDir);

@@ -183,11 +183,13 @@ function pipeline_for_data_processing(selected_groups)
                         disp(['Performing pairwise correlation analysis for ', current_animal_group]);
                         [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice);  
                         if strcmpi(include_blue_cells, '1')
-                           [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
+                           [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
                         else
-                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = plot_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
+                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
                         end
                         
+                        plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, gcamp_output_folders, current_animal_group)
+
                         all_max_corr_gcamp_gcamp_groups{k} = all_max_corr_gcamp_gcamp;
                         all_max_corr_gcamp_mtor_groups{k} = all_max_corr_gcamp_mtor;
                         all_max_corr_mtor_mtor_groups{k} = all_max_corr_mtor_mtor;
@@ -204,15 +206,15 @@ function pipeline_for_data_processing(selected_groups)
         SCEs_groups_analysis2(selected_groups, all_DF_groups, all_Race_groups, all_TRace_groups, all_sampling_rate_groups, all_Raster_groups, all_sces_distances_groups);
     end
     
-    if analysis_choice == 6
-        corr_groups_analysis(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
-    end
+    % if analysis_choice == 6
+    %     corr_groups_violins_ind(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
+    % end
 
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    % create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
-    % if strcmpi(create_ppt, '1')
-        %create_ppt_from_figs(current_group_paths, daytime)
-    % end
+    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
+    if strcmpi(create_ppt, '1')
+        create_ppt_from_figs(current_group_paths, daytime)
+    end
 end
 
 %% Helper Functions (loading and processing)
