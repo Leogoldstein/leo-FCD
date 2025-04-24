@@ -43,6 +43,12 @@ function pipeline_for_data_processing(selected_groups)
 
     % Pre-allocate variables for global analysis (btw animals for all dates)
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
+    gcamp_output_folders_groups = cell(num_groups, 1);
+    ani_name_groups = cell(num_groups, 1);
+    ani_path_groups = cell(num_groups, 1);
+    env_groups = cell(num_groups, 1);
+    ani_age_groups = cell(num_groups, 1);
+
     all_DF_groups = cell(num_groups, 1);
     all_Raster_groups = cell(num_groups, 1);
     all_sampling_rate_groups = cell(num_groups, 1);
@@ -50,7 +56,6 @@ function pipeline_for_data_processing(selected_groups)
     all_TRace_groups = cell(num_groups, 1);
     all_sces_distances_groups = cell(num_groups, 1);
     all_RasterRace_groups = cell(num_groups, 1);
-    current_group_paths = cell(num_groups, 1);
     all_max_corr_gcamp_gcamp_groups = cell(num_groups, 1);
     all_max_corr_gcamp_mtor_groups = cell(num_groups, 1);
     all_max_corr_mtor_mtor_groups = cell(num_groups, 1);
@@ -185,10 +190,10 @@ function pipeline_for_data_processing(selected_groups)
                         if strcmpi(include_blue_cells, '1')
                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
                         else
-                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
+                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, current_gcamp_TSeries_path, gcamp_data.sampling_rate);
                         end
                         
-                        plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, gcamp_output_folders, current_animal_group)
+                        plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
 
                         all_max_corr_gcamp_gcamp_groups{k} = all_max_corr_gcamp_gcamp;
                         all_max_corr_gcamp_mtor_groups{k} = all_max_corr_gcamp_mtor;
@@ -197,7 +202,11 @@ function pipeline_for_data_processing(selected_groups)
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
-            current_group_paths{k} = gcamp_output_folders;
+            gcamp_output_folders_groups{k} = gcamp_output_folders;
+            ani_name_groups{k} = current_animal_group;
+            ani_path_groups{k} = current_ani_path_group;
+            ani_age_groups{k} = current_ages_group;
+            env_groups{k} = current_env_group;
         end
     end
 
@@ -213,28 +222,11 @@ function pipeline_for_data_processing(selected_groups)
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
     create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
     if strcmpi(create_ppt, '1')
-        create_ppt_from_figs(current_group_paths, daytime)
+        create_ppt_from_figs(ani_name_groups, ani_path_groups, gcamp_output_folders_groups, ani_age_groups, env_groups, daytime)
     end
 end
 
 %% Helper Functions (loading and processing)
-
-function [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders,current_env_group)
-    numFolders = length(gcamp_output_folders);
-    all_recording_time = cell(numFolders, 1);
-    all_optical_zoom = cell(numFolders, 1);
-    all_position = cell(numFolders, 1);
-    all_time_minutes = cell(numFolders, 1);
-
-    for m = 1:length(gcamp_output_folders)
-        [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(current_env_group{m});
-        all_recording_time{m} = recording_time;
-        all_optical_zoom{m} = optical_zoom;
-        all_position{m} = position;
-        all_time_minutes{m} = time_minutes; 
-    end
-end
-
 
 function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, analysis_choice)
 

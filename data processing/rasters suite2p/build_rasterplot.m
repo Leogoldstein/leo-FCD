@@ -61,7 +61,7 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             screen_size = get(0, 'ScreenSize');
             set(gcf, 'Position', screen_size);
             
-            % Premier subplot : Raster Ploty
+            % Premier subplot : Raster Plot
             subplot(3, 1, 1);
             imagesc(DF(isort1, :));
             
@@ -116,49 +116,51 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             linkaxes([ax1, gca], 'x');
             xlim([0 num_columns]);
             
-            % Troisième subplot : Proportion de cellules actives bleues
-            subplot(3, 1, 3);
             if ~isempty(MActblue)
+                % Troisième subplot : Proportion de cellules actives bleues
+                subplot(3, 1, 3);
                 plot(prop_MActblue, 'LineWidth', 2, 'Color', 'b');
                 ylim([0 1]); 
+                xlabel('Frame');
+                ylabel('Proportion of Active Blue Cells');
+                title('Proportion of Active Blue Cells');
+                grid on;
+            
+                set(gca, 'Position', [0.1, 0.1, 0.85, 0.25]);
+            
+                % Lier les axes X des subplots pour un alignement parfait
+                linkaxes([ax1, gca], 'x');
+                xlim([0 num_columns]);
             end
-            xlabel('Frame');
-            ylabel('Proportion of Active Blue Cells');
-            title('Proportion of Active Blue Cells');
-            grid on;
-            
-            set(gca, 'Position', [0.1, 0.1, 0.85, 0.25]);
-            
-            % Lier les axes X des subplots pour un alignement parfait
-            linkaxes([ax1, gca], 'x');
-            xlim([0 num_columns]);
-            
+      
             % Sauvegarde de la figure
             saveas(gcf, fig_save_path);
             disp(['Raster plot saved in: ' fig_save_path]);
             
             % Fermeture pour libérer la mémoire
             close(gcf);
-
-            figure;
-            scatter(prop_MAct, prop_MActblue, 'filled');
-            xlabel('Proportion de cellules actives (totales)');
-            ylabel('Proportion de cellules actives (bleues)');
-            title('Relation entre prop_MActblue et prop_MAct');
-            grid on;
             
-            % Calcul et affichage de la corrélation
-            corr_coeff = corr(prop_MAct', prop_MActblue'); % Transposés pour vecteurs colonnes
-            fprintf('Coefficient de corrélation : %.4f\n', corr_coeff);
-            
-            % Ajustement linéaire pour voir la tendance
-            p = polyfit(prop_MAct, prop_MActblue, 1);
-            hold on;
-            x_fit = linspace(min(prop_MAct), max(prop_MAct), 100);
-            y_fit = polyval(p, x_fit);
-            plot(x_fit, y_fit, 'r', 'LineWidth', 2);
-            legend('Données', sprintf('Ajustement linéaire: y = %.2fx + %.2f', p(1), p(2)));
-            hold off;
+            if ~isempty(MActblue)
+                figure;
+                scatter(prop_MAct, prop_MActblue, 'filled');
+                xlabel('Proportion de cellules actives (totales)');
+                ylabel('Proportion de cellules actives (bleues)');
+                title('Relation entre prop_MActblue et prop_MAct');
+                grid on;
+                
+                % Calcul et affichage de la corrélation
+                corr_coeff = corr(prop_MAct', prop_MActblue'); % Transposés pour vecteurs colonnes
+                fprintf('Coefficient de corrélation : %.4f\n', corr_coeff);
+                
+                % Ajustement linéaire pour voir la tendance
+                p = polyfit(prop_MAct, prop_MActblue, 1);
+                hold on;
+                x_fit = linspace(min(prop_MAct), max(prop_MAct), 100);
+                y_fit = polyval(p, x_fit);
+                plot(x_fit, y_fit, 'r', 'LineWidth', 2);
+                legend('Données', sprintf('Ajustement linéaire: y = %.2fx + %.2f', p(1), p(2)));
+                hold off;
+            end
 
         catch ME
             fprintf('\nError: %s\n', ME.message);
@@ -177,41 +179,5 @@ function [min_val, max_val] = calculate_scaling(data)
         warning('Les limites de mise à léchelle calculées sont invalides. Ajustement aux valeurs par défaut.');
         min_val = min(flattened_data);  % Valeur minimale des données
         max_val = max(flattened_data);  % Valeur maximale des données
-    end
-end
-
-function [bin_centers, correlation_binned] = calculate_binned_correlation(DF_not_blue, DF_blue, sampling_rate)
-    
-    % Calculer le nombre total de frames
-    total_frames = size(DF_not_blue, 2); % Nombre de frames (colonnes)
-    
-    % Convert 200 ms to frames
-    bin_size = round(sampling_rate * 0.2);
-
-    num_bins = floor(total_frames / bin_size);
-    
-    % Initialiser les variables pour stocker les résultats
-    bin_centers = zeros(1, num_bins);
-    correlation_binned = zeros(1, num_bins);
-    
-    % Boucle pour calculer la corrélation dans chaque bin
-    for i = 1:num_bins
-        % Définir les indices du bin
-        start_idx = (i - 1) * bin_size + 1;
-        end_idx = i * bin_size;
-        
-        % Extraire les colonnes (vecteurs d'activités) pour le bin actuel
-        DF_not_blue_bin = DF_not_blue(:, start_idx:end_idx);
-        DF_blue_bin = DF_blue(:, start_idx:end_idx);
-        
-        % Calculer la corrélation entre les neurones dans les colonnes du bin
-        % Calculer la corrélation sur les colonnes (frames)
-        correlation_matrix = corr(DF_not_blue_bin', DF_blue_bin');  % Corrélation sur les colonnes (frames)
-        
-        % Calculer la moyenne de la corrélation pour ce bin
-        correlation_binned(i) = mean(correlation_matrix(:)); % Moyenne de la matrice de corrélation
-        
-        % Sauvegarder le centre du bin
-        bin_centers(i) = (start_idx + end_idx) / 2;
     end
 end

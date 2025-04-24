@@ -12,10 +12,9 @@ end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
 
-% 
+
 % for idx = 1:length(env_paths_all)
-%     [recording_time, sampling_rate, opt2
-% ical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
+%     [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
 %     disp(position)
 % end
 %%
