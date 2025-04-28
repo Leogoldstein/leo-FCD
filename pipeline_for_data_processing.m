@@ -40,16 +40,12 @@ function pipeline_for_data_processing(selected_groups)
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
 
-    % Pre-allocate variables for global analysis (btw animals for all dates)
+    % Pre-allocate variables for inter-groups analysis (btw animals for all dates)
     num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
     gcamp_output_folders_groups = cell(num_groups, 1);
-    gcamp_group_fields = {'DF_groups', 'sampling_rate_groups', 'Raster_groups', 'MAct_groups'};
+    gcamp_group_fields = {'DF_groups', 'MAct_groups', 'sampling_rate_groups', 'Raster_groups', 'MAct_groups', 'Race_groups', 'TRace_groups', 'sce_n_cells_threshold_groups', 'sces_distances_groups', 'RasterRace_groups', 'sce_n_cells_threshold_groups'};
     gcamp_data_groups = init_data_struct(num_groups, gcamp_group_fields);
 
-    all_Race_groups = cell(num_groups, 1);
-    all_TRace_groups = cell(num_groups, 1);
-    all_sces_distances_groups = cell(num_groups, 1);
-    all_RasterRace_groups = cell(num_groups, 1);
     all_max_corr_gcamp_gcamp_groups = cell(num_groups, 1);
     all_max_corr_gcamp_mtor_groups = cell(num_groups, 1);
     all_max_corr_mtor_mtor_groups = cell(num_groups, 1);
@@ -65,7 +61,7 @@ function pipeline_for_data_processing(selected_groups)
             date_path = fullfile(current_ani_path_group, current_dates_group{l});
             date_group_paths{l} = date_path;
         end
-        
+
         % Convertir les dossiers et les noms de dossiers en cellules de chaînes
         current_gcamp_TSeries_path = cellfun(@string, selected_groups(k).pathTSeries(:, 1), 'UniformOutput', false);
 
@@ -139,15 +135,15 @@ function pipeline_for_data_processing(selected_groups)
                         disp(['Performing Global analysis of activity for ', current_animal_group]);
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
                         [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
-                        [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all, mean_max_corr_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
+                        [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                     
                         if strcmpi(include_blue_cells, '1')
-                            [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue, mean_max_corr_all_blue] = basic_metrics(mtor_data.DF, mtor_data.Raster, mtor_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
+                            [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue] = basic_metrics(mtor_data.DF, mtor_data.Raster, mtor_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                         end
                     
                         export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                             all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
-                            gcamp_data.sampling_rate, gcamp_data.synchronous_frames, NCell_all, NCell_all_blue, mean_frequency_per_minute_all, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all, std_frequency_per_minute_all_blue, cell_density_per_microm2_all, cell_density_per_microm2_all_blue, mean_max_corr_all, mean_max_corr_all_blue);
+                            gcamp_data.sampling_rate, gcamp_data.synchronous_frames, NCell_all, NCell_all_blue, mean_frequency_per_minute_all, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all, std_frequency_per_minute_all_blue, cell_density_per_microm2_all, cell_density_per_microm2_all_blue);
                     
                     case 3
                         disp(['Performing SCEs analysis for ', current_animal_group]);
@@ -155,15 +151,11 @@ function pipeline_for_data_processing(selected_groups)
                         
                         assignin('base', 'gcamp_data', gcamp_data);
 
-                        % [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, gcamp_data.Raster, all_sces_distances, gcamp_output_folders);
+                        %[all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, gcamp_data.Raster, all_sces_distances, gcamp_output_folders);
                         % 
                         % export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                         %     all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
                         % 
-                        all_Race_groups{k} = gcamp_data.Race;
-                        all_TRace_groups{k} = gcamp_data.TRace;
-                        all_sces_distances_groups{k} = gcamp_data.sces_distances;
-                        all_RasterRace_groups{k} = gcamp_data.RasterRace;
                     
                     case 4
                         disp(['Performing clusters analysis for ', current_animal_group]);
@@ -189,10 +181,19 @@ function pipeline_for_data_processing(selected_groups)
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
+            % Network activity
             gcamp_output_folders_groups{k} = gcamp_output_folders;
             gcamp_data_groups.DF_groups{k} = gcamp_data.DF;
             gcamp_data_groups.sampling_rate_groups{k} = gcamp_data.sampling_rate;
             gcamp_data_groups.Raster_groups{k} = gcamp_data.Raster;
+            gcamp_data_groups.MAct_groups{k} = gcamp_data.MAct;
+            % SCEs
+            gcamp_data_groups.Race_groups{k} = gcamp_data.Race;
+            gcamp_data_groups.TRace_groups{k} = gcamp_data.TRace;
+            gcamp_data_groups.sce_n_cells_threshold_groups{k} = gcamp_data.sce_n_cells_threshold;
+            gcamp_data_groups.sces_distances_groups{k} = gcamp_data.sces_distances;
+            gcamp_data_groups. RasterRace_groups{k} = gcamp_data.RasterRace;
+
         end
     end
 
@@ -208,7 +209,7 @@ function pipeline_for_data_processing(selected_groups)
     % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
     create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
     if strcmpi(create_ppt, '1')
-        create_ppt_from_figs(selected_groups, gcamp_data_groups.DF_groups, gcamp_output_folders_groups, daytime)
+        create_ppt_from_figs(selected_groups, gcamp_data_groups, gcamp_output_folders_groups, daytime)
     end
 end
 

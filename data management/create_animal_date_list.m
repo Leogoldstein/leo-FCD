@@ -122,29 +122,35 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
             fprintf('No existing file found. Creating new file...\n');
         end
         
-        % Parcourir chaque ligne de animal_date_list_type
+        % Pré-définir group_names comme une cellule vide de la bonne taille
+        group_names = cell(size(animal_date_list_type, 1), 1);
+        
+        % Parcourir chaque ligne
         for i = 1:size(animal_date_list_type, 1)
-            % Si la 2ème colonne est vide
+            % Si la 2ᵉ colonne est vide
             if isempty(animal_date_list_type{i, 2})
-                % Remplacer par la 3ème colonne de la même ligne
-                animal_date_list_type{i, 2} = animal_date_list_type{i, 3};
+                group_names{i, 1} = animal_date_list_type{i, 3};  % Prendre la 3ᵉ colonne
+            else
+                group_names{i, 1} = animal_date_list_type{i, 2};  % Sinon, prendre la 2ᵉ colonne
             end
         end
         
-        % Maintenant extraire group_names depuis la 2ème colonne
-        group_names = animal_date_list_type(:, 2);
-        
-        % Supprimer les éventuels vides restants
-        group_names = group_names(~cellfun('isempty', group_names));
-        
         % Obtenir les groupes uniques
         unique_groups = unique(group_names);
-
+        
         % Parcourir chaque groupe unique
         for g = 1:length(unique_groups)
             group = unique_groups{g};
-            group_indices = strcmp(animal_date_list_type(:, 2), group);
-        
+            
+            % Trouver les indices des lignes correspondant au groupe
+            group_indices = strcmp(animal_date_list_type(:, 2), group);  % Cas où la 2ᵉ colonne est remplie
+            
+            % Ajouter les indices où la 2ᵉ colonne est vide et la 3ᵉ colonne correspond au groupe
+            if any(cellfun('isempty', animal_date_list_type(:, 2)))  % Si des lignes ont la 2ᵉ colonne vide
+                empty_group_indices = strcmp(animal_date_list_type(:, 3), group);  % Chercher dans la 3ᵉ colonne
+                group_indices = group_indices | empty_group_indices;  % Fusionner les indices
+            end
+                
             % Trouver les animaux uniques dans ce groupe
             unique_animals_in_group = unique(animal_date_list_type(group_indices, 3));
         
@@ -152,12 +158,6 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
             for a = 1:length(unique_animals_in_group)
                 animal_group = unique_animals_in_group{a};
                 animal_indices = strcmp(animal_date_list_type(:, 3), animal_group);
-
-                if ~isempty(group_indices)
-                    animal_indices = animal_indices & group_indices;
-                end
-                
-                disp(animal_indices)
 
                 % Trouver les indices où l'âge est NaN (colonne 5)
                 nan_age_indices = find(animal_indices & ...
@@ -215,14 +215,10 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
                     sexe_input = upper(strtrim(sexe_input));  % Normaliser
 
                     % Traitement pour le sexe
-                    for j = nan_sex_indices'
-                        % Valider l’entrée
-                        if ismember(sexe_input, {'M', 'F', 'IND'})
-                            % Appliquer le sexe à toutes les entrées de cet animal pour le groupe donné
-                            animal_date_list_type{j, 6} = sexe_input;   
-                        else
-                            warning('Invalid sex entered. Please use "M", "F", or "IND".');
-                        end
+                    if ismember(sexe_input, {'M', 'F', 'IND'})
+                        [animal_date_list_type{nan_sex_indices, 6}] = deal(sexe_input);
+                    else
+                        warning('Invalid sex entered. Please use "M", "F", or "IND".');
                     end
                 end
             end

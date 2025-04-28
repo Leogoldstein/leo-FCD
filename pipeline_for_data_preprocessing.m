@@ -77,6 +77,8 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         mTor_part = string(group_data(:, 2));
         date_part_all = string(group_data(:, 4));
         age_part_all = string(group_data(:, 5));
+
+
     
         % Construction des groupes animaux
         animal_group = strings(size(animal_part));
@@ -87,7 +89,8 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 animal_group(i) = strcat(animal_part(i), '_', mTor_part(i));
             end
         end
-
+        
+        animal_group = string(animal_group);
         unique_animal_group = unique(animal_group);
       
         for k = 1:length(unique_animal_group)
