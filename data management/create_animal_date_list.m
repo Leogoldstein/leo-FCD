@@ -71,7 +71,7 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
         animal_date_list_type = animal_date_list(type_indices, :);
 
         disp(animal_date_list_type);
-        disp(size(animal_date_list_type, 1))
+        %disp(size(animal_date_list_type, 1))
 
         save_folder = fullfile(PathSave, current_type);
         save_file = 'animal_date_list.mat';
@@ -106,7 +106,12 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
                 current_date = animal_date_list_type{i, 4};
         
                 % Chercher l'animal et la date dans les données existantes
-                idx = find(strcmp(existing_data(:, 2), current_type) & strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
+                if ~isempty(strcmp(existing_data(:, 2), current_type))
+                    idx = find(strcmp(existing_data(:, 2), current_type) & strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
+                else
+                     idx = find(strcmp(existing_data(:, 3), current_animal) & strcmp(existing_data(:, 4), current_date));
+                end
+                
                 if ~isempty(idx)
                     % Récupérer l'âge et le sexe existant
                     animal_date_list_type{i, 5} = existing_data{idx, 5};
@@ -117,13 +122,22 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
             fprintf('No existing file found. Creating new file...\n');
         end
         
-        % Identifier les groupes et animaux uniques
+        % Parcourir chaque ligne de animal_date_list_type
+        for i = 1:size(animal_date_list_type, 1)
+            % Si la 2ème colonne est vide
+            if isempty(animal_date_list_type{i, 2})
+                % Remplacer par la 3ème colonne de la même ligne
+                animal_date_list_type{i, 2} = animal_date_list_type{i, 3};
+            end
+        end
+        
+        % Maintenant extraire group_names depuis la 2ème colonne
         group_names = animal_date_list_type(:, 2);
         
-        % Remove empty character arrays
+        % Supprimer les éventuels vides restants
         group_names = group_names(~cellfun('isempty', group_names));
         
-        % Get unique values
+        % Obtenir les groupes uniques
         unique_groups = unique(group_names);
 
         % Parcourir chaque groupe unique
@@ -137,16 +151,25 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
             % Parcourir chaque animal unique dans le groupe
             for a = 1:length(unique_animals_in_group)
                 animal_group = unique_animals_in_group{a};
-                animal_indices = strcmp(animal_date_list_type(:, 3), animal_group) & group_indices;
-        
+                animal_indices = strcmp(animal_date_list_type(:, 3), animal_group);
+
+                if ~isempty(group_indices)
+                    animal_indices = animal_indices & group_indices;
+                end
+                
+                disp(animal_indices)
+
                 % Trouver les indices où l'âge est NaN (colonne 5)
                 nan_age_indices = find(animal_indices & ...
                     cellfun(@(x) (isnumeric(x) && isnan(x)) || (ischar(x) && strcmpi(x, 'nan')), animal_date_list_type(:, 5)));
                 
                 % Trouver les indices où le sexe est NaN ou vide (colonne 6)
                 nan_sex_indices = find(animal_indices & ...
-                    cellfun(@(x) isempty(x) || (isnumeric(x) && isnan(x)) || (ischar(x) && strcmpi(x, 'nan')), animal_date_list_type(:, 6)));
-        
+                     cellfun(@(x) isempty(x) || (isnumeric(x) && isnan(x)) || (ischar(x) && strcmpi(x, 'nan')), animal_date_list_type(:, 6)));
+                
+                disp(nan_sex_indices)
+
+
                 % Parcourir les dates associées à cet animal et demander l'âge
                 for i = nan_age_indices'
                     if strcmp(animal_date_list_type{i, 3}, animal_group) && strcmp(animal_date_list_type{i, 2}, group)
@@ -264,3 +287,6 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
     
     end
 end
+
+                    
+              
