@@ -12,14 +12,16 @@ end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
 
-
 % for idx = 1:length(env_paths_all)
 %     [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
 %     disp(position)
 % end
 
-[selected_groups, include_blue_cells] = process_selected_group(selected_groups);
+[selected_groups, include_blue_cells, daytime] = process_selected_group(selected_groups);
 
 %% Processing and analysis
 
-pipeline_for_data_processing(selected_groups, include_blue_cells);
+[analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells);
+
+%%
+create_ppt_from_figs(selected_groups, daytime)

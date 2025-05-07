@@ -13,7 +13,8 @@ function plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, curren
     % Récupération des corrélations pour chaque session
     for sessionIdx = 1:length(current_ages_group)
         ageIdx = x_indices(sessionIdx);
-        if sessionIdx <= numel(all_max_corr_gcamp_gcamp) && ~isempty(all_max_corr_gcamp_gcamp{sessionIdx})
+        if sessionIdx <= numel(all_max_corr_gcamp_gcamp) && ~isempty(all_max_corr_gcamp_gcamp{sessionIdx}) && ...
+       ageIdx > 0
             current_corrs = all_max_corr_gcamp_gcamp{sessionIdx}(:);
             animal_data = [animal_data; current_corrs];
             animal_age = [animal_age; repmat(age_labels(ageIdx), length(current_corrs), 1)];

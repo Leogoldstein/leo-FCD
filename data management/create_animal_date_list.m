@@ -181,7 +181,7 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
                 
                         % Afficher les dates uniquement si l'âge n'est pas encore attribué
                         fprintf('For animal "%s" in group "%s", the dates are:\n', animal_date_list_type{i, 3}, animal_date_list_type{i, 2});
-                        disp(animal_date_list_type(animal_indices, 4)); % Afficher les dates associées à cet animal uniquement
+                        disp(animal_date_list_type{i, 4}); % Afficher les dates associées à cet animal uniquement
                 
                         % Demander l'âge si nécessaire
                         age_input = input(sprintf('Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', animal_date_list_type{i, 3}), 's');

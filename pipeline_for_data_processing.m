@@ -1,4 +1,4 @@
-function pipeline_for_data_processing(selected_groups, include_blue_cells)
+function [analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved
@@ -12,16 +12,6 @@ function pipeline_for_data_processing(selected_groups, include_blue_cells)
      
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
-
-    % Pre-allocate variables for inter-groups analysis (btw animals for all dates)
-    num_groups = length(selected_groups);  % Nombre de groupes sélectionnés
-    gcamp_output_folders_groups = cell(num_groups, 1);
-    gcamp_group_fields = {'DF_groups', 'MAct_groups', 'sampling_rate_groups', 'Raster_groups', 'MAct_groups', 'Race_groups', 'TRace_groups', 'sce_n_cells_threshold_groups', 'sces_distances_groups', 'RasterRace_groups', 'sce_n_cells_threshold_groups'};
-    gcamp_data_groups = init_data_struct(num_groups, gcamp_group_fields);
-
-    all_max_corr_gcamp_gcamp_groups = cell(num_groups, 1);
-    all_max_corr_gcamp_mtor_groups = cell(num_groups, 1);
-    all_max_corr_mtor_mtor_groups = cell(num_groups, 1);
 
     % Perform analyses
     for k = 1:length(selected_groups)
@@ -84,14 +74,7 @@ function pipeline_for_data_processing(selected_groups, include_blue_cells)
                     case 3
                         disp(['Performing SCEs analysis for ', current_animal_group]);
                         gcamp_data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, gcamp_data);
-                        
-                        assignin('base', 'gcamp_data', gcamp_data);
-
-                        gcamp_data_groups.Race_groups{k} = gcamp_data.Race;
-                        gcamp_data_groups.TRace_groups{k} = gcamp_data.TRace;
-                        gcamp_data_groups.sce_n_cells_threshold_groups{k} = gcamp_data.sce_n_cells_threshold;
-                        gcamp_data_groups.sces_distances_groups{k} = gcamp_data.sces_distances;
-                        gcamp_data_groups. RasterRace_groups{k} = gcamp_data.RasterRace;
+                        selected_groups(k).gcamp_data = gcamp_data;
 
                         %[all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, gcamp_data.Raster, all_sces_distances, gcamp_output_folders);
                         % 
@@ -114,33 +97,41 @@ function pipeline_for_data_processing(selected_groups, include_blue_cells)
                             [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
                         end
                         
+                        % Ajouter dynamiquement les nouveaux champs à gcamp_fields
+                        new_fields = {'max_corr_gcamp_gcamp', 'max_corr_gcamp_mtor', 'max_corr_mtor_mtor'};
+                    
+                        % Vérifier et ajouter les nouveaux champs dans gcamp_data
+                        for j = 1:length(new_fields)
+                            if ~isfield(gcamp_data, new_fields{j})
+                                gcamp_data.(new_fields{j}) = cell(length(gcamp_output_folders), 1);  % Créer les nouveaux champs s'ils n'existent pas
+                                [gcamp_data.(new_fields{j}){:}] = deal([]);  % Initialiser chaque cellule à []
+                            end
+                        end
+
+                        gcamp_data.max_corr_gcamp_gcamp = all_max_corr_gcamp_gcamp;
+                        gcamp_data.max_corr_gcamp_mtor  = all_max_corr_gcamp_mtor; 
+                        gcamp_data.max_corr_mtor_mtor   = all_max_corr_mtor_mtor;
+
+                        selected_groups(k).gcamp_data = gcamp_data;
+
                         plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
 
-                        all_max_corr_gcamp_gcamp_groups{k} = all_max_corr_gcamp_gcamp;
-                        all_max_corr_gcamp_mtor_groups{k} = all_max_corr_gcamp_mtor;
-                        all_max_corr_mtor_mtor_groups{k} = all_max_corr_mtor_mtor;
-
+                        
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
-
         end
     end
 
     % % Analyses globales après la boucle (une meme mesure pour plusieurs animaux)
     if analysis_choice == 3
-        SCEs_groups_analysis2(selected_groups, gcamp_data_groups.DF_groups, gcamp_data_groups.Race_groups, gcamp_data_groups.TRace_groups, gcamp_data_groups.sampling_rate_groups, gcamp_data_groups.Raster_groups,  gcamp_data_groups.sce_n_cells_threshold_groups);
+        SCEs_groups_analysis2(selected_groups);
     end
     
     % if analysis_choice == 6
     %     corr_groups_violins_ind(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
     % end
 
-    % Demander à l'utilisateur s'il souhaite créer un fichier PowerPoint
-    create_ppt = input('Do you want to generate a PowerPoint presentation with the generated figure(s)? (1/2): ', 's');
-    if strcmpi(create_ppt, '1')
-        create_ppt_from_figs(selected_groups, gcamp_data_groups, gcamp_output_folders_groups, daytime, analysis_choices)
-    end
 end
 
 %% Helper Functions (loading and processing)

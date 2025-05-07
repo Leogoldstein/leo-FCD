@@ -1,4 +1,4 @@
-function [selected_groups, include_blue_cells] = process_selected_group(selected_groups)
+function [selected_groups, include_blue_cells, daytime] = process_selected_group(selected_groups)
 
     % Prompt for the first choice
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
