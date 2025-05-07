@@ -17,6 +17,9 @@ end
 %     [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
 %     disp(position)
 % end
-%%
-% Processing and analysis
-pipeline_for_data_processing(selected_groups);
+
+[selected_groups, include_blue_cells] = process_selected_group(selected_groups);
+
+%% Processing and analysis
+
+pipeline_for_data_processing(selected_groups, include_blue_cells);
