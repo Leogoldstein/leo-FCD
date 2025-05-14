@@ -1,8 +1,9 @@
-function figs = barplots_by_type(selected_groups)
+function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
 
     animal_types = {'jm', 'FCD', 'CTRL'};
     num_types = numel(animal_types);
 
+    grouped_data_by_age = struct(); 
     figs = struct();  % Structure pour stocker les figures par type d'animal
 
     % Grouper les selected_groups par type d'animal
@@ -44,6 +45,7 @@ function figs = barplots_by_type(selected_groups)
             all_TRace = groups_subset(groupIdx).gcamp_data.TRace;
             all_Race = groups_subset(groupIdx).gcamp_data.Race;
             all_Raster = groups_subset(groupIdx).gcamp_data.Raster;
+            all_RasterRace = groups_subset(groupIdx).gcamp_data.RasterRace;
             all_sces_distances = groups_subset(groupIdx).gcamp_data.sces_distances;
             all_sampling_rate = groups_subset(groupIdx).gcamp_data.sampling_rate;
 
@@ -105,14 +107,22 @@ function figs = barplots_by_type(selected_groups)
                         avg_active_cell_SCEs = mean(sum(Race, 1));
                     end
 
-                    if pathIdx <= numel(all_Raster)
-                        Raster = all_Raster{pathIdx};
-                        num_columns = size(Raster, 2);
-                        inds = 1:num_columns;
-                        indices_not_SCEs = setdiff(inds, TRace);
-                        avg_active_cells_not_in_SCEs = mean(sum(Raster(:, indices_not_SCEs), 1));
-                        prop_active_cell_SCEs = avg_active_cell_SCEs / ...
-                            (avg_active_cell_SCEs + avg_active_cells_not_in_SCEs) * 100;
+                    if pathIdx <= numel(all_RasterRace)
+                        RasterRace = all_RasterRace{pathIdx};
+                        NCell = size(RasterRace, 1);
+                        
+                        % Initialisation d’un vecteur pour stocker les pourcentages par SCE
+                        pourcentageActif = zeros(length(TRace), 1);
+                        
+                        for i = 1:length(TRace)
+                            % Nombre de cellules actives à l’instant TRace(i)
+                            nbActives = sum(RasterRace(:, TRace(i)) == 1);
+                            
+                            % Pourcentage de cellules actives
+                            pourcentageActif(i) = 100 * nbActives / NCell;
+                        end
+
+                        prop_active_cell_SCEs = mean(pourcentageActif);
                     end
 
                     if pathIdx <= numel(all_sces_distances)
@@ -140,7 +150,7 @@ function figs = barplots_by_type(selected_groups)
         % Plotting
         measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'AvgActiveSCE', 'SCEDuration', 'propSCEs'};
         measure_titles = {'NCells', 'Activity Frequency (per minute)', 'Number of SCEs', 'SCE Frequency', ...
-                          'Avg Active Cells in SCEs', 'SCE Duration (ms)', 'Percentage of Active Cells in SCEs'};
+                          'Number of Active Cells in SCEs (averaged)', 'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)'};
         
         num_measures = numel(measures);
         num_rows = ceil(num_measures / 2);  % Utilise autant de lignes que nécessaire
@@ -186,6 +196,8 @@ function figs = barplots_by_type(selected_groups)
         % Enregistrer la figure pour ce type d'animal
         figs.(current_type) = gcf;  % Stocke la figure sous le type d'animal
         %close(gcf)
+
+        grouped_data_by_age.(current_type) = data_by_age;
 
     end
 end

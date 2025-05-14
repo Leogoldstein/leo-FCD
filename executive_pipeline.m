@@ -10,6 +10,7 @@ if count(py.sys.path, new_path) == 0
     insert(py.sys.path, int32(0), new_path);
 end
 
+
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
 
 % for idx = 1:length(env_paths_all)
@@ -20,7 +21,6 @@ end
 [selected_groups, include_blue_cells, daytime] = process_selected_group(selected_groups);
 
 %% Processing and analysis
-
 [analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells);
 
 %%

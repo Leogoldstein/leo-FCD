@@ -45,6 +45,7 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
         current_animal_type = selected_groups(k).animal_type;
         current_ani_path_group = selected_groups(k).path;
         current_dates_group = selected_groups(k).dates;
+        current_ages_group = selected_groups(k).ages;
         
         % Create paths for each date group
         date_group_paths = cell(length(current_dates_group), 1);  
@@ -107,6 +108,10 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
         % You can also store the output folders if needed
         selected_groups(k).gcamp_output_folders = gcamp_output_folders;
         selected_groups(k).blue_output_folders = blue_output_folders;
+
+        % Performing mean images                
+        save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+
     end
 end
 
@@ -230,9 +235,9 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);
                 
                 % Définir le chemin du fichier à charger ou sauvegarder
-                filePath2 = fullfile(gcamp_output_folders{m}, 'results_image.mat'); 
+                filePath2 = fullfile(gcamp_output_folders{m}, 'results_image.mat');
                 
-                if exist(filePath2, 'file') == 2 
+                if exist(filePath2, 'file') == 2
                     disp(['Loading file: ', filePath2]);
                     % Charger les données existantes
                     data = load(filePath2); 
@@ -313,6 +318,11 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
 
         % Traitement des données combinées si analysis_choice == 2
         if strcmpi(include_blue_cells, '1') && isempty(all_data.DF{m}) && ~isempty(mtor_data.DF{m})
+
+            min_cols = min(size(mtor_data.DF_not_blue{m}, 2), size(mtor_data.DF{m}, 2));
+            mtor_data.DF_not_blue{m} = mtor_data.DF_not_blue{m}(:, 1:min_cols);
+            mtor_data.DF{m} = mtor_data.DF{m}(:, 1:min_cols);
+
             all_data.DF{m} = [mtor_data.DF_not_blue{m}; mtor_data.DF{m}];
             DF_all = all_data.DF{m};
             NCells = size(mtor_data.DF_not_blue{m}, 1);

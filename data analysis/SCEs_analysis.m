@@ -1,4 +1,4 @@
-function [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_sces_distances, date_group_paths)
+function [all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms] = SCEs_analysis(all_TRace, all_sampling_rate, all_Race, all_Raster, all_RasterRace, all_sces_distances, date_group_paths)
 
 % Variables pour stocker les résultats
 all_num_sces = zeros(length(date_group_paths), 1);  % Nombre de SCEs pour chaque groupe
@@ -24,13 +24,22 @@ for m = 1:length(date_group_paths)
         avg_active_cell_SCEs = mean(sum(Race, 1));  % Moyenne des cellules actives pendant les SCEs
         
         % Proportion des cellules actives dans les SCEs
-        Raster = all_Raster{m};
-        num_columns = size(Raster, 2);  % Nombre de neurones (ou de colonnes)
-        inds = 1:num_columns;
-        indices_not_SCEs = setdiff(inds, TRace);  % Indices des neurones qui ne sont pas actifs pendant les SCEs
-        avg_active_cells_not_in_SCEs = mean(sum(Raster(:, indices_not_SCEs), 1));  % Moyenne des cellules non actives pendant les SCEs
-        prop_active_cell_SCEs = avg_active_cell_SCEs / (avg_active_cell_SCEs + avg_active_cells_not_in_SCEs) * 100;  % Proportion des cellules actives
+        RasterRace = all_RasterRace{pathIdx};
+        NCell = size(RasterRace, 1);
         
+        % Initialisation d’un vecteur pour stocker les pourcentages par SCE
+        pourcentageActif = zeros(length(TRace), 1);
+        
+        for i = 1:length(TRace)
+            % Nombre de cellules actives à l’instant TRace(i)
+            nbActives = sum(RasterRace(:, TRace(i)) == 1);
+            
+            % Pourcentage de cellules actives
+            pourcentageActif(i) = 100 * nbActives / NCell;
+        end
+
+        prop_active_cell_SCEs = mean(pourcentageActif);
+
         % Durée des SCEs en millisecondes
         sces_distances = all_sces_distances{m};
         distances = sces_distances(:, 2);  % Distances entre les événements SCE

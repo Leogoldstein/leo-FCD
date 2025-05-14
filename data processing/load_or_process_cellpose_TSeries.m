@@ -56,65 +56,77 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 aligned_image = normalize_image(aligned_image);
             end
         else
-            % Si aucun fichier NPY n'existe, passer aux fichiers TIF
+            % Rechercher tous les fichiers TIF correspondant au canal
             tif_files = dir(fullfile(path, '*.tif'));
             tif_files_canal = tif_files(contains({tif_files.name}, canal_str));
             
-            % Vérifier si des fichiers TIF sont disponibles pour ce canal
+            % Vérifier s'il y a des fichiers TIF pour ce canal
             if isempty(tif_files_canal)
                 disp(['Aucun fichier contenant "', canal_str, '" trouvé dans le répertoire spécifié.']);
                 return;
-            elseif numel(tif_files_canal) > 1
-                % Si plusieurs fichiers existent, demander à l'utilisateur d'en choisir un parmi ceux qui contiennent le canal
-                [selected_file, selected_path] = uigetfile({['*' canal_str '*.tif']}, ...
-                    ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
-                    fullfile(tif_files_canal(1).folder, tif_files_canal(1).name));
-                if isequal(selected_file, 0)
-                    disp('Aucun fichier sélectionné. Opération annulée.');
-                    return; % Quitte la fonction
-                end
-                tif_file_path = fullfile(selected_path, selected_file);
-            else
-                % S'il n'y a qu'un seul fichier, l'utiliser directement
-                tif_file_path = fullfile(tif_files_canal(1).folder, tif_files_canal(1).name);
             end
             
-            % Vérifier si le fichier est déjà aligné (commence par 'aligned_')
-            [~, file_name, ~] = fileparts(tif_file_path);
-            aligned_image_path = fullfile(path, ['aligned_', file_name, '.tif']);
+            % Chercher tous les fichiers alignés pour ce canal
+            aligned_files = tif_files( ...
+                  ~cellfun('isempty', regexp({tif_files.name}, ['^aligned_.*_' canal_str '(_|\.)'])) );
             
-            if isfile(aligned_image_path)
-                % Si le fichier est déjà aligné, charger l'image alignée
+            if ~isempty(aligned_files)
+                if isscalar(aligned_files)
+                    % Un seul fichier aligné → l'utiliser
+                    aligned_image_path = fullfile(aligned_files(1).folder, aligned_files(1).name);
+                else
+                    % Plusieurs fichiers alignés → demander à l'utilisateur de choisir
+                    [selected_file, selected_path] = uigetfile({['aligned_*' canal_str '*.tif']}, ...
+                        ['Plusieurs fichiers alignés "', canal_str, '" trouvés. Veuillez en sélectionner un :'], ...
+                        fullfile(aligned_files(1).folder, aligned_files(1).name));
+                    if isequal(selected_file, 0)
+                        disp('Aucun fichier aligné sélectionné. Opération annulée.');
+                        return;
+                    end
+                    aligned_image_path = fullfile(selected_path, selected_file);
+                end
+            
+                % Charger l'image alignée
                 aligned_image = imread(aligned_image_path);
-                fprintf('Fichier déjà aligné trouvé, chargé : %s\n', aligned_image_path);
-
-                % Retrouver l'image originale en enlevant le préfixe 'aligned_' et ajouter '.tif'
-                original_file_name = [strrep(file_name, 'aligned_', ''), '.tif'];
+                fprintf('Fichier aligné sélectionné, chargé : %s\n', aligned_image_path);
+            
+                % Retrouver le nom du fichier original
+                [~, aligned_name, ~] = fileparts(aligned_image_path);
+                original_file_name = [strrep(aligned_name, 'aligned_', ''), '.tif'];
                 original_file_path = fullfile(path, original_file_name);
-                image_tiff = imread(original_file_path);
-                fprintf('Image originale trouvée, chargée : %s\n', original_file_path);
-    
-                % Normalisation des images avant l'animation
+            
+                % Vérifier et charger l'image originale
+                if isfile(original_file_path)
+                    image_tiff = imread(original_file_path);
+                    fprintf('Image originale trouvée, chargée : %s\n', original_file_path);
+                else
+                    warning('Fichier original correspondant introuvable : %s', original_file_path);
+                    return;
+                end
+            
+                % Normalisation + animation
                 image_tiff = normalize_image(image_tiff);
                 aligned_image = normalize_image(aligned_image);
-
-                % Animation avant de lancer Cellpose
                 display_animation(image_tiff, aligned_image);
+            
+                % Lancer Cellpose
+                npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
                 
-                launch_cellpose_from_matlab(tif_file_path);
-    
-                % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-                [~, folder_name, ~] = fileparts(tif_file_path);
-                npy_file_name = [folder_name, '_seg.npy'];
-                npy_file_path = fullfile(path, npy_file_name);
-                if isfile(npy_file_path)
-                    npy_file_path = npy_file_path;
-                    fprintf('Fichier NPY trouvé et ajouté\n');
+            else    
+                % S'il n'y a pas d'image alignée, passer au traitement standard
+                if numel(tif_files_canal) > 1
+                    [selected_file, selected_path] = uigetfile({['*' canal_str '*.tif']}, ...
+                        ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner un fichier :'], ...
+                        fullfile(tif_files_canal(1).folder, tif_files_canal(1).name));
+                    if isequal(selected_file, 0)
+                        disp('Aucun fichier sélectionné. Opération annulée.');
+                        return;
+                    end
+                    tif_file_path = fullfile(selected_path, selected_file);
                 else
-                    % Si aucun fichier NPY n'est trouvé, afficher un message
-                    disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
+                    tif_file_path = fullfile(tif_files_canal(1).folder, tif_files_canal(1).name);
                 end
-            else
+               
                 % Charger l'image TIFF originale
                 image_tiff = imread(tif_file_path);
                 image_tiff = normalize_image(image_tiff);
@@ -156,6 +168,9 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 aligned_image = normalize_image(aligned_image);
 
                 % Sauvegarder l'image alignée
+                [~, file_name, ~] = fileparts(tif_file_path);
+                aligned_image_path = fullfile(path, ['aligned_', file_name, '.tif']);
+
                 imwrite(aligned_image, aligned_image_path, 'tif');
                 fprintf('Image alignée sauvegardée : %s\n', aligned_image_path);
                 
@@ -165,19 +180,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 % Animation avant de lancer Cellpose
                 display_animation(image_tiff, aligned_image);
                 
-                launch_cellpose_from_matlab(aligned_image_path);
-    
-                % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-                [~, folder_name, ~] = fileparts(aligned_image_path);
-                npy_file_name = [folder_name, '_seg.npy'];
-                npy_file_path = fullfile(path, npy_file_name);
-                if isfile(npy_file_path)
-                    npy_file_path = npy_file_path;
-                    fprintf('Fichier NPY trouvé et ajouté\n');
-                else
-                    % Si aucun fichier NPY n'est trouvé, afficher un message
-                    disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
-                end
+                npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
             end  
 
             if isempty(meanImg_channels{1})
@@ -244,16 +247,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                     end
                     image_tiff = imread(meanImg);
                     display_animation(image_tiff, aligned_image);
-                    launch_cellpose_from_matlab(aligned_image_path); 
-
-                    % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-                    if isfile(npy_file_path)
-                        npy_file_path = npy_file_path;
-                        fprintf('Fichier NPY trouvé et ajouté\n');
-                    else
-                        % Si aucun fichier NPY n'est trouvé, afficher un message
-                        disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
-                    end
+                    npy_file_path = launch_cellpose_from_matlab(aligned_image_path); 
             
             else
                 for j = 1:numChannels
@@ -293,16 +287,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                             imwrite(aligned_image, aligned_image_path, 'tif');
                             fprintf('Image alignée sauvegardée : %s\n', aligned_image_path);
                             display_animation(not_aligned_image, aligned_image);
-                            launch_cellpose_from_matlab(aligned_image_path);
-
-                            % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-                            if isfile(npy_file_path)
-                                npy_file_path = npy_file_path;
-                                fprintf('Fichier NPY trouvé et ajouté\n');
-                            else
-                                % Si aucun fichier NPY n'est trouvé, afficher un message
-                                disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
-                            end
+                            npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
 
                         else
                             warning('meanImg_channels{3} est vide ou invalide.');
@@ -397,7 +382,7 @@ function display_animation(image_tiff, aligned_image)
     end
 end
 
-function launch_cellpose_from_matlab(image_path)
+function npy_file_path = launch_cellpose_from_matlab(image_path)
     % This function configures the Python environment for Cellpose and launches Cellpose from MATLAB with the graphical interface.
     %
     % Arguments:
@@ -437,5 +422,19 @@ function launch_cellpose_from_matlab(image_path)
         system(cellposePath);  % Launch Cellpose with the graphical interface
     else
         fprintf('Cellpose was not launched. Process canceled.\n');
+        npy_file_path = [];
+    end
+   
+    % Vérifier si le fichier .npy existe après l'exécution de Cellpose
+    [~, folder_name, ~] = fileparts(image_path);
+    npy_file_name = [folder_name, '_seg.npy'];
+    npy_file_path = fullfile(image_path, npy_file_name);
+    if isfile(npy_file_path)
+        npy_file_path = npy_file_path;
+        fprintf('Fichier NPY trouvé et ajouté\n');
+    else
+        % Si aucun fichier NPY n'est trouvé, afficher un message
+        disp(['Aucun fichier NPY trouvé après l''exécution de Cellpose dans : ', npy_file_path]);
+        npy_file_path = [];
     end
 end

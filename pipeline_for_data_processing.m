@@ -31,16 +31,13 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
         % Create the new path for the Excel file with the modified title
         pathexcel = [PathSave 'analysis.xlsx'];
 
-        % Performing mean images                
-        %save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+        gcamp_output_folders = selected_groups(k).gcamp_output_folders;
+        blue_output_folders = selected_groups(k).blue_output_folders;
 
         gcamp_data = selected_groups(k).gcamp_data;
         mtor_data = selected_groups(k).mtor_data;
         all_data = selected_groups(k).all_data;
         
-        gcamp_output_folders = selected_groups(k).gcamp_output_folders;
-        blue_output_folders = selected_groups(k).blue_output_folders;
-
         % Loop through each selected analysis choice
         for i = 1:length(analysis_choices)
             analysis_choice = analysis_choices(i);  % Get the current analysis choice
@@ -122,14 +119,10 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
             end
         end
     end
-
-    % % Analyses globales après la boucle (une meme mesure pour plusieurs animaux)
-    if analysis_choice == 3
-        SCEs_groups_analysis2(selected_groups);
-    end
     
-    % if analysis_choice == 6
-    %     corr_groups_violins_ind(selected_groups, daytime, all_max_corr_gcamp_gcamp_groups, all_max_corr_gcamp_mtor_groups, all_max_corr_mtor_mtor_groups);
+    % if analysis_choice == 3
+    %     figs = RasterChange_around_SCEs(selected_groups);
+    %     figs = FiringRateChange_around_SCEs(selected_groups);
     % end
 
 end

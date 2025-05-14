@@ -30,8 +30,16 @@ function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gc
         end
     end
     
-    tiffFiles = dir(fullfile(currentTSeriesPath, '*.tif'));
-    tiffFiles = {tiffFiles(~contains({tiffFiles.name}, 'companion.ome')).name};  
+    % Lister tous les fichiers TIF dans le dossier
+    tiffFilesStruct = dir(fullfile(currentTSeriesPath, '*.tif'));
+    
+    % Extraire les noms de fichiers
+    fileNames = {tiffFilesStruct.name};
+    
+    % Exclure ceux contenant 'companion.ome' ou 'Concatenated'
+    excludeMask = contains(fileNames, 'companion.ome') | contains(fileNames, 'Concatenated');
+    tiffFiles = fileNames(~excludeMask);
+
     [~, idxOrder] = sort(tiffFiles);  
     tiffFiles = tiffFiles(idxOrder);
     
