@@ -99,19 +99,22 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
     
         % Preprocess and process data
         [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
+    
+        % Check data
+        % Performing mean images                
+        meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+        gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
+        data_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, meanImgs, gcamp_data.outlines_gcampx, gcamp_data.outlines_gcampy, gcamp_data.gcamp_props)
 
-        % Store processed data directly in selected_groups for this group
+        build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
+
+        % Store processed data in selected_groups for this group
+        selected_groups(k).gcamp_output_folders = gcamp_output_folders;
+        selected_groups(k).blue_output_folders = blue_output_folders;
         selected_groups(k).gcamp_data = gcamp_data;
         selected_groups(k).mtor_data = mtor_data;
         selected_groups(k).all_data = all_data;
         
-        % You can also store the output folders if needed
-        selected_groups(k).gcamp_output_folders = gcamp_output_folders;
-        selected_groups(k).blue_output_folders = blue_output_folders;
-
-        % Performing mean images                
-        save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
-
     end
 end
 
@@ -234,52 +237,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
      
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);
                 
-                % Définir le chemin du fichier à charger ou sauvegarder
-                filePath2 = fullfile(gcamp_output_folders{m}, 'results_image.mat');
-                
-                if exist(filePath2, 'file') == 2
-                    disp(['Loading file: ', filePath2]);
-                    % Charger les données existantes
-                    data = load(filePath2); 
-                
-                    if isfield(data, 'outlines_gcampx') || isfield(data, 'outline_gcampx')
-                        % Vérifier et affecter 'outlines_gcampx' ou 'outline_gcampx'
-                        if isfield(data, 'outlines_gcampx')
-                            outlines_gcampx = data.outlines_gcampx;
-                        elseif isfield(data, 'outline_gcampx')
-                            outlines_gcampx = data.outline_gcampx;
-                        end
-                    end                   
-                    if isfield(data, 'outlines_gcampy') || isfield(data, 'outline_gcampy')
-                        % Vérifier et affecter 'outlines_gcampy' ou 'outline_gcampy'
-                        if isfield(data, 'outlines_gcampy')
-                            outlines_gcampy = data.outlines_gcampy;
-                        elseif isfield(data, 'outline_gcampy')
-                            outlines_gcampy = data.outline_gcampy;
-                        end
-                    end
-                    if isfield(data, 'gcamp_mask') 
-                        gcamp_mask = data.gcamp_mask;
-                    end
-                    if isfield(data, 'gcamp_props') 
-                        gcamp_props = data.gcamp_props;
-                    end
-                    if isfield(data, 'imageHeight') 
-                        imageHeight = data.imageHeight;
-                    end
-                    if isfield(data, 'imageWidth') 
-                        imageWidth = data.imageWidth;
-                    end
-                else
-                    [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m});
-                    [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
-                
-                    % Créer poly2mask et obtenir les propriétés gcamp
-                    [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy); 
-                
-                    % Sauvegarder les résultats dans le fichier results_distance.mat
-                    save(filePath2, 'NCell', 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth');
-                end
+                [NCell, outlines_gcampx, outlines_gcampy, gcamp_mask, gcamp_props, imageHeight, imageWidth] = load_or_process_calcium_masks(gcamp_output_folders{m}, current_gcamp_folders_group{m});
                 
                 % Vérifier que gcamp_props et props_cellpose existent
                 if isempty(gcamp_props) || isempty(props_cellpose)
@@ -341,6 +299,68 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             all_data.Sm{m} = Sm_all;
             all_data.Raster{m} = Raster_all;
             all_data.MAct{m} = MAct_all;
+        end
+    end
+end
+
+
+
+function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data)
+
+    numFolders = length(gcamp_output_folders);  % Number of groups
+    
+    % Ajouter dynamiquement les nouveaux champs à gcamp_fields
+    new_fields = {'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
+                  'gcamp_props', 'imageHeight', 'imageWidth'};
+    
+    % Vérifier et ajouter les nouveaux champs dans gcamp_data
+    for i = 1:length(new_fields)
+        if ~isfield(gcamp_data, new_fields{i})
+            gcamp_data.(new_fields{i}) = cell(numFolders, 1);  % Créer les nouveaux champs s'ils n'existent pas
+            [gcamp_data.(new_fields{i}){:}] = deal([]);  % Initialiser chaque cellule à []
+        end
+    end
+    
+    % First loop: Check if results exist and load them
+    for m = 1:numFolders
+        % Create the full file path for results_SCEs.mat
+        filePath = fullfile(gcamp_output_folders{m}, 'results_image.mat');
+
+        delete(filePath)
+    
+        if exist(filePath, 'file') == 2
+            disp(['Loading file: ', filePath]);
+            % Try to load the pre-existing results from the file
+            data = load(filePath);
+            
+            % Assign the data to the appropriate fields in gcamp_data
+            gcamp_data.outlines_gcampx{m} = getFieldOrDefault(data, 'outlines_gcampx', []);
+            gcamp_data.outlines_gcampy{m} = getFieldOrDefault(data, 'outlines_gcampy', []);
+            gcamp_data.gcamp_mask{m} = getFieldOrDefault(data, 'gcamp_mask', []);
+            gcamp_data.gcamp_props{m} = getFieldOrDefault(data, 'gcamp_props', []);
+            gcamp_data.imageHeight{m} = getFieldOrDefault(data, 'imageHeight', []);
+            gcamp_data.imageWidth{m} = getFieldOrDefault(data, 'imageWidth', []);
+
+        else
+            % Traiter les données si le fichier n'existe pas
+            [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m});
+            [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+    
+            % Créer poly2mask et obtenir les propriétés
+            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
+    
+            % Sauvegarder les résultats
+            save(filePath, 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
+                 'gcamp_props', 'imageHeight', 'imageWidth');
+
+
+            gcamp_data.outlines_gcampx{m} = outlines_gcampx;
+            gcamp_data.outlines_gcampy{m} = outlines_gcampy;
+            gcamp_data.gcamp_mask{m} = gcamp_mask;
+            gcamp_data.gcamp_props{m} = gcamp_props;
+            gcamp_data.imageHeight{m} = imageHeight;
+            gcamp_data.imageHeight{m} = imageWidth;
+
         end
     end
 end

@@ -1,4 +1,4 @@
-function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_blue_indices, all_MAct_blue)
+function build_rasterplot_MAct(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_blue_indices, all_MAct_blue)
     for m = 1:length(gcamp_output_folders)
         try
             % Extraction des données

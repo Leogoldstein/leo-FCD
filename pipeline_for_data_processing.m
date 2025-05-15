@@ -8,7 +8,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
     PathSave = 'D:\Imaging\Outputs\';
     
     % Ask for analysis types, multiple choices separated by spaces
-    analysis_choices_str = input('Choose analysis types (separated by spaces): Raster plot (1), Global measures of activity (2), SCEs (3), clusters analysis (4), or pairwise correlations (5)? ', 's');
+    analysis_choices_str = input('Choose analysis types (separated by spaces): Global measures of activity (1), SCEs (2), clusters analysis (3), or pairwise correlations (4)? ', 's');
      
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
@@ -43,18 +43,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
             analysis_choice = analysis_choices(i);  % Get the current analysis choice
             
             switch analysis_choice  
-                case 1
-                    disp(['Performing raster plot analysis for ', current_animal_group]);
-                    if strcmpi(include_blue_cells, '1')
-                        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct);
-                        plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders, all_data.DF, all_data.blue_indices);
-                    else
-                        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate); %all_data.DF, all_data.isort1, all_data.blue_indices, mtor_data.MAct
-                        plot_DF(gcamp_data.DF, current_animal_group, current_ages_group, gcamp_output_folders) % all_data.DF, all_data.blue_indices
-                        build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-                    end
-
-                    case 2
+                    case 1
                         disp(['Performing Global analysis of activity for ', current_animal_group]);
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
                         [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
@@ -68,7 +57,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                             all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
                             gcamp_data.sampling_rate, gcamp_data.synchronous_frames, NCell_all, NCell_all_blue, mean_frequency_per_minute_all, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all, std_frequency_per_minute_all_blue, cell_density_per_microm2_all, cell_density_per_microm2_all_blue);
                     
-                    case 3
+                    case 2
                         disp(['Performing SCEs analysis for ', current_animal_group]);
                         gcamp_data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, gcamp_data);
                         selected_groups(k).gcamp_data = gcamp_data;
@@ -79,14 +68,14 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                         %     all_sce_n_cells_threshold, all_num_sces, all_sce_frequency_seconds, all_avg_active_cell_SCEs, all_prop_active_cell_SCEs, all_avg_duration_ms);
                         % 
                     
-                    case 4
+                    case 3
                         disp(['Performing clusters analysis for ', current_animal_group]);
                         [gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, ~, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outlines_gcampx, all_outlines_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_gcamp_folders_group, current_env_group);
                         
                         plot_assemblies(all_assemblystat, all_outlines_gcampx, all_outlines_gcampy, all_meandistance_assembly, current_gcamp_folders_group);
                         plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
                     
-                    case 5
+                    case 4
                         disp(['Performing pairwise correlation analysis for ', current_animal_group]);
                         if strcmpi(include_blue_cells, '1')
                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 

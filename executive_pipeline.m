@@ -18,6 +18,7 @@ end
 %     disp(position)
 % end
 
+%%
 [selected_groups, include_blue_cells, daytime] = process_selected_group(selected_groups);
 
 %% Processing and analysis
