@@ -1,4 +1,4 @@
-function [selected_groups, include_blue_cells, daytime] = process_selected_group(selected_groups)
+function [selected_groups, daytime] = process_selected_group(selected_groups)
 
     % Prompt for the first choice
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
@@ -14,18 +14,18 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
     % Extraire et aplatir directement les valeurs en un cell array de strings
     animal_type = string([selected_groups.animal_type]);
     
-    % Vérifier si 'FCD' est présent
-    if any(animal_type == "FCD")
-        include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
-        
-        % Vérification de l'entrée
-        if ~ismember(include_blue_cells, {'1', '2'})
-            disp('Invalid input, defaulting to 2 (No).');
-            include_blue_cells = '2';
-        end
-    else
-        include_blue_cells = '2'; % Valeur par défaut
-    end
+    % % Vérifier si 'FCD' est présent
+    % if any(animal_type == "FCD")
+    %     include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
+    % 
+    %     % Vérification de l'entrée
+    %     if ~ismember(include_blue_cells, {'1', '2'})
+    %         disp('Invalid input, defaulting to 2 (No).');
+    %         include_blue_cells = '2';
+    %     end
+    % else
+    %     include_blue_cells = '2'; % Valeur par défaut
+    % end
      
     % Define new fields to be added to selected_groups
     new_fields = {'gcamp_data', 'mtor_data', 'all_data'};
@@ -98,13 +98,59 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
         assignin('base', 'blue_output_folders', blue_output_folders);
     
         % Preprocess and process data
-        [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
+        [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
     
         % Check data
-        % Performing mean images                
+        % Performing mean images
         meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
-        gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
-        data_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, meanImgs, gcamp_data.outlines_gcampx, gcamp_data.outlines_gcampy, gcamp_data.gcamp_props)
+        
+        % Ask user if they want to check their data
+        check_data = input('Do you want to check your data? (1/2): ', 's');
+        
+        if strcmpi(check_data, '1')
+            % Load or process calcium masks
+            gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
+        
+            % Perform data checking
+            selected_neurons_all = data_checking(gcamp_data.DF, ...
+                          gcamp_data.isort1, ...
+                          gcamp_data.MAct, ...
+                          gcamp_output_folders, ...
+                          current_animal_group, ...
+                          current_ages_group, ...
+                          meanImgs, ...
+                          gcamp_data.outlines_gcampx, ...
+                          gcamp_data.outlines_gcampy, ...
+                          gcamp_data.gcamp_props);
+
+            valid_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
+            
+            if ~isempty(valid_indices)
+                % Filtrer les variables d'input en fonction de valid_indices
+                filtered_date_group_paths = date_group_paths(valid_indices);
+                filtered_gcamp_folders = current_gcamp_folders_names_group(valid_indices);
+                filtered_blue_folders = current_blue_folders_names_group(valid_indices);
+                
+                % Appeler create_base_folders avec ces dossiers filtrés
+                processing_choice1 = '2';
+                processing_choice2 = '2';
+                [gcamp_output_folders_filtered, blue_output_folders_filtered] = create_base_folders(...
+                    filtered_date_group_paths, filtered_gcamp_folders, filtered_blue_folders, ...
+                    daytime, processing_choice1, processing_choice2, current_animal_group);
+                
+                % Mettre à jour uniquement les éléments aux indices valid_indices
+                gcamp_output_folders(valid_indices) = gcamp_output_folders_filtered;
+                blue_output_folders(valid_indices) = blue_output_folders_filtered;
+               
+                % open suite2p
+                launch_suite2p_from_matlab(gcamp_output_folders_filtered)
+    
+                % Preprocess and process data
+                [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
+                meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+                
+             end
+        end
 
         build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
@@ -117,7 +163,7 @@ function [selected_groups, include_blue_cells, daytime] = process_selected_group
         
     end
 end
-
+    
 
 %% HELPER FUNCTIONS
 
@@ -139,7 +185,7 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
 end
 
 
-function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, include_blue_cells, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path)
+function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path)
 
     % Initialisation des structures
     numFolders = length(gcamp_output_folders);
@@ -180,7 +226,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.Raster{m} = getFieldOrDefault(data, 'Raster_gcamp', []);
             gcamp_data.MAct{m} = getFieldOrDefault(data, 'MAct_gcamp', []);
             
-            if strcmpi(include_blue_cells, '1')
+            if ~isempty(blue_output_folders{m})
                 mtor_data.DF{m} = getFieldOrDefault(data, 'DF_blue', []);
                 mtor_data.DF_not_blue{m} = getFieldOrDefault(data, 'DF_gcamp_not_blue', []);
                 mtor_data.Raster{m} = getFieldOrDefault(data, 'Raster_blue', []);
@@ -226,9 +272,9 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.Raster{m} = Raster_gcamp;
             gcamp_data.MAct{m} = MAct_gcamp;
         end
-
+        
         % Traitement des cellules bleues
-        if strcmpi(include_blue_cells, '1') && isempty(mtor_data.DF{m})
+        if ~isempty(blue_output_folders{m}) && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
             
@@ -275,7 +321,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         %all_data.DF{m} = [];
 
         % Traitement des données combinées si analysis_choice == 2
-        if strcmpi(include_blue_cells, '1') && isempty(all_data.DF{m}) && ~isempty(mtor_data.DF{m})
+        if ~isempty(blue_output_folders{m}) && isempty(all_data.DF{m}) && ~isempty(mtor_data.DF{m})
 
             min_cols = min(size(mtor_data.DF_not_blue{m}, 2), size(mtor_data.DF{m}, 2));
             mtor_data.DF_not_blue{m} = mtor_data.DF_not_blue{m}(:, 1:min_cols);
@@ -362,5 +408,49 @@ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, curren
             gcamp_data.imageHeight{m} = imageWidth;
 
         end
+    end
+end
+
+
+function launch_suite2p_from_matlab(image_path)
+    % This function configures the Python environment for Cellpose and launches Cellpose from MATLAB with the graphical interface.
+    %
+    % Arguments:
+    %   - image_path: The path to the image to be processed (in .tif or .png format).
+    % Example:
+    %   launch_cellpose_from_matlab('C:\path\to\image.png');
+
+    % Path to the Python executable in the Cellpose Conda environment
+    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\python.exe';  % Update with your own path
+
+    % Check if the Python environment is already configured
+    currentPyEnv = pyenv;  % Do not pass arguments to pyenv
+    if ~strcmp(currentPyEnv.Version, pyExec)
+        % If the Python environment is not the one we want, configure it
+        pyenv('Version', pyExec);  % Configure the Python environment
+    end
+
+    % Check if the Python environment is properly configured
+    try
+        py.print("Python is working with Suite2p!");
+    catch
+        error('Error: Python is not properly configured in MATLAB.');
+    end
+
+    % Add Cellpose path to the PATH if necessary
+    setenv('PATH', [getenv('PATH') ';C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts']);
+    
+    % Ask the user if they want to launch Cellpose
+    answer = questdlg('Do you want to launch Suite2p to process this image?', ...
+        'Launch Cellpose', 'Yes', 'No', 'No');
+    
+    % If the user answers "Yes", launch suite2p
+    if strcmp(answer, 'Yes')
+        % Launch the Cellpose graphical interface
+        fprintf('Launching Suite2p with the graphical interface to process the image: %s\n', image_path);
+        suite2pPath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts\suite2p.exe';  % Specify the absolute path
+        system(suite2pPath);  % Launch Cellpose with the graphical interface
+    else
+        fprintf('Suite2p was not launched. Process canceled.\n');
     end
 end
