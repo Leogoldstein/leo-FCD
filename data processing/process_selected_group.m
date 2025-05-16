@@ -116,6 +116,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                           gcamp_data.isort1, ...
                           gcamp_data.MAct, ...
                           gcamp_output_folders, ...
+                          current_gcamp_folders_group, ...
                           current_animal_group, ...
                           current_ages_group, ...
                           meanImgs, ...
@@ -142,9 +143,6 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                 gcamp_output_folders(valid_indices) = gcamp_output_folders_filtered;
                 blue_output_folders(valid_indices) = blue_output_folders_filtered;
                
-                % open suite2p
-                launch_suite2p_from_matlab(gcamp_output_folders_filtered)
-    
                 % Preprocess and process data
                 [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
                 meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
@@ -408,49 +406,5 @@ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, curren
             gcamp_data.imageHeight{m} = imageWidth;
 
         end
-    end
-end
-
-
-function launch_suite2p_from_matlab(image_path)
-    % This function configures the Python environment for Cellpose and launches Cellpose from MATLAB with the graphical interface.
-    %
-    % Arguments:
-    %   - image_path: The path to the image to be processed (in .tif or .png format).
-    % Example:
-    %   launch_cellpose_from_matlab('C:\path\to\image.png');
-
-    % Path to the Python executable in the Cellpose Conda environment
-    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\python.exe';  % Update with your own path
-
-    % Check if the Python environment is already configured
-    currentPyEnv = pyenv;  % Do not pass arguments to pyenv
-    if ~strcmp(currentPyEnv.Version, pyExec)
-        % If the Python environment is not the one we want, configure it
-        pyenv('Version', pyExec);  % Configure the Python environment
-    end
-
-    % Check if the Python environment is properly configured
-    try
-        py.print("Python is working with Suite2p!");
-    catch
-        error('Error: Python is not properly configured in MATLAB.');
-    end
-
-    % Add Cellpose path to the PATH if necessary
-    setenv('PATH', [getenv('PATH') ';C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts']);
-    
-    % Ask the user if they want to launch Cellpose
-    answer = questdlg('Do you want to launch Suite2p to process this image?', ...
-        'Launch Cellpose', 'Yes', 'No', 'No');
-    
-    % If the user answers "Yes", launch suite2p
-    if strcmp(answer, 'Yes')
-        % Launch the Cellpose graphical interface
-        fprintf('Launching Suite2p with the graphical interface to process the image: %s\n', image_path);
-        suite2pPath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts\suite2p.exe';  % Specify the absolute path
-        system(suite2pPath);  % Launch Cellpose with the graphical interface
-    else
-        fprintf('Suite2p was not launched. Process canceled.\n');
     end
 end

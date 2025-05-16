@@ -1,4 +1,4 @@
-function selected_neurons_all = data_checking(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, meanImgs, outline_gcampx_all, outline_gcampy_all, gcamp_props_all)
+function selected_neurons_all = data_checking(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_ages_group, meanImgs, outline_gcampx_all, outline_gcampy_all, gcamp_props_all)
     % Initialisation du tableau de résultats (sélections par dossier)
     selected_neurons_all = cell(size(gcamp_output_folders));  % Pour stocker les sélections
 
@@ -54,9 +54,9 @@ function selected_neurons_all = data_checking(all_DF, all_isort1, all_MAct, gcam
             gcamp_fig = findobj('Type', 'figure', 'Name', 'GCaMP Figure');
             if isempty(gcamp_fig)
                 gcamp_fig = figure('Name', 'GCaMP Figure', ...
-                                   'CloseRequestFcn', @(src, ~) gcamp_close_callback(src, m));
+                                   'CloseRequestFcn', @(src, ~) gcamp_close_callback(src, m, current_gcamp_folders_group{m}));
             else
-                set(gcamp_fig, 'CloseRequestFcn', @(src, ~) gcamp_close_callback(src, m));
+                set(gcamp_fig, 'CloseRequestFcn', @(src, ~) gcamp_close_callback(src, m, current_gcamp_folders_group{m}));
             end
     
             % Set data in GCaMP figure
@@ -96,7 +96,7 @@ function selected_neurons_all = data_checking(all_DF, all_isort1, all_MAct, gcam
     end
 end
 
-function gcamp_close_callback(fig, index)
+function gcamp_close_callback(fig, index, current_gcamp_folder)
     selected_neurons = getappdata(fig, 'selected_neurons');
     answer = questdlg('Voulez-vous enregistrer cette sélection ?', ...
                       'Confirmation', 'Oui', 'Non', 'Annuler', 'Oui');
@@ -105,10 +105,16 @@ function gcamp_close_callback(fig, index)
             % Enregistre sélection dans appdata root pour l’étape suivante
             setappdata(0, sprintf('selection_saved_%d', index), true);
             setappdata(0, sprintf('selected_result_%d', index), selected_neurons);
-            delete(fig);
+
+            % open suite2p
+            launch_suite2p_from_matlab(current_gcamp_folder)
+
+            delete(fig)
+            
         case 'Non'
             setappdata(0, sprintf('selection_saved_%d', index), false);
-            delete(fig);
+            delete(fig)
+            
         case 'Annuler'
             % Ne pas fermer : juste sortir de la callback
             return;
@@ -259,4 +265,49 @@ function neuron_clicked(~, ~, idx, gcamp_fig)
 
     % Relance le dessin avec la mise à jour des neurones rouges
     update_gcamp_figure(gcamp_fig);
+end
+
+
+function launch_suite2p_from_matlab(image_path)
+    % This function configures the Python environment for Suite2p and launches Suite2p from MATLAB with the graphical interface.
+    %
+    % Arguments:
+    %   - image_path: The path to the image to be processed (in .tif or .png format).
+    % Example:
+    %   launch_suite2p_from_matlab('C:\path\to\image.png');
+
+    % Path to the Python executable in the Suite2p Conda environment
+    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\python.exe';  % Update with your own path
+
+    % Check if the Python environment is already configured
+    currentPyEnv = pyenv;  % Do not pass arguments to pyenv
+    
+    if ~strcmp(currentPyEnv.Version, pyExec)
+        % If the Python environment is not the one we want, configure it
+        pyenv('Version', pyExec);  % Configure the Python environment
+    end
+
+    % Check if the Python environment is properly configured
+    try
+        py.print("Python is working with Suite2p!");
+    catch
+        error('Error: Python is not properly configured in MATLAB.');
+    end
+
+    % Add Suite2p path to the PATH if necessary
+    setenv('PATH', [getenv('PATH') ';C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts']);
+    
+    % Ask the user if they want to launch Suite2p
+    answer = questdlg('Veux-tu démarrer Suite2p pour processer cet enregistrement?', ...
+        'Launch Suite2p', 'Yes', 'No', 'No');
+    
+    % If the user answers "Yes", launch suite2p
+    if strcmp(answer, 'Yes')
+        % Launch the Suite2p graphical interface
+        fprintf('Launching Suite2p with the graphical interface to process the folder: %s\n', image_path);
+        suite2pPath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\Scripts\suite2p.exe';  % Specify the absolute path
+        system(suite2pPath);  % Launch Suite2p with the graphical interface
+    else
+        fprintf('Suite2p was not launched. Process canceled.\n');
+    end
 end
