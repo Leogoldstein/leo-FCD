@@ -8,7 +8,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
     PathSave = 'D:\Imaging\Outputs\';
     
     % Ask for analysis types, multiple choices separated by spaces
-    analysis_choices_str = input('Choose analysis types (separated by spaces): Global measures of activity (1), SCEs (2), clusters analysis (3), or pairwise correlations (4)? ', 's');
+    analysis_choices_str = input('Choose analysis types (separated by spaces): Global measures of activity (1), SCEs (2), clusters analysis (3), pairwise correlations (4), or mouse motion analysis (5) ? ', 's');
      
     % Convert the string of choices into an array of numbers
     analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
@@ -24,7 +24,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
             date_path = fullfile(current_ani_path_group, current_dates_group{l});
             date_group_paths{l} = date_path;
         end
-
+        current_gcamp_TSeries_path = cellfun(@string, selected_groups(k).pathTSeries(:, 1), 'UniformOutput', false);
         current_ages_group = selected_groups(k).ages;
         current_env_group = selected_groups(k).env;
        
@@ -46,7 +46,7 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                     case 1
                         disp(['Performing Global analysis of activity for ', current_animal_group]);
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
-                        [~, ~, ~, ~, ~, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
+                        gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
                         [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
                     
                         if strcmpi(include_blue_cells, '1')
@@ -76,33 +76,16 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                         plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
                     
                     case 4
-                        disp(['Performing pairwise correlation analysis for ', current_animal_group]);
-                        if strcmpi(include_blue_cells, '1')
-                           [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate, all_data.DF, all_data.blue_indices); 
-                        else
-                            [all_max_corr_gcamp_gcamp, all_max_corr_gcamp_mtor, all_max_corr_mtor_mtor] = compute_pairwise_corr(gcamp_data.DF, gcamp_output_folders, gcamp_data.sampling_rate);
-                        end
-                        
-                        % Ajouter dynamiquement les nouveaux champs à gcamp_fields
-                        new_fields = {'max_corr_gcamp_gcamp', 'max_corr_gcamp_mtor', 'max_corr_mtor_mtor'};
-                    
-                        % Vérifier et ajouter les nouveaux champs dans gcamp_data
-                        for j = 1:length(new_fields)
-                            if ~isfield(gcamp_data, new_fields{j})
-                                gcamp_data.(new_fields{j}) = cell(length(gcamp_output_folders), 1);  % Créer les nouveaux champs s'ils n'existent pas
-                                [gcamp_data.(new_fields{j}){:}] = deal([]);  % Initialiser chaque cellule à []
-                            end
-                        end
-
-                        gcamp_data.max_corr_gcamp_gcamp = all_max_corr_gcamp_gcamp;
-                        gcamp_data.max_corr_gcamp_mtor  = all_max_corr_gcamp_mtor; 
-                        gcamp_data.max_corr_mtor_mtor   = all_max_corr_mtor_mtor;
-
+                        gcamp_data = load_or_process_corr_data(gcamp_output_folders, gcamp_data, mtor_data, all_data);
                         selected_groups(k).gcamp_data = gcamp_data;
+                        plot_pairwise_corr(current_ages_group, gcamp_data.max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
 
-                        plot_pairwise_corr(current_ages_group, all_max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
+                case 5
+                    movie_paths = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders);
+                    
+                   
 
-                        
+
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
@@ -277,7 +260,7 @@ function [all_Raster_gcamp,all_sce_n_cells_threshold, all_synchronous_frames, va
     % Si des traitements sont nécessaires pour des fichiers manquants
     if further_process_needed
         % Charger les fichiers nécessaires pour les distances
-        [all_NCell, all_outlines_gcampx, all_outlines_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group);
+       gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
 
         for m = 1:numFolders
             % Create the full file path for results_SCEs.mat
@@ -304,63 +287,156 @@ function [all_Raster_gcamp,all_sce_n_cells_threshold, all_synchronous_frames, va
 end
 
 
- function [all_NCell, all_outlines_gcampx, all_outlines_gcampy, all_gcamp_mask, all_gcamp_props, all_imageHeight, all_imageWidth] = load_or_process_image_data(gcamp_output_folders, current_gcamp_folders_group)
-    numFolders = length(gcamp_output_folders);
-    % Initialiser les cellules pour stocker les données
-    all_NCell = cell(numFolders, 1);
-    all_outlines_gcampx = cell(numFolders, 1);
-    all_outlines_gcampy = cell(numFolders, 1);
-    all_gcamp_mask = cell(numFolders, 1);
-    all_gcamp_props = cell(numFolders, 1);
-    all_imageHeight = cell(numFolders, 1);
-    all_imageWidth = cell(numFolders, 1);
+ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data)
 
+    numFolders = length(gcamp_output_folders);  % Number of groups
+    
+    % Ajouter dynamiquement les nouveaux champs à gcamp_fields
+    new_fields = {'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
+                  'gcamp_props', 'imageHeight', 'imageWidth'};
+    
+    % Vérifier et ajouter les nouveaux champs dans gcamp_data
+    for i = 1:length(new_fields)
+        if ~isfield(gcamp_data, new_fields{i})
+            gcamp_data.(new_fields{i}) = cell(numFolders, 1);  % Créer les nouveaux champs s'ils n'existent pas
+            [gcamp_data.(new_fields{i}){:}] = deal([]);  % Initialiser chaque cellule à []
+        end
+    end
+    
+    % First loop: Check if results exist and load them
     for m = 1:numFolders
-        % Définir le chemin du fichier à charger ou sauvegarder
-        filePath = fullfile(gcamp_output_folders{m}, 'results_image.mat'); 
+        % Create the full file path for results_SCEs.mat
+        filePath = fullfile(gcamp_output_folders{m}, 'results_image.mat');
 
-        if exist(filePath, 'file') == 2 
+        %delete(filePath)
+    
+        if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
-            % Charger les données existantes
-            data = load(filePath); 
+            % Try to load the pre-existing results from the file
+            data = load(filePath);
+            
+            % Assign the data to the appropriate fields in gcamp_data
+            gcamp_data.outlines_gcampx{m} = getFieldOrDefault(data, 'outlines_gcampx', []);
+            gcamp_data.outlines_gcampy{m} = getFieldOrDefault(data, 'outlines_gcampy', []);
+            gcamp_data.gcamp_mask{m} = getFieldOrDefault(data, 'gcamp_mask', []);
+            gcamp_data.gcamp_props{m} = getFieldOrDefault(data, 'gcamp_props', []);
+            gcamp_data.imageHeight{m} = getFieldOrDefault(data, 'imageHeight', []);
+            gcamp_data.imageWidth{m} = getFieldOrDefault(data, 'imageWidth', []);
 
-            if isfield(data, 'outline_gcampx') 
-                all_outlines_gcampx{m} = data.outline_gcampx;
-            end
-            if isfield(data, 'outline_gcampy') 
-                all_outlines_gcampy{m} = data.outline_gcampy; 
-            end
-            if isfield(data, 'gcamp_mask') 
-                all_gcamp_mask{m} = data.gcamp_mask;
-            end
-            if isfield(data, 'gcamp_props') 
-                all_gcamp_props{m} = data.gcamp_props;
-            end
-            if isfield(data, 'imageHeight') 
-                all_imageHeight{m} = data.imageHeight;
-            end
-            if isfield(data, 'imageWidth') 
-                all_imageWidth{m} = data.imageWidth;
-            end
         else
+            % Traiter les données si le fichier n'existe pas
             [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m});
             [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+    
+            % Créer poly2mask et obtenir les propriétés
+            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
+    
+            % Sauvegarder les résultats
+            save(filePath, 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
+                 'gcamp_props', 'imageHeight', 'imageWidth');
 
-            % Créer poly2mask et obtenir les propriétés gcamp
-            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy); 
 
-            % Sauvegarder les résultats dans le fichier results_distance.mat
-            save(filePath, 'NCell', 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth');
+            gcamp_data.outlines_gcampx{m} = outlines_gcampx;
+            gcamp_data.outlines_gcampy{m} = outlines_gcampy;
+            gcamp_data.gcamp_mask{m} = gcamp_mask;
+            gcamp_data.gcamp_props{m} = gcamp_props;
+            gcamp_data.imageHeight{m} = imageHeight;
+            gcamp_data.imageHeight{m} = imageWidth;
 
-            % Stocker les résultats dans les variables de sortie
-            all_NCell{m} = NCell;
-            all_outlines_gcampx{m} = outlines_gcampx;
-            all_outlines_gcampy{m} = outlines_gcampy;
-            all_gcamp_mask{m} = gcamp_mask;
-            all_gcamp_props{m} = gcamp_props;
-            all_imageHeight{m} = imageHeight;
-            all_imageWidth{m} = imageWidth;
- 
+        end
+    end
+end
+
+
+ function gcamp_data = load_or_process_corr_data(gcamp_output_folders, gcamp_data, mtor_data, all_data)
+    % Nombre de dossiers à traiter
+    numFolders = length(gcamp_output_folders);
+
+    % Champs à créer dynamiquement
+    new_fields = {'max_corr_gcamp_gcamp', 'max_corr_gcamp_mtor', 'max_corr_mtor_mtor'};
+
+    % Initialisation des champs manquants
+    for i = 1:length(new_fields)
+        if ~isfield(gcamp_data, new_fields{i})
+            gcamp_data.(new_fields{i}) = cell(numFolders, 1);
+            [gcamp_data.(new_fields{i}){:}] = deal([]);
+        end
+    end
+
+    % Parcours des dossiers
+    for m = 1:numFolders
+        % Chemin vers le fichier de sauvegarde
+        filePath = fullfile(gcamp_output_folders{m}, 'results_corrs.mat');
+
+        delete(filePath)
+
+        % Si le fichier existe, charger les données
+        if exist(filePath, 'file') == 2
+            disp(['Loading file: ', filePath]);
+            data = load(filePath);
+
+            gcamp_data.max_corr_gcamp_gcamp{m} = getFieldOrDefault(data, 'max_corr_gcamp_gcamp', []);
+            gcamp_data.max_corr_gcamp_mtor{m}  = getFieldOrDefault(data, 'max_corr_gcamp_mtor', []);
+            gcamp_data.max_corr_mtor_mtor{m}   = getFieldOrDefault(data, 'max_corr_mtor_mtor', []);
+        end
+
+        % Si les données sont manquantes, les recalculer
+        if isempty(gcamp_data.max_corr_gcamp_gcamp{m})
+
+            disp(['Computing and saving pairwise correlations for folder ', num2str(m)]);
+
+            [max_corr_gcamp_gcamp, max_corr_gcamp_mtor, max_corr_mtor_mtor] = ...
+                compute_pairwise_corr(gcamp_data.DF{m}, gcamp_output_folders{m}, all_data.DF{m}, all_data.blue_indices{m});
+
+            % Mise à jour
+            gcamp_data.max_corr_gcamp_gcamp{m} = max_corr_gcamp_gcamp;
+            gcamp_data.max_corr_gcamp_mtor{m} = max_corr_gcamp_mtor;
+            gcamp_data.max_corr_mtor_mtor{m}  = max_corr_mtor_mtor;
+
+            if ~isempty(max_corr_gcamp_mtor) & ~isempty(max_corr_mtor_mtor)
+                % Sauvegarde complète
+                save(filePath, 'max_corr_gcamp_gcamp', 'max_corr_gcamp_mtor', 'max_corr_mtor_mtor');
+            else
+                % Sauvegarde partielle
+                save(filePath, 'max_corr_gcamp_gcamp');
+            end
         end
     end
  end
+
+
+
+
+function movie_paths = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders)
+
+    numFolders = length(current_gcamp_TSeries_path);
+    movie_paths = cell(numFolders, 1);
+
+    for m = 1:numFolders
+        folder_path = current_gcamp_TSeries_path{m};
+        tif_path = fullfile(folder_path, 'Concatenated.tif');
+
+        if exist(tif_path, 'file') == 2
+            movie_paths{m} = tif_path;
+
+            filePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
+
+            if exist(filePath, 'file') == 2 
+                disp(['Loading file: ', filePath]);
+                % Charger les données existantes
+                data = load(filePath); 
+            
+            else
+                
+            end
+
+        end
+    end
+
+    movie_paths = string(valid_movie_paths);
+    
+    % Définir le chemin du fichier à charger ou sauvegarder
+        
+
+
+end

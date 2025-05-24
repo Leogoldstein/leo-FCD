@@ -127,14 +127,14 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 selected_groups(idx).folders_names = [];
             elseif group_type == "FCD"
                 selected_groups(idx).pathTSeries = TSeriesPaths_fcd(date_indices, :);
-                selected_groups(idx).folders = TseriesFolders_fcd(date_indices, :);
+                selected_groups(idx).folders = string(TseriesFolders_fcd(date_indices, :));
                 selected_groups(idx).env = true_env_paths_fcd(date_indices);
-                selected_groups(idx).folders_names = lastFolderNames_fcd(date_indices, :);
+                selected_groups(idx).folders_names = string(lastFolderNames_fcd(date_indices, :));
             else
                 selected_groups(idx).pathTSeries = TSeriesPaths_ctrl(date_indices, :);
-                selected_groups(idx).folders = TseriesFolders_ctrl(date_indices, :);
+                selected_groups(idx).folders = string(TseriesFolders_ctrl(date_indices, :));
                 selected_groups(idx).env = true_env_paths_ctrl(date_indices);
-                selected_groups(idx).folders_names = lastFolderNames_ctrl(date_indices, :);
+                selected_groups(idx).folders_names = string(lastFolderNames_ctrl(date_indices, :));
             end
         
             selected_groups(idx).ages = age_part_all(date_indices);

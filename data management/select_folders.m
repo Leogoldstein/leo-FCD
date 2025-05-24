@@ -47,10 +47,9 @@ function selectedFolders = select_folders(initial_folder)
                 folder_names = {
                     'ani3\2024-06-26';
                     'ani3\2024-06-28';
+
                     'ani4\2024-06-28';
                     'ani4\2024-06-29';
-                    'ani4\2024-07-01';
-                    'ani4\2024-07-02';
                 
                     'mTor13\ani2\2024-10-22';
                     'mTor13\ani2\2024-10-24';

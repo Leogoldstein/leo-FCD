@@ -58,15 +58,15 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         current_gcamp_TSeries_path = cellfun(@string, selected_groups(k).pathTSeries(:, 1), 'UniformOutput', false);
     
         if ~strcmp(current_animal_type, 'jm')
-            current_gcamp_folders_group = cellfun(@string, selected_groups(k).folders(:, 1), 'UniformOutput', false);
-            current_red_folders_group = cellfun(@string, selected_groups(k).folders(:, 2), 'UniformOutput', false);
-            current_blue_folders_group = cellfun(@string, selected_groups(k).folders(:, 3), 'UniformOutput', false);
-            current_green_folders_group = cellfun(@string, selected_groups(k).folders(:, 4), 'UniformOutput', false);
+            current_gcamp_folders_group = selected_groups(k).folders(:, 1);
+            current_red_folders_group = selected_groups(k).folders(:, 2);
+            current_blue_folders_group = selected_groups(k).folders(:, 3);
+            current_green_folders_group = selected_groups(k).folders(:, 4);
             
-            current_gcamp_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 1), 'UniformOutput', false);
-            current_red_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 2), 'UniformOutput', false);
-            current_blue_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 3), 'UniformOutput', false);
-            current_green_folders_names_group = cellfun(@string, selected_groups(k).folders_names(:, 4), 'UniformOutput', false);
+            current_gcamp_folders_names_group = selected_groups(k).folders_names(:, 1);
+            current_red_folders_names_group = selected_groups(k).folders_names(:, 2);
+            current_blue_folders_names_group = selected_groups(k).folders_names(:, 3);
+            current_green_folders_names_group = selected_groups(k).folders_names(:, 4);
             
             % Create folders_groups as a cell array
             folders_groups = {
@@ -370,7 +370,7 @@ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, curren
         % Create the full file path for results_SCEs.mat
         filePath = fullfile(gcamp_output_folders{m}, 'results_image.mat');
 
-        delete(filePath)
+        %delete(filePath)
     
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
