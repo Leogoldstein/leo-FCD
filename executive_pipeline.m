@@ -34,6 +34,7 @@ end
 include_blue_cells = 2;
 
 %% Processing and analysis
+
 [analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells);
 
 %%

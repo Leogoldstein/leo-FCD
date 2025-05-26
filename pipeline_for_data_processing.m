@@ -81,11 +81,10 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                         plot_pairwise_corr(current_ages_group, gcamp_data.max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
 
                 case 5
-                    movie_paths = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders);
-                    
-                   
-
-
+                    [motion_energy_group, avg_block] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders);
+                    disp(class(gcamp_data.sampling_rate));
+                    plot_motion_energy(motion_energy_group, gcamp_data.sampling_rate, avg_block)
+            
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
             end
@@ -404,39 +403,70 @@ end
     end
  end
 
-
-
-
-function movie_paths = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders)
+function [motion_energy_group, avg_block] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders)
 
     numFolders = length(current_gcamp_TSeries_path);
-    movie_paths = cell(numFolders, 1);
+    motion_energy_group = cell(numFolders, 1);
+    idx = 1;
 
     for m = 1:numFolders
-        folder_path = current_gcamp_TSeries_path{m};
-        tif_path = fullfile(folder_path, 'Concatenated.tif');
+        filePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
 
-        if exist(tif_path, 'file') == 2
-            movie_paths{m} = tif_path;
+        if exist(filePath, 'file') == 2 
+            disp(['Loading file: ', filePath]);
+            data = load(filePath);
+            motion_energy = data.motion_energy;
 
-            filePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
+        else
+            currentTSeriesPath = current_gcamp_TSeries_path{m};
 
-            if exist(filePath, 'file') == 2 
-                disp(['Loading file: ', filePath]);
-                % Charger les données existantes
-                data = load(filePath); 
-            
-            else
-                
+            % Liste des .tif valides
+            tiffFilesStruct = dir(fullfile(currentTSeriesPath, '*.tif'));
+            fileNames = {tiffFilesStruct.name};
+            excludeMask = contains(fileNames, 'companion.ome') | contains(fileNames, 'Concatenated');
+            tiffFiles = fileNames(~excludeMask);
+            [~, idxOrder] = sort(tiffFiles);  
+            tiffFiles = tiffFiles(idxOrder);
+
+            motion_energy_all = [];  % contiendra toutes les motion_energy concaténées
+
+            for tIdx = 1:numel(tiffFiles)
+                filename = fullfile(currentTSeriesPath, tiffFiles{tIdx});
+                disp(['Processing: ', filename]);     
+
+                energy = compute_motion_energy(filename);
+                motion_energy_all = [motion_energy_all; energy];  % concatène verticalement
+                idx = idx + 1;
             end
 
+            motion_energy = motion_energy_all;  % résultat final à sauvegarder
+            save(filePath, 'motion_energy');
         end
+
+        % Moyenne les données
+        avg_block = 5; % Moyenne toutes les 5 frames
+        motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'       
+    end
+    motion_energy_group{m} = motion_energy;
+end
+
+function avg_data = average_frames(data, avg_block)
+    % Vérifie que la première dimension est divisible par avg_block
+    if mod(size(data, 1), avg_block) ~= 0
+        error('Data length %d is not divisible by avg_block %d', size(data,1), avg_block);
     end
 
-    movie_paths = string(valid_movie_paths);
-    
-    % Définir le chemin du fichier à charger ou sauvegarder
-        
+    % Si data est un vecteur colonne ou ligne (1D)
+    if isvector(data)
+        data = data(:); % s'assurer que c'est une colonne
+        reshaped = reshape(data, avg_block, []);
+        avg_data = mean(reshaped, 1)';  % moyenne ligne par ligne, puis transposer en colonne
+    else
+        % Cas 2D : reshape en (avg_block, new_time, nb_features)
+        [T, D] = size(data);
+        reshaped = reshape(data, avg_block, [], D);  % taille: (avg_block, new_time, D)
+        avg_data = squeeze(mean(reshaped, 1));       % moyenne le long de la 1re dim
+    end
 
-
+    fprintf('Congrats! New shape is %d\n', size(avg_data, 1));
 end
