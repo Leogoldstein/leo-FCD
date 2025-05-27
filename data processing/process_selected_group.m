@@ -100,9 +100,13 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         % Preprocess and process data
         [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
     
-        % Check data
         % Performing mean images
         meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+
+        % Performing motion_energy
+        motion_energy_group = load_or_process_movie(date_group_paths, gcamp_output_folders);      
+        avg_block = 5; % Moyenne toutes les 5 frames
+        avg_motion_energy_group = average_frames(motion_energy_group, avg_block);  % ou 'trim'       
         
         % Ask user if they want to check their data
         check_data = input('Do you want to check your data? (1/2): ', 's');
@@ -149,7 +153,8 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                 
              end
         end
-
+        
+        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
         build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
         % Store processed data in selected_groups for this group
@@ -226,9 +231,10 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             
             if ~isempty(blue_output_folders{m})
                 mtor_data.DF{m} = getFieldOrDefault(data, 'DF_blue', []);
-                mtor_data.DF_not_blue{m} = getFieldOrDefault(data, 'DF_gcamp_not_blue', []);
+                mtor_data.DF_not_blue{m} = getFieldOrDefault(data, 'DF_not_blue', []);
                 mtor_data.Raster{m} = getFieldOrDefault(data, 'Raster_blue', []);
                 mtor_data.MAct{m} = getFieldOrDefault(data, 'MAct_blue', []);
+                mtor_data.MAct_not_blue{m} = getFieldOrDefault(data, 'MAct_not_blue', []);
                 
                 all_data.DF{m} = getFieldOrDefault(data, 'DF_all', []);
                 all_data.isort1{m} = getFieldOrDefault(data, 'isort1_all', []);
@@ -272,6 +278,8 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         end
         
         % Traitement des cellules bleues
+        %mtor_data.DF{m} = [];
+
         if ~isempty(blue_output_folders{m}) && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
@@ -281,10 +289,10 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
      
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);
                 
-                [NCell, outlines_gcampx, outlines_gcampy, gcamp_mask, gcamp_props, imageHeight, imageWidth] = load_or_process_calcium_masks(gcamp_output_folders{m}, current_gcamp_folders_group{m});
+                gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
                 
                 % Vérifier que gcamp_props et props_cellpose existent
-                if isempty(gcamp_props) || isempty(props_cellpose)
+                if isempty(gcamp_data.gcamp_props) || isempty(props_cellpose)
                     fprintf('Skipping group %d: No centroids found.\n', m);
                     continue;
                 end
@@ -300,37 +308,39 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                     meanImg = uint16(meanImg);
                 end
                    
-                [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_props, props_cellpose, meanImg, aligned_image, outlines_gcampx, outlines_gcampy, outlines_x_cellpose, outlines_y_cellpose, R, m, blue_output_folders);
+                [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(gcamp_data.gcamp_props{m}, props_cellpose, meanImg, aligned_image, gcamp_data.outlines_gcampx{m}, gcamp_data.outlines_gcampy{m}, outlines_x_cellpose, outlines_y_cellpose, R, m, blue_output_folders);
                 currentTSeriesPath = current_gcamp_TSeries_path{m};
-                [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(gcamp_data.DF{m}, matched_gcamp_idx, matched_cellpose_idx, num_cells_mask, mask_cellpose, currentTSeriesPath); 
+                [DF_blue, DF_not_blue] = get_blue_cells_rois(gcamp_data.DF{m}, matched_gcamp_idx, matched_cellpose_idx, num_cells_mask, mask_cellpose, currentTSeriesPath); 
                 
                 DF_blue = DF_processing(DF_blue);
                 [Raster_blue, MAct_blue, ~] = Sumactivity(DF_blue, MinPeakDistance, gcamp_data.synchronous_frames{m});
 
-                save(filePath, "DF_blue", "DF_gcamp_not_blue", "Raster_blue", "MAct_blue", '-append');
+                DF_not_blue = DF_processing(DF_not_blue);
+                [Raster_not_blue, MAct_not_blue, ~] = Sumactivity(DF_not_blue, MinPeakDistance, gcamp_data.synchronous_frames{m});
+    
+                min_cols = min(size(DF_not_blue, 2), size(DF_blue, 2));
+                DF_not_blue = DF_not_blue(:, 1:min_cols);
+                DF_blue = DF_blue{m}(:, 1:min_cols);
 
+                save(filePath, "DF_blue", "DF_not_blue", "Raster_blue", "MAct_blue", "MAct_not_blue", '-append');
+                
                 mtor_data.DF{m} = DF_blue;
                 mtor_data.DF_not_blue{m} = DF_gcamp_not_blue;
                 mtor_data.Raster{m} = Raster_blue;
                 mtor_data.MAct{m} = MAct_blue;
+                mtor_data.MAct_not_blue{m} = MAct_not_blue;
             end
         end
         
         %all_data.DF{m} = [];
 
-        % Traitement des données combinées si analysis_choice == 2
+        % Traitement des données combinées
         if ~isempty(blue_output_folders{m}) && isempty(all_data.DF{m}) && ~isempty(mtor_data.DF{m})
-
-            min_cols = min(size(mtor_data.DF_not_blue{m}, 2), size(mtor_data.DF{m}, 2));
-            mtor_data.DF_not_blue{m} = mtor_data.DF_not_blue{m}(:, 1:min_cols);
-            mtor_data.DF{m} = mtor_data.DF{m}(:, 1:min_cols);
 
             all_data.DF{m} = [mtor_data.DF_not_blue{m}; mtor_data.DF{m}];
             DF_all = all_data.DF{m};
             NCells = size(mtor_data.DF_not_blue{m}, 1);
             blue_indices = (NCells + 1):size(DF_all, 1);
-            %disp(blue_indices)
-
             [isort1_all, isort2_all, Sm_all] = raster_processing(DF_all, current_gcamp_folders_group{m});
             
             [Raster_all, MAct_all, ~] = Sumactivity(DF_all, MinPeakDistance, gcamp_data.synchronous_frames{m});
@@ -407,4 +417,43 @@ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, curren
 
         end
     end
+end
+
+function motion_energy_group = load_or_process_movie(date_group_paths, gcamp_output_folders)
+
+    numFolders = length(date_group_paths);
+    camFolders = cell(numFolders, 1);
+    motion_energy_group = cell(numFolders, 1);
+
+    for m = 1:length(date_group_paths)
+
+        camPath = fullfile(date_group_paths{m}, 'cam', 'Concatenated');
+        cameraPath = fullfile(date_group_paths{m}, 'camera', 'Concatenated');
+
+        if isfolder(camPath)
+            camFolders{m} = camPath;
+            fprintf('Found cam folder: %s\n', camPath);
+        elseif isfolder(cameraPath)
+            camFolders{m} = cameraPath;
+            fprintf('Found camera folder: %s\n', cameraPath);
+        else
+            fprintf('No Camera images found in %s.\n', date_group_paths{m});
+            continue;
+        end
+    
+        filepath = fullfile(camFolders{m}, 'cam_crop.tif'); 
+        savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
+
+        if exist(savePath, 'file') == 2 
+            disp(['Loading file: ', savePath]);
+            data = load(savePath);
+            motion_energy = data.motion_energy;
+
+        else
+            motion_energy = compute_motion_energy(filepath);
+            save(savePath, 'motion_energy');
+        end
+
+        motion_energy_group{m} = motion_energy;
+    end     
 end

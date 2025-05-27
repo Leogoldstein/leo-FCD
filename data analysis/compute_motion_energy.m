@@ -1,41 +1,49 @@
 function motion_energy = compute_motion_energy(movie_path, xrange, yrange)
-% COMPUTE_MOTION_ENERGY  Compute motion energy from a multi-frame TIFF movie.
+%COMPUTE_MOTION_ENERGY Compute normalized motion energy from a multi-frame TIFF movie (BigTIFF).
+%   motion_energy = compute_motion_energy(movie_path)
+%   motion_energy = compute_motion_energy(movie_path, xrange, yrange)
 %
-% Parameters:
-% - movie_path: Path to the multi-frame TIFF file (required for first run)
-% - xrange: Range of x-values to crop the image (optional)
-% - yrange: Range of y-values to crop the image (optional)
-% - save_path: Path to save the motion energy result (optional)
-   
-    % Initialize motion energy
-    movie = read_big_tiff(movie_path);  % <- this is your new custom function
+%   Parameters:
+%   - movie_path: string, path to the TIFF stack (3D volume)
+%   - xrange: 2-element vector for cropping columns [x_start, x_end] (optional)
+%   - yrange: 2-element vector for cropping rows [y_start, y_end] (optional)
+
+    if nargin < 2
+        xrange = [];
+    end
+    if nargin < 3
+        yrange = [];
+    end
+
+    % Load the full 3D TIFF volume (works for BigTIFF stacks)
+    movie = tiffreadVolume(movie_path);  % size: height x width x frames
     [height, width, num_frames] = size(movie);
 
     fprintf('Loaded movie with %d frames, height=%d, width=%d\n', num_frames, height, width);
 
-    motion_energy = zeros(num_frames-1, 1);
-    img_prev = movie(:,:,1);
+    % Optional cropping
+    if ~isempty(yrange)
+        movie = movie(yrange(1):yrange(2), :, :);
+    end
+    if ~isempty(xrange)
+        movie = movie(:, xrange(1):xrange(2), :);
+    end
 
-    if nargin >= 2 && ~isempty(xrange)
-        img_prev = img_prev(:, xrange);
-    end
-    if nargin >= 3 && ~isempty(yrange)
-        img_prev = img_prev(yrange, :);
-    end
+    % Recompute dimensions after cropping
+    [height, width, num_frames] = size(movie);
+
+    % Pre-allocate motion energy array
+    motion_energy = zeros(1, num_frames);
+
+    % First frame
+    img_prev = double(movie(:,:,1));
 
     for i = 2:num_frames
-        img = movie(:,:,i);
+        img = double(movie(:,:,i));
 
-        if nargin >= 2 && ~isempty(xrange)
-            img = img(:, xrange);
-        end
-        if nargin >= 3 && ~isempty(yrange)
-            img = img(yrange, :);
-        end
-
+        % Compute squared difference
         diff = img - img_prev;
-        squared_diff = diff .^ 2;
-        motion_energy(i-1) = sum(squared_diff(:));
+        motion_energy(i) = sum(diff(:).^2);
 
         img_prev = img;
 
@@ -44,33 +52,9 @@ function motion_energy = compute_motion_energy(movie_path, xrange, yrange)
         end
     end
 
-    % Normalize and save
-    if max(motion_energy) == 0
-        warning('Motion energy is zero for all frames!');
-    else
+    % Normalize and return
+    motion_energy = motion_energy(2:end);  % Skip first frame
+    if max(motion_energy) > 0
         motion_energy = motion_energy / max(motion_energy);
     end
-end
-
-function movie = read_big_tiff(tif_path)
-    t = Tiff(tif_path, 'r');
-    frame_idx = 1;
-
-    while true
-        img = double(t.read());
-        if frame_idx == 1
-            [h, w] = size(img);
-            movie = zeros(h, w, 35850);  % préallocation pour vitesse : si taille connue
-        end
-        movie(:,:,frame_idx) = img;
-
-        if t.lastDirectory()
-            break;
-        end
-
-        t.nextDirectory();
-        frame_idx = frame_idx + 1;
-    end
-    movie = movie(:,:,1:frame_idx); % au cas où 35850 est trop
-    t.close();
 end

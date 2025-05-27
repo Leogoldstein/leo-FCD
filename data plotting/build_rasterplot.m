@@ -1,14 +1,16 @@
-function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_blue_indices, all_MAct_blue, motion_energy_group, avg_block)
+function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_MAct_blue, all_MAct_not_blue, motion_energy_group, avg_block)
 
     for m = 1:length(gcamp_output_folders)
         try
             % Extraction des données
-            if (nargin < 8 || isempty(all_blue_indices{m}))
+            if (nargin < 8 || isempty(all_DF_all{m}))
                 DF = all_DF{m};
                 isort1 = all_isort1{m};
                 sampling_rate = all_sampling_rate{m};
-                blue_indices = [];
                 MActblue = [];
+                
+                MAct = all_MAct{m};
+        
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap.png', ...
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
 
@@ -17,50 +19,29 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
                     continue;
                 end
 
-            elseif nargin > 7 && ~isempty(all_blue_indices{m})
+            elseif nargin > 7 && ~isempty(all_DF_all{m})
                 DF = all_DF_all{m};
                 isort1  = all_isort1_all{m};
-                blue_indices = all_blue_indices{m};
+                
+                MAct = all_MAct_not_blue{m};
+                
                 MActblue = all_MAct_blue{m};
                 sampling_rate = all_sampling_rate{m};
 
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
 
-                if exist(fig_save_path, 'file')
-                    disp(['Figure already exists and was skipped: ' fig_save_path]);
-                    continue;
-                end
+                % if exist(fig_save_path, 'file')
+                %     disp(['Figure already exists and was skipped: ' fig_save_path]);
+                %     continue;
+                % end
             end
-
-            MAct = all_MAct{m};
-
-            if ~isempty(isort1)
-                isort1 = isort1(isort1 <= size(DF, 1));
-            end      
-
-            [NCell, Nz] = size(DF);
-
-            % Ajustement longueur MAct
-            if length(MAct) > Nz
-                MAct = MAct(1:Nz);
-            elseif length(MAct) < Nz
-                warning('MAct length is less than number of timepoints. Padding with zeros.');
-                MAct = [MAct, zeros(1, Nz - length(MAct))];
-            end
+            
+            [NCell, ~] = size(DF_blue);
             prop_MAct = MAct / NCell;
 
-            % Ajustement MActblue si présent
             if ~isempty(MActblue)
-                DF_blue = DF(blue_indices,:); 
-                [NCell_blue, ~] = size(DF_blue);
-
-                if length(MActblue) > Nz
-                    MActblue = MActblue(1:Nz);
-                elseif length(MActblue) < Nz
-                    MActblue = [MActblue, zeros(1, Nz - length(MActblue))];
-                end
-                prop_MActblue = MActblue / NCell_blue;
+                prop_MActblue = MActblue / NCell;
             end
 
             % Nombre de subplots

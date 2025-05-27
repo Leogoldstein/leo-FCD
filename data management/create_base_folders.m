@@ -19,7 +19,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
 
         % Blue subfolders (optional)
         specificSubfolders_blue = [];
-        if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}{1})
+        if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}(1))
             subfolders_blue = dir(folder_blue);
             subfolders_blue = subfolders_blue([subfolders_blue.isdir]);
             subfolders_blue = subfolders_blue(~ismember({subfolders_blue.name}, {'.', '..'}));
