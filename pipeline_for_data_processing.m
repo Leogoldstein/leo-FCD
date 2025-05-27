@@ -82,8 +82,9 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
 
                 case 5
                     [motion_energy_group, avg_block] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders);
-                    disp(class(gcamp_data.sampling_rate));
-                    plot_motion_energy(motion_energy_group, gcamp_data.sampling_rate, avg_block)
+                    %plot_motion_energy(motion_energy_group, gcamp_data.sampling_rate, avg_block)
+
+                    build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, all_data.blue_indices, all_data.MAct, motion_energy_group, avg_block)
             
                 otherwise
                     disp('Invalid analysis choice. Skipping...');
