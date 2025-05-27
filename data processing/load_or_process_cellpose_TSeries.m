@@ -1,13 +1,13 @@
-function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folder, date_group_path, numChannels, m)
+function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, date_group_path, numChannels, m)
     % Initialisation des variables
     meanImg_channels = cell(numChannels, 1);
     aligned_image = [];  % Valeur par défaut pour éviter les erreurs d'affectation
     npy_file_path = [];
     meanImg = [];
+    
+    current_blue_folders_group = folders_groups{3}{:, 1};
 
-    % Vérifier si le dossier date_group_path existe
-    disp(blue_output_folder)
-    if isempty(blue_output_folder)
+    if isempty(current_blue_folders_group)
         path = fullfile(date_group_path, 'Single images');
         % if isfolder(path)
         %     canal = input('Veuillez entrer le canal (1 pour Rouge, 2 pour Vert, 3 pour Bleu) : ');
@@ -205,17 +205,17 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
 
     else
         try
-            cellpose_files = dir(fullfile(blue_output_folder, '*_seg.npy'));
-            aligned_image_path = fullfile(blue_output_folder, 'aligned_image.tif');
+            cellpose_files = dir(fullfile(current_blue_folders_group, '*_seg.npy')); % change by current_blue_folders_group
+            aligned_image_path = fullfile(current_blue_folders_group, 'aligned_image.tif');
             npy_file_path = [];
             
-            split_path = strsplit(blue_output_folder, filesep); 
+            split_path = strsplit(current_blue_folders_group, filesep); 
             base_path = fullfile(split_path{1:7});
             disp(base_path)
             
             if ~isempty(cellpose_files)                
                 if numel(cellpose_files) > 1
-                    [selected_file, selected_path] = uigetfile(fullfile(blue_output_folder, '*.npy'), ...
+                    [selected_file, selected_path] = uigetfile(fullfile(current_blue_folders_group, '*.npy'), ...
                         'Sélectionnez un fichier .npy');
                     if isequal(selected_file, 0)
                         error('Aucun fichier sélectionné. Opération annulée.');
@@ -426,9 +426,9 @@ function npy_file_path = launch_cellpose_from_matlab(image_path)
     end
    
     % Vérifier si le fichier .npy existe après l'exécution de Cellpose
-    [~, folder_name, ~] = fileparts(image_path);
+    [parent_folder, folder_name, ~] = fileparts(image_path);
     npy_file_name = [folder_name, '_seg.npy'];
-    npy_file_path = fullfile(image_path, npy_file_name);
+    npy_file_path = fullfile(parent_folder, npy_file_name);
     if isfile(npy_file_path)
         npy_file_path = npy_file_path;
         fprintf('Fichier NPY trouvé et ajouté\n');

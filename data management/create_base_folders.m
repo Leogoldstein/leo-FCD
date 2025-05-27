@@ -48,7 +48,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
             disp(['No subfolder found. Created new gcamp folder: ', newSubfolderPath_gcamp]);
             chosen_folder_processing_gcamp{k} = newSubfolderPath_gcamp;
 
-            if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}{1})
+            if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}(1))
                 newSubfolderPath_blue = fullfile(date_group_paths{k}, current_blue_folders_names_group{k}, 'after processing', daytime);
                 mkdir(newSubfolderPath_blue);
                 disp(['No subfolder found. Created new blue folder: ', newSubfolderPath_blue]);
@@ -100,7 +100,7 @@ function [chosen_folder_processing_gcamp, chosen_folder_processing_blue] = creat
                 disp(['Created new gcamp folder: ', newFolderPath_gcamp]);
                 chosen_folder_processing_gcamp{k} = newFolderPath_gcamp;
 
-                if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}{1})
+                if ~isempty(current_blue_folders_names_group{k}) && ~isempty(current_blue_folders_names_group{k}(1))
                     newFolderPath_blue = fullfile(date_group_paths{k}, current_blue_folders_names_group{k}, 'after processing', daytime);
                     mkdir(newFolderPath_blue);
                     disp(['Created new blue folder: ', newFolderPath_blue]);

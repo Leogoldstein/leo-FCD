@@ -282,7 +282,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
 
         if ~isempty(blue_output_folders{m}) && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
-            [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, blue_output_folders{m}, date_group_paths{m}, numChannels, m);
+            [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, date_group_paths{m}, numChannels, m);
             
             assignin('base', 'npy_file_path', npy_file_path);
             if ~isempty(npy_file_path)
@@ -320,7 +320,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
     
                 min_cols = min(size(DF_not_blue, 2), size(DF_blue, 2));
                 DF_not_blue = DF_not_blue(:, 1:min_cols);
-                DF_blue = DF_blue{m}(:, 1:min_cols);
+                DF_blue = DF_blue(:, 1:min_cols);
 
                 save(filePath, "DF_blue", "DF_not_blue", "Raster_blue", "MAct_blue", "MAct_not_blue", '-append');
                 
@@ -356,8 +356,6 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
         end
     end
 end
-
-
 
 function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data)
 
