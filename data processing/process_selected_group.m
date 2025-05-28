@@ -104,10 +104,9 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
 
         % Performing motion_energy
-        motion_energy_group = load_or_process_movie(date_group_paths, gcamp_output_folders);      
         avg_block = 5; % Moyenne toutes les 5 frames
-        avg_motion_energy_group = average_frames(motion_energy_group, avg_block);  % ou 'trim'       
-        
+        [motion_energy_group, avg_motion_energy_group]  = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block);      
+            
         % Ask user if they want to check their data
         check_data = input('Do you want to check your data? (1/2): ', 's');
         
@@ -154,7 +153,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
              end
         end
         
-        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
+        build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
         build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
 
         % Store processed data in selected_groups for this group
@@ -209,7 +208,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
 
     for m = 1:numFolders
         filePath = fullfile(gcamp_output_folders{m}, 'results_raster.mat');
-
+        
         % Ensure the directory exists
         if ~isfolder(gcamp_output_folders{m})
             mkdir(gcamp_output_folders{m}); % Create directory if it doesn’t exist
@@ -316,7 +315,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 [Raster_blue, MAct_blue, ~] = Sumactivity(DF_blue, MinPeakDistance, gcamp_data.synchronous_frames{m});
 
                 DF_not_blue = DF_processing(DF_not_blue);
-                [Raster_not_blue, MAct_not_blue, ~] = Sumactivity(DF_not_blue, MinPeakDistance, gcamp_data.synchronous_frames{m});
+                [~, MAct_not_blue, ~] = Sumactivity(DF_not_blue, MinPeakDistance, gcamp_data.synchronous_frames{m});
     
                 min_cols = min(size(DF_not_blue, 2), size(DF_blue, 2));
                 DF_not_blue = DF_not_blue(:, 1:min_cols);
@@ -325,11 +324,19 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 save(filePath, "DF_blue", "DF_not_blue", "Raster_blue", "MAct_blue", "MAct_not_blue", '-append');
                 
                 mtor_data.DF{m} = DF_blue;
-                mtor_data.DF_not_blue{m} = DF_gcamp_not_blue;
+                mtor_data.DF_not_blue{m} = DF_not_blue;
                 mtor_data.Raster{m} = Raster_blue;
                 mtor_data.MAct{m} = MAct_blue;
                 mtor_data.MAct_not_blue{m} = MAct_not_blue;
             end
+
+        elseif isempty(blue_output_folders{m})
+            disp("cocuou")
+            mtor_data.DF{m} = [];
+            mtor_data.DF_not_blue{m} = [];
+            mtor_data.Raster{m} = [];
+            mtor_data.MAct{m} = [];
+            mtor_data.MAct_not_blue{m} = [];
         end
         
         %all_data.DF{m} = [];
@@ -417,11 +424,12 @@ function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, curren
     end
 end
 
-function motion_energy_group = load_or_process_movie(date_group_paths, gcamp_output_folders)
+function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block)
 
     numFolders = length(date_group_paths);
     camFolders = cell(numFolders, 1);
     motion_energy_group = cell(numFolders, 1);
+    avg_motion_energy_group = cell(numFolders, 1);
 
     for m = 1:length(date_group_paths)
 
@@ -438,20 +446,27 @@ function motion_energy_group = load_or_process_movie(date_group_paths, gcamp_out
             fprintf('No Camera images found in %s.\n', date_group_paths{m});
             continue;
         end
+        
+        if exist(camFolders{m}, 'file') == 2
+            filepath = fullfile(camFolders{m}, 'cam_crop.tif'); 
+            savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
     
-        filepath = fullfile(camFolders{m}, 'cam_crop.tif'); 
-        savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
-
-        if exist(savePath, 'file') == 2 
-            disp(['Loading file: ', savePath]);
-            data = load(savePath);
-            motion_energy = data.motion_energy;
+            if exist(savePath, 'file') == 2 
+                disp(['Loading file: ', savePath]);
+                data = load(savePath);
+                motion_energy = data.motion_energy;
+    
+            else
+                motion_energy = compute_motion_energy(filepath);
+                save(savePath, 'motion_energy');
+            end
+            
+            motion_energy_group{m} = motion_energy; 
+            avg_motion_energy_group = average_frames(motion_energy_group{m}, avg_block);  % ou 'trim'  
 
         else
-            motion_energy = compute_motion_energy(filepath);
-            save(savePath, 'motion_energy');
+            fprintf('No movie found in %s.\n', camFolders{m});
+            motion_energy_group{m} = [];
         end
-
-        motion_energy_group{m} = motion_energy;
-    end     
+    end
 end

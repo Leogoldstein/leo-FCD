@@ -32,7 +32,6 @@ end
 
 %%
 [selected_groups, daytime] = process_selected_group(selected_groups);
-include_blue_cells = 2;
 
 %% Processing and analysis
 
