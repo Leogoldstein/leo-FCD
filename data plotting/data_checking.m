@@ -172,7 +172,8 @@ function update_batch_display(slider_handle, DF, isort1, batch_size, num_columns
     % --- Subplot 1 : Raster + rectangle batch + axe secondaire ------
     cla(ax1);
     imagesc(ax1, DF(isort1, :));
-    caxis(ax1, [prctile(DF(:), 5), prctile(DF(:), 99.9)]);
+    [minValue, maxValue] = calculate_scaling(DF);
+    clim([minValue, maxValue]);
     colormap(ax1, 'hot');
     axis(ax1, 'tight');
     ax1.XTick = 0:1000:num_columns;
@@ -309,5 +310,16 @@ function launch_suite2p_from_matlab(image_path)
         system(suite2pPath);  % Launch Suite2p with the graphical interface
     else
         fprintf('Suite2p was not launched. Process canceled.\n');
+    end
+end
+
+function [min_val, max_val] = calculate_scaling(data)
+    flattened_data = data(:);
+    min_val = prctile(flattened_data, 5);
+    max_val = prctile(flattened_data, 99.9);
+    if min_val >= max_val
+        warning('Invalid color scale limits, using raw min/max.');
+        min_val = min(flattened_data);
+        max_val = max(flattened_data);
     end
 end

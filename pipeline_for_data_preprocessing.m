@@ -3,7 +3,8 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     jm_folder = '\\10.51.106.5\data\Data\jm'; 
     destinationFolder = 'D:/Imaging/jm/'; 
     fcd_folder = 'D:\Imaging\FCD'; 
-    ctrl_folder = 'D:\Imaging\CTRL'; 
+    ctrl_folder = 'D:\Imaging\WT';
+    sham_folder = 'D:\Imaging\SHAM';
     PathSave = 'D:\Imaging';
 
     % Initialisation des variables globales
@@ -14,12 +15,14 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     disp('Please choose one or more folders to process:');
     disp('1 : JM (.npy data)');
     disp('2 : FCD (Fall.mat data)');
-    disp('3 : CTRL (Fall.mat data)');
+    disp('3 : WT (Fall.mat data)');
+    disp('4 : SHAM (Fall.mat data)');
     choices = input('Enter your choice (e.g., 1 2): ', 's'); 
     choices = str2double(strsplit(choices));  
-    if any(isnan(choices)) || any(~ismember(choices, [1, 2, 3]))
-        error('Choix invalide. Veuillez relancer la fonction et choisir 1, 2 ou 3.');
+    if any(isnan(choices)) || any(~ismember(choices, [1, 2, 3, 4]))
+        error('Choix invalide. Veuillez relancer la fonction et choisir 1, 2, 3 ou 4.');
     end
+    group_order = {'jm', 'FCD', 'WT', 'SHAM'};  
 
     % Traitement JM
     if ismember(1, choices)
@@ -37,20 +40,28 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     if ismember(2, choices)
         disp('Processing FCD data...');
         dataFolders = select_folders(fcd_folder);
-        dataFolders = organize_data_by_animal(dataFolders);
+        dataFolders = organize_data_by_animal(dataFolders, group_order{2});
         [TseriesFolders_fcd, TSeriesPaths_fcd, env_paths_all_fcd, true_env_paths_fcd, lastFolderNames_fcd] = find_Fall_folders(dataFolders);    
         gcampdataFolders_all = [gcampdataFolders_all; TseriesFolders_fcd(:, 1)];
         disp('Traitement FCD terminé.');
     end
     
-    % Traitement CTRL
-    if ismember(3, choices)
-        disp('Processing CTRL data...');
-        dataFolders = select_folders(ctrl_folder);
-        dataFolders = organize_data_by_animal(dataFolders);
+   % Traitement WT ou SHAM
+    if any(ismember([3 4], choices))
+        if ismember(3, choices)
+            disp('Processing WT data...');
+            dataFolders = select_folders(ctrl_folder);
+            dataFolders = organize_data_by_animal(dataFolders, group_order{3});
+        elseif ismember(4, choices)
+            disp('Processing SHAM data...');
+            dataFolders = select_folders(sham_folder);
+            dataFolders = organize_data_by_animal(dataFolders, group_order{4});
+        end
+    
+        % Traitement commun
         [TseriesFolders_ctrl, TSeriesPaths_ctrl, env_paths_all_ctrl, true_env_paths_ctrl, lastFolderNames_ctrl] = find_Fall_folders(dataFolders);
         gcampdataFolders_all = [gcampdataFolders_all; TseriesFolders_ctrl(:, 1)];
-        disp('Traitement CTRL terminé.');
+        disp('Traitement terminé.');
     end
 
     % Création de la liste des animaux et des dates
@@ -58,13 +69,11 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     animal_date_list = create_animal_date_list(gcampdataFolders_all, PathSave);
 
     % Trier animal_date_list selon l'ordre des choix utilisateur
-    group_order = {'jm', 'FCD', 'CTRL'};  
-    
     idx = 1;
     for j = 1:length(choices)
         
         if isscalar(choices)
-            group_type = group_order(choices); % 'jm', 'FCD', 'CTRL'
+            group_type = group_order(choices); % 'jm', 'FCD', 'WT', 'SHAM'
         else
             group_type = group_order{choices(j)};
         end
@@ -77,8 +86,6 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         mTor_part = string(group_data(:, 2));
         date_part_all = string(group_data(:, 4));
         age_part_all = string(group_data(:, 5));
-
-
     
         % Construction des groupes animaux
         animal_group = strings(size(animal_part));

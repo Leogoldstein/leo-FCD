@@ -111,6 +111,9 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         check_data = input('Do you want to check your data? (1/2): ', 's');
         
         if strcmpi(check_data, '1')
+            
+            build_rasterplot_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
+
             % Load or process calcium masks
             gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
         
@@ -148,9 +151,8 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                
                 % Preprocess and process data
                 [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
-                meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
-                
-             end
+                meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);     
+            end
         end
         
         build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)

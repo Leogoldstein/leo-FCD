@@ -13,7 +13,7 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
     animal_date_list = cell(length(dataFolders), 6); % {type, group, animal, date, age, sex}
 
     % Définition des patterns pour extraire les informations
-    pattern_mTOR = 'D:\\Imaging\\FCD(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
+    pattern_mTOR = 'D:\\Imaging\\([^\\]+)(?:\\to processed)?\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
     pattern_ani = 'D:\\Imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\TSeries-[^\\]+\\suite2p\\plane0\\Fall\.mat';
     pattern_jm = 'D:\\Imaging\\jm\\([^\\]+)\\([^\\]+)';
 
@@ -25,10 +25,10 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
         % Essayer de faire correspondre chaque pattern
         tokens = regexp(file_path, pattern_mTOR, 'tokens');
         if ~isempty(tokens)
-            type_part = 'FCD';
-            group_part = tokens{1}{1}; % Exemple : mTor13
-            animal_part = tokens{1}{2}; % Exemple : ani2
-            date_part = tokens{1}{3}; % Exemple : 2024-06-27
+            type_part = tokens{1}{1}; % Exemple : FCD
+            group_part = tokens{1}{2}; % Exemple : mTor13
+            animal_part = tokens{1}{3}; % Exemple : ani2
+            date_part = tokens{1}{4}; % Exemple : 2024-06-27
         else
             tokens = regexp(file_path, pattern_ani, 'tokens');
             if ~isempty(tokens)

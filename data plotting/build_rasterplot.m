@@ -136,29 +136,8 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
             % Optionnel : sauvegarde
             saveas(gcf, fig_save_path);
             disp(['Raster plot saved in: ' fig_save_path]);
+            close(gcf)
 
-            shadow_width = 30;  % largeur de la bande en frames
-            x_start = 1;        % position initiale
-            
-            hPatches = gobjects(subplot_count, 1);
-            for idx = 1:subplot_count
-                subplot(subplot_count, 1, idx);
-                yl = ylim;
-                hold on;
-                hPatches(idx) = patch([x_start x_start+shadow_width x_start+shadow_width x_start], ...
-                                      [yl(1) yl(1) yl(2) yl(2)], ...
-                                      'r', 'FaceAlpha', 0.2, 'EdgeColor', 'none', ...
-                                      'ButtonDownFcn', @startDragPatch);
-                hold off;
-            end
-            
-            % Stocker dans la figure
-            fig = gcf;
-            setappdata(fig, 'DraggablePatches', hPatches);
-            setappdata(fig, 'SubplotCount', subplot_count);
-            setappdata(fig, 'Nz', Nz);
-            setappdata(fig, 'ShadowWidth', shadow_width);
-            
         catch ME
             fprintf('\nError: %s\n', ME.message);
         end
@@ -174,47 +153,4 @@ function [min_val, max_val] = calculate_scaling(data)
         min_val = min(flattened_data);
         max_val = max(flattened_data);
     end
-end
-
-function sliderCallback(src, w, fig_handle, subplot_count)
-    val = src.Value;
-    hPatches = getappdata(fig_handle, 'SliderPatches');
-    for idx = 1:subplot_count
-        subplot(subplot_count, 1, idx);
-        yl = ylim;
-        x_patch = [val val+w val+w val];
-        set(hPatches(idx), 'XData', x_patch, 'YData', [yl(1) yl(1) yl(2) yl(2)]);
-    end
-    drawnow;
-end
-
-function startDragPatch(src, ~)
-    fig = ancestor(src, 'figure');
-    set(fig, 'WindowButtonMotionFcn', @(src, evt) draggingPatchFcn(src));
-    set(fig, 'WindowButtonUpFcn', @(src, evt) stopDragPatchFcn(src));
-end
-
-function draggingPatchFcn(fig)
-    cp = get(gca, 'CurrentPoint');
-    x = cp(1,1);
-
-    Nz = getappdata(fig, 'Nz');
-    subplot_count = getappdata(fig, 'SubplotCount');
-    shadow_width = getappdata(fig, 'ShadowWidth');
-    hPatches = getappdata(fig, 'DraggablePatches');
-
-    % Contraindre la bande dans les limites [1, Nz - shadow_width]
-    x = max(1, min(Nz - shadow_width, x));
-
-    for idx = 1:subplot_count
-        subplot(subplot_count,1,idx);
-        yl = ylim;
-        set(hPatches(idx), 'XData', [x x+shadow_width x+shadow_width x], ...
-                           'YData', [yl(1) yl(1) yl(2) yl(2)]);
-    end
-end
-
-function stopDragPatchFcn(fig)
-    set(fig, 'WindowButtonMotionFcn', '');
-    set(fig, 'WindowButtonUpFcn', '');
 end

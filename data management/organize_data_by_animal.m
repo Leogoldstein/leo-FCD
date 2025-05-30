@@ -1,9 +1,9 @@
-function newdataFolders = organize_data_by_animal(SelectedFolders)
+function newdataFolders = organize_data_by_animal(SelectedFolders, group_type)
 
     % Patterns pour identifier les chemins
-    pattern_mTOR = 'D:\\Imaging\\FCD\\([^\\]+)\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
+    pattern_mTOR = 'D:\\Imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
     pattern_ani = 'D:\\Imaging\\CTRL\\([^\\]+)(?:\\([^\\]+))?'; % Partie date facultative
-    pattern_general = '(\d{2}-\d{2}-\d{4})-(mtor\d+)?-(ani\d+)';
+    pattern_general = '(\d{2}-\d{2}-\d{4})-(mtor\d+)?-(ani\d+|\d+)';
     
     % Initialiser la liste des nouveaux dossiers
     newdataFolders = {};
@@ -41,7 +41,7 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
             disp(['Matched: Date = ' date_part ', mTor = ' mTor_part ', Animal = ' animal_part]);
             
             % Construire le dossier cible
-            targetFolder = getTargetFolder(mTor_part, animal_part, date_part);
+            targetFolder = getTargetFolder(group_type, mTor_part, animal_part, date_part);
             
             % Créer le dossier cible s'il n'existe pas
             if ~exist(targetFolder, 'dir')
@@ -79,14 +79,14 @@ function newdataFolders = organize_data_by_animal(SelectedFolders)
     end
 end
 
-function targetFolder = getTargetFolder(mTor_part, animal_part, date_part)
+function targetFolder = getTargetFolder(group_type, mTor_part, animal_part, date_part)
     % Définir le dossier de base
     base_path = 'D:\imaging';
     
     % Construire le chemin cible en fonction de la présence de mTor_part
     if ~isempty(mTor_part) && contains(mTor_part, 'mTor', 'IgnoreCase', true)
-        targetFolder = fullfile(base_path, 'FCD', 'to processed', mTor_part, animal_part, date_part);
+        targetFolder = fullfile(base_path, group_type, 'to processed', mTor_part, animal_part, date_part);
     else
-        targetFolder = fullfile(base_path, 'CTRL', 'to processed', animal_part, date_part);
+        targetFolder = fullfile(base_path, group_type, 'to processed', animal_part, date_part);
     end
 end
