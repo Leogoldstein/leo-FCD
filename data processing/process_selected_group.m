@@ -113,10 +113,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         if strcmpi(check_data, '1')
             
             build_rasterplot_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
-
-            % Load or process calcium masks
-            gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
-        
+ 
             % Perform data checking
             selected_neurons_all = data_checking(gcamp_data.DF, ...
                           gcamp_data.isort1, ...
@@ -128,7 +125,11 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                           meanImgs, ...
                           gcamp_data.outlines_gcampx, ...
                           gcamp_data.outlines_gcampy, ...
-                          gcamp_data.gcamp_props);
+                          all_data.DF, ...
+                          all_data.MAct, ...
+                          all_data.isort1, ...
+                          mtor_data.outlines_x_cellpose, ...
+                          mtor_data.outlines_y_cellpose);
 
             valid_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
             
@@ -195,8 +196,8 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
     numFolders = length(gcamp_output_folders);
     
     % Définir les champs pour chaque structure
-    gcamp_fields = {'DF', 'sampling_rate', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'synchronous_frames'};
-    blue_fields = {'DF', 'DF_not_blue', 'Raster', 'MAct', 'isort1'};
+    gcamp_fields = {'DF', 'sampling_rate', 'isort1', 'isort2', 'Sm', 'Raster', 'MAct', 'synchronous_frames', 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth'};
+    blue_fields = {'DF', 'DF_not_blue', 'Raster', 'MAct', 'isort1', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose'};
     all_fields = {'DF', 'isort1', 'blue_indices', 'isort2', 'Raster', 'MAct', 'Sm'};
     
     % Initialiser les structures avec les champs spécifiés
@@ -209,7 +210,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
     R = 5; % Rayon d'influence pour la correspondance des centroids
 
     for m = 1:numFolders
-        filePath = fullfile(gcamp_output_folders{m}, 'results_raster.mat');
+        filePath = fullfile(gcamp_output_folders{m}, 'results.mat');
         
         % Ensure the directory exists
         if ~isfolder(gcamp_output_folders{m})
@@ -229,6 +230,13 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.Sm{m} = getFieldOrDefault(data, 'Sm_gcamp', []);
             gcamp_data.Raster{m} = getFieldOrDefault(data, 'Raster_gcamp', []);
             gcamp_data.MAct{m} = getFieldOrDefault(data, 'MAct_gcamp', []);
+
+            gcamp_data.outlines_gcampx{m} = getFieldOrDefault(data, 'outlines_gcampx', []);
+            gcamp_data.outlines_gcampy{m} = getFieldOrDefault(data, 'outlines_gcampy', []);
+            gcamp_data.gcamp_mask{m} = getFieldOrDefault(data, 'gcamp_mask', []);
+            gcamp_data.gcamp_props{m} = getFieldOrDefault(data, 'gcamp_props', []);
+            gcamp_data.imageHeight{m} = getFieldOrDefault(data, 'imageHeight', []);
+            gcamp_data.imageWidth{m} = getFieldOrDefault(data, 'imageWidth', []);
             
             if ~isempty(blue_output_folders{m})
                 mtor_data.DF{m} = getFieldOrDefault(data, 'DF_blue', []);
@@ -236,6 +244,12 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 mtor_data.Raster{m} = getFieldOrDefault(data, 'Raster_blue', []);
                 mtor_data.MAct{m} = getFieldOrDefault(data, 'MAct_blue', []);
                 mtor_data.MAct_not_blue{m} = getFieldOrDefault(data, 'MAct_not_blue', []);
+                
+                mtor_data.num_cells_mask{m} = getFieldOrDefault(data, 'num_cells_mask', []);
+                mtor_data.mask_cellpose{m} = getFieldOrDefault(data, 'mask_cellpose', []);
+                mtor_data.props_cellpose{m} = getFieldOrDefault(data, 'props_cellpose', []);
+                mtor_data.outlines_x_cellpose{m} = getFieldOrDefault(data, 'outlines_x_cellpose', []);
+                mtor_data.outlines_y_cellpose{m} = getFieldOrDefault(data, 'outlines_y_cellpose', []);
                 
                 all_data.DF{m} = getFieldOrDefault(data, 'DF_all', []);
                 all_data.isort1{m} = getFieldOrDefault(data, 'isort1_all', []);
@@ -278,9 +292,26 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             gcamp_data.MAct{m} = MAct_gcamp;
         end
         
+        if isempty(gcamp_data.outlines_gcampx{m})
+            [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m});
+            [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+    
+            % Créer poly2mask et obtenir les propriétés
+            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
+    
+            % Sauvegarder les résultats
+            save(filePath, 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
+                 'gcamp_props', 'imageHeight', 'imageWidth', '-append');
+    
+            gcamp_data.outlines_gcampx{m} = outlines_gcampx;
+            gcamp_data.outlines_gcampy{m} = outlines_gcampy;
+            gcamp_data.gcamp_mask{m} = gcamp_mask;
+            gcamp_data.gcamp_props{m} = gcamp_props;
+            gcamp_data.imageHeight{m} = imageHeight;
+            gcamp_data.imageHeight{m} = imageWidth;
+        end
+    
         % Traitement des cellules bleues
-        %mtor_data.DF{m} = [];
-
         if ~isempty(blue_output_folders{m}) && isempty(mtor_data.DF{m})
             disp('Processing blue cells...');
             [~, aligned_image, npy_file_path, meanImg] = load_or_process_cellpose_TSeries(folders_groups, date_group_paths{m}, numChannels, m);
@@ -289,8 +320,9 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             if ~isempty(npy_file_path)
      
                 [num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = load_or_process_cellpose_data(npy_file_path);
-                
-                gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
+
+                save(filePath, 'num_cells_mask', 'mask_cellpose', 'props_cellpose', ...
+                 'outlines_x_cellpose', 'outlines_y_cellpose',  '-append');
                 
                 % Vérifier que gcamp_props et props_cellpose existent
                 if isempty(gcamp_data.gcamp_props) || isempty(props_cellpose)
@@ -330,10 +362,15 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 mtor_data.Raster{m} = Raster_blue;
                 mtor_data.MAct{m} = MAct_blue;
                 mtor_data.MAct_not_blue{m} = MAct_not_blue;
+
+                mtor_data.num_cells_mask{m} = num_cells_mask;
+                mtor_data.mask_cellpose{m} = mask_cellpose;
+                mtor_data.props_cellpose{m} = props_cellpose;
+                mtor_data.outlines_x_cellpose{m} = outlines_x_cellpose;
+                mtor_data.outlines_y_cellpose{m} = outlines_y_cellpose;
             end
 
         elseif isempty(blue_output_folders{m})
-            disp("cocuou")
             mtor_data.DF{m} = [];
             mtor_data.DF_not_blue{m} = [];
             mtor_data.Raster{m} = [];
@@ -366,66 +403,6 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
     end
 end
 
-function gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data)
-
-    numFolders = length(gcamp_output_folders);  % Number of groups
-    
-    % Ajouter dynamiquement les nouveaux champs à gcamp_fields
-    new_fields = {'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
-                  'gcamp_props', 'imageHeight', 'imageWidth'};
-    
-    % Vérifier et ajouter les nouveaux champs dans gcamp_data
-    for i = 1:length(new_fields)
-        if ~isfield(gcamp_data, new_fields{i})
-            gcamp_data.(new_fields{i}) = cell(numFolders, 1);  % Créer les nouveaux champs s'ils n'existent pas
-            [gcamp_data.(new_fields{i}){:}] = deal([]);  % Initialiser chaque cellule à []
-        end
-    end
-    
-    % First loop: Check if results exist and load them
-    for m = 1:numFolders
-        % Create the full file path for results_SCEs.mat
-        filePath = fullfile(gcamp_output_folders{m}, 'results_image.mat');
-
-        %delete(filePath)
-    
-        if exist(filePath, 'file') == 2
-            disp(['Loading file: ', filePath]);
-            % Try to load the pre-existing results from the file
-            data = load(filePath);
-            
-            % Assign the data to the appropriate fields in gcamp_data
-            gcamp_data.outlines_gcampx{m} = getFieldOrDefault(data, 'outlines_gcampx', []);
-            gcamp_data.outlines_gcampy{m} = getFieldOrDefault(data, 'outlines_gcampy', []);
-            gcamp_data.gcamp_mask{m} = getFieldOrDefault(data, 'gcamp_mask', []);
-            gcamp_data.gcamp_props{m} = getFieldOrDefault(data, 'gcamp_props', []);
-            gcamp_data.imageHeight{m} = getFieldOrDefault(data, 'imageHeight', []);
-            gcamp_data.imageWidth{m} = getFieldOrDefault(data, 'imageWidth', []);
-
-        else
-            % Traiter les données si le fichier n'existe pas
-            [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m});
-            [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
-    
-            % Créer poly2mask et obtenir les propriétés
-            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
-    
-            % Sauvegarder les résultats
-            save(filePath, 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
-                 'gcamp_props', 'imageHeight', 'imageWidth');
-
-
-            gcamp_data.outlines_gcampx{m} = outlines_gcampx;
-            gcamp_data.outlines_gcampy{m} = outlines_gcampy;
-            gcamp_data.gcamp_mask{m} = gcamp_mask;
-            gcamp_data.gcamp_props{m} = gcamp_props;
-            gcamp_data.imageHeight{m} = imageHeight;
-            gcamp_data.imageHeight{m} = imageWidth;
-
-        end
-    end
-end
-
 function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block)
 
     numFolders = length(date_group_paths);
@@ -448,9 +425,11 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
             fprintf('No Camera images found in %s.\n', date_group_paths{m});
             continue;
         end
-        
-        if exist(camFolders{m}, 'file') == 2
-            filepath = fullfile(camFolders{m}, 'cam_crop.tif'); 
+         
+        filepath = fullfile(camFolders{m}, 'cam_crop.tif');
+
+        if exist(filepath, 'file') == 2
+ 
             savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
     
             if exist(savePath, 'file') == 2 
@@ -464,8 +443,10 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
             end
             
             motion_energy_group{m} = motion_energy; 
-            avg_motion_energy_group = average_frames(motion_energy_group{m}, avg_block);  % ou 'trim'  
+            avg_motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'  
 
+            avg_motion_energy_group{m} = avg_motion_energy;
+    
         else
             fprintf('No movie found in %s.\n', camFolders{m});
             motion_energy_group{m} = [];

@@ -1,3 +1,7 @@
+// D'abord faire la correction de mouvements avec suite2p
+
+
+
 // Fonction pour gérer les images dans "SingleImage"
 function handleSingleImages(subDir, saveSingleImDir) {
     var SubFolders = getFileList(subDir);
