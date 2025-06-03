@@ -112,7 +112,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         
         if strcmpi(check_data, '1')
             
-            build_rasterplot_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
+            %build_rasterplot_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
  
             % Perform data checking
             selected_neurons_all = data_checking(gcamp_data.DF, ...
@@ -129,7 +129,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                           all_data.MAct, ...
                           all_data.isort1, ...
                           mtor_data.outlines_x_cellpose, ...
-                          mtor_data.outlines_y_cellpose);
+                          mtor_data.outlines_y_cellpose, all_data.blue_indices);
 
             valid_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
             
@@ -355,7 +355,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
                 DF_not_blue = DF_not_blue(:, 1:min_cols);
                 DF_blue = DF_blue(:, 1:min_cols);
 
-                save(filePath, "DF_blue", "DF_not_blue", "Raster_blue", "MAct_blue", "MAct_not_blue", '-append');
+                save(filePath, 'DF_blue', 'DF_not_blue', 'Raster_blue', 'MAct_blue', 'MAct_not_blue', '-append');
                 
                 mtor_data.DF{m} = DF_blue;
                 mtor_data.DF_not_blue{m} = DF_not_blue;
@@ -371,11 +371,16 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             end
 
         elseif isempty(blue_output_folders{m})
-            mtor_data.DF{m} = [];
-            mtor_data.DF_not_blue{m} = [];
-            mtor_data.Raster{m} = [];
-            mtor_data.MAct{m} = [];
-            mtor_data.MAct_not_blue{m} = [];
+                mtor_data.DF{m} = [];
+                mtor_data.DF_not_blue{m} = [];
+                mtor_data.Raster{m} = [];
+                mtor_data.MAct{m} = [];
+                mtor_data.MAct_not_blue{m} = [];
+                mtor_data.num_cells_mask{m} = [];
+                mtor_data.mask_cellpose{m} = [];
+                mtor_data.props_cellpose{m} = [];
+                mtor_data.outlines_x_cellpose{m} = [];
+                mtor_data.outlines_y_cellpose{m} = [];
         end
         
         %all_data.DF{m} = [];
@@ -391,7 +396,7 @@ function [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_o
             
             [Raster_all, MAct_all, ~] = Sumactivity(DF_all, MinPeakDistance, gcamp_data.synchronous_frames{m});
 
-            save(filePath, "DF_all", "Raster_all", "MAct_all", 'isort1_all', 'blue_indices', '-append');
+            save(filePath, 'DF_all', 'Raster_all', 'MAct_all', 'isort1_all', 'blue_indices', '-append');
 
             all_data.isort1{m} = isort1_all;
             all_data.isort2{m} = isort2_all;

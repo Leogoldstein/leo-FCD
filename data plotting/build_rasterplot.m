@@ -25,10 +25,10 @@ function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, cu
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
             end
 
-            % if exist(fig_save_path, 'file')
-            %     disp(['Figure already exists and was skipped: ' fig_save_path]);
-            %     continue;
-            % end
+            if exist(fig_save_path, 'file')
+                disp(['Figure already exists and was skipped: ' fig_save_path]);
+                continue;
+            end
 
             [NCell, Nz] = size(DF);
             % Adapter la longueur de MAct à Nz

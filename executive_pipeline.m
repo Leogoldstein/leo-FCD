@@ -11,7 +11,8 @@ pe = pyenv;
 if pe.Status == "NotLoaded"
     pyenv('Version', pyExec);
     fprintf("pyenv défini sur l’environnement\n");
-else
+    else1
+
     fprintf("Python déjà chargé depuis : %s\n", pe.Executable);
 end
 %%
@@ -36,7 +37,7 @@ end
 
 %% Processing and analysis
 
-[analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells);
+[analysis_choices1, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells);
 
 %%
 create_ppt_from_figs(selected_groups, daytime)
