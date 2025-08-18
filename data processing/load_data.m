@@ -1,4 +1,4 @@
-function [F, DF, ops, stat, iscell] = load_data(workingFolder)
+function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -12,7 +12,7 @@ function [F, DF, ops, stat, iscell] = load_data(workingFolder)
         newOpsPath = fullfile(workingFolder, 'ops.npy');
 
         % Load .npy files
-        F = readNPY(newFPath);
+        F_unsorted = readNPY(newFPath);
         iscell = readNPY(newIscellPath);
 
         % Call the Python function to load stats and ops
@@ -24,20 +24,20 @@ function [F, DF, ops, stat, iscell] = load_data(workingFolder)
             error('Failed to call Python function: %s', ME.message);
         end
         
-        F = F(:, 1:36000);
-        DF = double(F(iscell(:,1) > 0, :));  
+        F_unsorted = F_unsorted(:, 1:36000);
+        F = double(F_unsorted(iscell(:,1) > 0, :));  
 
     elseif strcmp(ext, '.mat')
         % Load .mat files
         data = load(workingFolder);
 
         % Extract data from .mat file
-        F = data.F;
+        F_unsorted = data.F;
         iscell = data.iscell;
         ops = data.ops;
         stat = data.stat;  % Assuming stat is available in .mat file
         
-        DF = double(F(iscell(:,1) > 0, :));  
+        F = double(F_unsorted(iscell(:,1) > 0, :));  
     else
         error('Unsupported file type: %s', ext);
     end   

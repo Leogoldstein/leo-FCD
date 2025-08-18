@@ -1,25 +1,25 @@
-function build_rasterplot(all_DF, all_isort1, all_MAct, gcamp_output_folders, current_animal_group, current_ages_group, all_sampling_rate, all_DF_all, all_isort1_all, all_DF_blue, all_MAct_blue, all_MAct_not_blue, motion_energy_group, avg_block)
+function build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, motion_energy_group)
 
     for m = 1:length(gcamp_output_folders)
         try
             % Extraction des données
-            if (nargin < 8 || isempty(all_DF_all{m}))
-                DF = all_DF{m};
-                isort1 = all_isort1{m};
-                sampling_rate = all_sampling_rate{m};
-                MAct = all_MAct{m};
+            if (nargin < 8 || isempty(data.DF_combined{m}))
+                DF = data.DF_gcamp{m};
+                isort1 = data.isort1_gcamp{m};
+                sampling_rate = data.sampling_rate{m};
+                MAct = data.MAct_gcamp{m};
                 MActblue = [];
 
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap.png', ...
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
 
-            elseif nargin > 7 && ~isempty(all_DF_all{m})
-                DF = all_DF_all{m};
-                DF_blue = all_DF_blue{m};
-                isort1 = all_isort1_all{m};
-                MAct = all_MAct_not_blue{m};
-                MActblue = all_MAct_blue{m};
-                sampling_rate = all_sampling_rate{m};
+            elseif nargin > 7 && ~isempty(data.DF_combined{m})
+                DF = data.DF_combined{m};
+                DF_blue = data.DF_blue{m};
+                isort1 = data.isort1_combined{m};
+                MAct = data.MAct_gcamp_not_blue{m};
+                MActblue = data.MAct_blue{m};
+                sampling_rate = data.sampling_rate{m};
 
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));

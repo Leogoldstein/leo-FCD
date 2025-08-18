@@ -35,13 +35,14 @@ end
 %%
 % Ce que fait cette fonction :
 % 1. Demande des choix à l’utilisateur (traiter dossier récent ou non, créer/sélectionner un dossier).
-% 2. Prépare la structure selected_groups en ajoutant des champs pour les données (gcamp, mtor, all).
+% 2. Prépare la structure selected_groups en ajoutant un champs pour les data (gcamp, mtor, all).
 %Pour chaque groupe :
 % - Construit les chemins des dossiers selon les dates et canaux (gCamp, rouge, bleu, vert).
 % - Crée les dossiers de sortie.
-% - Charge ou traite les signaux ΔF/F de GCaMP (gcamp_data), les signaux ΔF/F des cellules bleues et non bleues séparément (mtor_data), et les signaux combinés (all_data).
+% - Charge ou traite les signaux ΔF/F de GCaMP, les signaux ΔF/F des cellules bleues et non bleues séparément, et les signaux combinés.
 % - Sauvegarde des images moyennes et calcule l’énergie de mouvement à partir des vidéos.
-% Génère les raster plots et sauvegarde toutes les données traitées dans selected_groups.
+% Génère les raster plots et sauve
+% garde toutes les données traitées dans selected_groups.
 
 [selected_groups, daytime] = process_selected_group(selected_groups);
 

@@ -1,15 +1,15 @@
-function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gcamp_idx, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath)
-    [~, num_frames] = size(DF_gcamp);
+function [F_blue, F_gcamp_not_blue] = get_blue_cells_rois(F_gcamp, matched_gcamp_idx, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath)
+    [~, num_frames] = size(F_gcamp);
     
     used_gcamp_indices = unique(matched_gcamp_idx);
-    DF_gcamp_not_blue = DF_gcamp;
-    DF_gcamp_not_blue(used_gcamp_indices, :) = [];
-    
+    F_gcamp_not_blue = F_gcamp;
+    F_gcamp_not_blue(used_gcamp_indices, :) = []; % on enlève les lignes dont les indices apparaissent dans matched_gcamp_idx
+
     if iscell(ncells_cellpose)
         ncells_cellpose = ncells_cellpose{1};
     end
     
-    DF_blue = NaN(ncells_cellpose, num_frames);
+    F_blue = NaN(ncells_cellpose, num_frames);
     
     unmatched_gcamp_idx = [];
     
@@ -22,10 +22,10 @@ function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gc
             % disp(['Correspondance trouvée entre la cellule Cellpose ' num2str(ncell_cellpose) ' et la/les cellule(s) gcamp ' num2str(matched_gcamp_index(:)')]);
             % if isscalar(matched_gcamp_index)
             %     % Assign directly if only one match
-            %     DF_blue(ncell_cellpose, :) = DF_gcamp(matched_gcamp_index, :);
+            %     F_blue(ncell_cellpose, :) = DF_gcamp(matched_gcamp_index, :);
             % else
             %    % If multiple matches, compute the mean (or another aggregation method)
-            %     DF_blue(ncell_cellpose, :) = mean(DF_gcamp(matched_gcamp_index, :), 1);
+            %     F_blue(ncell_cellpose, :) = mean(DF_gcamp(matched_gcamp_index, :), 1);
             % end
         end
     end
@@ -53,20 +53,20 @@ function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gc
         height = info(1).Height;
         width = info(1).Width;
         
-        F = zeros(height, width, num_pages);
+        pixel_val = zeros(height, width, num_pages);
         mean_image_stack = zeros(height, width, 50);
         
         for page = 1:num_pages
-            F(:, :, page) = imread(filename, 'Index', page);
+            pixel_val(:, :, page) = imread(filename, 'Index', page);
             
             if page <= 50
-                mean_image_stack(:, :, page) = F(:, :, page);
+                mean_image_stack(:, :, page) = pixel_val(:, :, page);
             end
             
             for ncell = 1:ncells_cellpose
                 [y, x] = find(mask_cellpose{ncell});
-                cellDF = mean(F(y, x, page), 'all');  
-                DF_blue(ncell, image_idx) = cellDF;
+                cellF = mean(pixel_val(y, x, page), 'all');  
+                F_blue(ncell, image_idx) = cellF;
             end
 
             % Affichage de l'image moyenne à la 50ème image
@@ -104,23 +104,23 @@ function [DF_blue, DF_gcamp_not_blue] = get_blue_cells_rois(DF_gcamp, matched_gc
         end
     end
     
-    % unmatched_cells_data = DF_blue(unmatched_gcamp_idx, :);
+    % unmatched_cells_data = F_blue(unmatched_gcamp_idx, :);
     % 
     % processed_unmatched_cells_data = DF_processing(unmatched_cells_data);
     % 
-    % DF_blue(unmatched_gcamp_idx, :) = processed_unmatched_cells_data;
+    % F_blue(unmatched_gcamp_idx, :) = processed_unmatched_cells_data;
 
-    if ~ismissing(DF_blue)
-        [num_cells, ~] = size(DF_blue);
+    if ~ismissing(F_blue)
+        [num_cells, ~] = size(F_blue);
         figure;
         hold on;
         for cell_idx = 1:num_cells
-            plot(DF_blue(cell_idx, :), 'DisplayName', ['Cell ' num2str(cell_idx)]);
+            plot(F_blue(cell_idx, :), 'DisplayName', ['Cell ' num2str(cell_idx)]);
         end
         hold off;
         xlabel('Frame Number');
         ylabel('Fluorescence Intensity');
-        title('DF_blue for Group');
+        title('F_blue for Group');
         legend show;
     end
 end
