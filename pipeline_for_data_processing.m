@@ -1,4 +1,4 @@
-function [analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups, include_blue_cells)
+function [analysis_choices, selected_groups] = pipeline_for_data_processing(selected_groups)
     % process_data generates and saves figures for raster plots, mean images, or SCE analysis
     % Inputs:
     % - PathSave: Path where results will be saved
@@ -48,11 +48,9 @@ function [analysis_choices, selected_groups] = pipeline_for_data_processing(sele
                         [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = find_recording_infos(gcamp_output_folders, current_env_group);
                         gcamp_data = load_or_process_calcium_masks(gcamp_output_folders, current_gcamp_folders_group, gcamp_data);
                         [NCell_all, mean_frequency_per_minute_all, std_frequency_per_minute_all, cell_density_per_microm2_all] = basic_metrics(gcamp_data.DF, gcamp_data.Raster, gcamp_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
-                    
-                        if strcmpi(include_blue_cells, '1')
-                            [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue] = basic_metrics(mtor_data.DF, mtor_data.Raster, mtor_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
-                        end
-                    
+      
+                        [NCell_all_blue, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all_blue, cell_density_per_microm2_all_blue] = basic_metrics(mtor_data.DF, mtor_data.Raster, mtor_data.MAct, gcamp_output_folders, gcamp_data.sampling_rate, all_imageHeight, all_imageWidth);
+
                         export_data(current_animal_group, current_gcamp_folders_names_group, current_ages_group, analysis_choice, pathexcel, current_animal_type, ...
                             all_recording_time, all_optical_zoom, all_position, all_time_minutes, ...
                             gcamp_data.sampling_rate, gcamp_data.synchronous_frames, NCell_all, NCell_all_blue, mean_frequency_per_minute_all, mean_frequency_per_minute_all_blue, std_frequency_per_minute_all, std_frequency_per_minute_all_blue, cell_density_per_microm2_all, cell_density_per_microm2_all_blue);

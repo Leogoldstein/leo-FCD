@@ -10,23 +10,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
     else
         processing_choice2 = [];
     end
-    
-    % Extraire et aplatir directement les valeurs en un cell array de strings
-    animal_type = string([selected_groups.animal_type]);
-    
-    % % Vérifier si 'FCD' est présent
-    % if any(animal_type == "FCD")
-    %     include_blue_cells = input('Do you want to include blue cells in your analysis? (1 for Yes / 2 for No): ', 's');
-    % 
-    %     % Vérification de l'entrée
-    %     if ~ismember(include_blue_cells, {'1', '2'})
-    %         disp('Invalid input, defaulting to 2 (No).');
-    %         include_blue_cells = '2';
-    %     end
-    % else
-    %     include_blue_cells = '2'; % Valeur par défaut
-    % end
-     
+
     % Define new fields to be added to selected_groups
     new_fields = {'gcamp_data', 'mtor_data', 'all_data'};
     
@@ -113,7 +97,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         if strcmpi(check_data, '1')
             
             %build_rasterplot_checking(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
- 
+
             % Perform data checking
             selected_neurons_all = data_checking(gcamp_data.DF, ...
                           gcamp_data.isort1, ...
@@ -131,13 +115,13 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                           mtor_data.outlines_x_cellpose, ...
                           mtor_data.outlines_y_cellpose, all_data.blue_indices);
 
-            valid_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
+            checked_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
             
-            if ~isempty(valid_indices)
-                % Filtrer les variables d'input en fonction de valid_indices
-                filtered_date_group_paths = date_group_paths(valid_indices);
-                filtered_gcamp_folders = current_gcamp_folders_names_group(valid_indices);
-                filtered_blue_folders = current_blue_folders_names_group(valid_indices);
+            if ~isempty(checked_indices)
+                % Filtrer les variables d'input en fonction de checked_indices
+                filtered_date_group_paths = date_group_paths(checked_indices);
+                filtered_gcamp_folders = current_gcamp_folders_names_group(checked_indices);
+                filtered_blue_folders = current_blue_folders_names_group(checked_indices);
                 
                 % Appeler create_base_folders avec ces dossiers filtrés
                 processing_choice1 = '2';
@@ -146,9 +130,9 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                     filtered_date_group_paths, filtered_gcamp_folders, filtered_blue_folders, ...
                     daytime, processing_choice1, processing_choice2, current_animal_group);
                 
-                % Mettre à jour uniquement les éléments aux indices valid_indices
-                gcamp_output_folders(valid_indices) = gcamp_output_folders_filtered;
-                blue_output_folders(valid_indices) = blue_output_folders_filtered;
+                % Mettre à jour uniquement les éléments aux indices checked_indices
+                gcamp_output_folders(checked_indices) = gcamp_output_folders_filtered;
+                blue_output_folders(checked_indices) = blue_output_folders_filtered;
                
                 % Preprocess and process data
                 [gcamp_data, mtor_data, all_data] = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
@@ -157,8 +141,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         end
         
         build_rasterplot(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, gcamp_data.sampling_rate, all_data.DF, all_data.isort1, mtor_data.DF, mtor_data.MAct, mtor_data.MAct_not_blue, avg_motion_energy_group, avg_block)
-        build_rasterplots(gcamp_data.DF, gcamp_data.isort1, gcamp_data.MAct, current_ani_path_group, current_animal_group, current_dates_group, current_ages_group);
-
+       
         % Store processed data in selected_groups for this group
         selected_groups(k).gcamp_output_folders = gcamp_output_folders;
         selected_groups(k).blue_output_folders = blue_output_folders;
