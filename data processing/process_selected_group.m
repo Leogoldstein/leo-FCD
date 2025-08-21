@@ -1,20 +1,32 @@
 function [selected_groups, daytime] = process_selected_group(selected_groups, check_data)
-
-    % Prompt for the first choice
-    processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
     
-    % Check if processing_choice1 is 'no'
-    if strcmp(processing_choice1, '2')
-        % If the answer is 'no', prompt for the second choice
-        processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
-    else
-        processing_choice2 = [];
-    end
+    last_animal_type = '';
 
     % Perform analyses for each group
     for k = 1:length(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
         current_animal_type = selected_groups(k).animal_type;
+        
+        % Vérifier s’il y a un changement d’animal_type
+        if ~strcmp(current_animal_type, last_animal_type)
+                
+            disp(['Changement de type détecté : ' last_animal_type ' -> ' current_animal_type]);
+               
+            % Prompt for the first choice
+            processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
+            
+            % Check if processing_choice1 is 'no'
+            if strcmp(processing_choice1, '2')
+                % If the answer is 'no', prompt for the second choice
+                processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
+            else
+                processing_choice2 = [];
+            end
+        end
+    
+        % Mettre à jour la valeur pour la prochaine itération
+        last_animal_type = current_animal_type;
+        
         current_ani_path_group = selected_groups(k).path;
         current_dates_group = selected_groups(k).dates;
         current_ages_group = selected_groups(k).ages;

@@ -60,16 +60,13 @@ check_data = 2;
 % Charge ou calcule les données nécessaires (masques, SCEs, clusters, corrélations).
 % Produit et sauvegarde les résultats (fichiers .mat).
 
-
-% % Ask for analysis types, multiple choices separated by spaces
 % analysis_choices_str = input('Choose analysis types (separated by spaces): pairwise correlations (1), SCEs (2), global measures of activity (3), clusters analysis (4)? ', 's');
 % 
 % % Convert the string of choices into an array of numbers
 % analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
 
-analysis_choices = [1 2];
+analysis_choices = [1 2 3];
 
 selected_groups = pipeline_for_data_processing(selected_groups, analysis_choices);
 
-%%
 create_ppt_from_figs(selected_groups, daytime)

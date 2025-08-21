@@ -60,13 +60,18 @@ function create_ppt_from_figs(selected_groups, daytime)
         % Mean image
 
         for path_idx = 1:length(gcamp_output_folders)
-            addFiguresFromMeanFolder(ppt, gcamp_output_folders{path_idx});
+            addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, 'Mean_image*');
         end
                
         % Activity 
-
-        imgFile  =  build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group);
-        slide = add(ppt, 'Title and Content');
+        if numel(gcamp_output_folders) > 1
+            imgFile  =  build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group);
+            slide = add(ppt, 'Title and Content');
+        else
+            for path_idx = 1:length(gcamp_output_folders)
+                addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, '*_rastermap');
+            end
+        end
        
         img = Picture(imgFile);
         replace(slide, 'Content', img);
@@ -160,22 +165,29 @@ function addTableSlide(ppt, titleText, tableContent)
     replace(slide, 'Table', tableContent);
 end
 
-function addFiguresFromMeanFolder(ppt, folder_path)
+
+function addFiguresFromFolder(ppt, folder_path, pattern)
+
     import mlreportgen.ppt.*;
     
-    png_files = dir(fullfile(folder_path, 'Mean_image*.png'));
+    % Si l’utilisateur donne juste un préfixe (ex: 'Mean_image'), on complète avec *.png
+    if ~contains(pattern, '*')
+        pattern = [pattern '*.png'];
+    end
+    
+    png_files = dir(fullfile(folder_path, pattern));
+    
     for i = 1:length(png_files)
         figure_path = fullfile(png_files(i).folder, png_files(i).name);
         slide = add(ppt, 'Title and Content');
         [~, name, ~] = fileparts(png_files(i).name);
-        name = strrep(name, '_', ' ');
+        name = strrep(name, '_', ' '); % remplacer les underscores par des espaces
 
         replace(slide, 'Title', name);
         img = Picture(figure_path);
         replace(slide, 'Content', img);
     end
 end
-
 
 function save_summary_figure(ppt, plot_type, plot_data, is_last_of_type, current_type)
     import mlreportgen.ppt.*;

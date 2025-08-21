@@ -42,9 +42,9 @@ function data = load_or_process_sce_data(current_animal_group, current_dates_gro
             data.sces_distances_gcamp{m} = sces_distances_gcamp;
             data.RasterRace_gcamp{m} = RasterRace_gcamp;
             data.sce_n_cells_threshold{m} = sce_n_cells_threshold;
+
+            save(filePath, 'sce_n_cells_threshold', 'TRace_gcamp', 'Race_gcamp', 'sces_distances_gcamp', 'RasterRace_gcamp');
         end
-        
-        save(filePath, 'sce_n_cells_threshold', 'TRace_gcamp', 'Race_gcamp', 'sces_distances_gcamp', 'RasterRace_gcamp');
     end
 end
 
