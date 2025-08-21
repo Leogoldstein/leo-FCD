@@ -1,4 +1,4 @@
-function build_rasterplots(all_DF, all_isort1, all_MAct, current_animal_group, current_dates_group, current_age_group)
+function imgFile  = build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group)
     % build_rasterplot generates and saves a figure for a single animal group with raster plots
     %
     % Inputs:
@@ -6,19 +6,11 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_animal_group, c
     % - current_ani_path_group: Path for saving the raster plot figure
     % - current_animal_group: Name or identifier of the current animal group
     % - current_dates_group: Indices for the dates to process within this animal group
-    % - current_age_group: Cell array with the age information for each date
+    % - current_ages_group: Cell array with the age information for each date
     
-    % Nested function to calculate scaling based on the 5th and 99.9th percentiles
-    function [min_val, max_val] = calculate_scaling(data)
-        flattened_data = data(:);
-        min_val = prctile(flattened_data, 5);   % 5th percentile
-        max_val = prctile(flattened_data, 99.9); % 99.9th percentile
-    end
-
-    % Create the figure and set it to fullscreen
-    figure;
-    set(gcf, 'Position', get(0, 'ScreenSize'));
-
+    fig = figure;
+    set(fig, 'Position', get(0, 'ScreenSize'));
+    
     % Initialize variables for global scaling
     [minValue, maxValue] = deal(Inf, -Inf);
     % global_ymax = 0;
@@ -34,36 +26,36 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_animal_group, c
             continue;
         end
 
-        DF = all_DF{idx};
-        MAct = all_MAct{idx};
-        isort1 = all_isort1{idx};
-        [minVal, maxVal] = calculate_scaling(DF);  % Scaling for current dataset
+        DF_gcamp = data.DF_gcamp{idx};
+        MAct_gcamp = data.MAct_gcamp{idx};
+        isort1_gcamp = data.isort1_gcamp{idx};
+        [minVal, maxVal] = calculate_scaling(DF_gcamp);  % Scaling for current dataset
         minValue = min(minValue, minVal);
         maxValue = max(maxValue, maxVal);
         
         % Check if DF is empty or improperly formed
-        [NCell, num_columns] = size(DF);
+        [NCell, num_columns] = size(DF_gcamp);
         if NCell == 0 || num_columns == 0
             warning('Dataset %d is empty or malformed. Skipping...', k);
             continue;
         end
 
         % Calculate the proportion of active cells
-        prop_MAct = MAct / NCell;
+        prop_MAct = MAct_gcamp / NCell;
 
         % global_ymax = max(global_ymax, max(prop_MAct));  % Update with the maximum across all datasets
         % global_ymax = ceil(global_ymax * 10) / 10;   % Round up global_ymax to the nearest 0.1
 
         % Adjust isort1 to ensure valid indices
-        isort1 = isort1(isort1 > 0 & isort1 <= NCell);  % Ensure indices are valid
-        if isempty(isort1)
+        isort1_gcamp = isort1_gcamp(isort1_gcamp > 0 & isort1_gcamp <= NCell);  % Ensure indices are valid
+        if isempty(isort1_gcamp)
             warning('isort1 is empty for dataset %d. Skipping...', k);
             continue;
         end
 
         % Raster plot
         subplot(length(current_dates_group), 2, 2*(k - 1) + 1);  % Each dataset occupies two adjacent subplots
-        imagesc(DF(isort1, :));
+        imagesc(DF_gcamp(isort1_gcamp, :));
 
         % Adjust color limits
         clim([minValue, maxValue]);
@@ -84,8 +76,8 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_animal_group, c
         ylabel('Neurons');
 
         % Title above each raster plot indicating the "age" part
-        if length(current_age_group) >= k
-            age_part = current_age_group{k};  % Use the age information directly
+        if length(current_ages_group) >= k
+            age_part = current_ages_group{k};  % Use the age information directly
         else
             age_part = 'Unknown';  % Fallback if no age information
         end
@@ -121,10 +113,16 @@ function build_rasterplots(all_DF, all_isort1, all_MAct, current_animal_group, c
     % Set the main title with the current unique group
     sgtitle(current_animal_group, 'FontSize', 14, 'FontWeight', 'bold');
 
-    % Save the figure as a PNG in the designated save path
-    exportgraphics(gcf, fig_save_path, 'Resolution', 300);
-    disp(['Saved new figure: ' fig_save_path]);
+    %Save the figure as a PNG in the designated save path
+    imgFile = [tempname, '.png'];
+    exportgraphics(fig, imgFile, 'Resolution', 300);
 
-    % Close the figure to free up memory
     close(gcf);
+end
+
+% Nested function to calculate scaling based on the 5th and 99.9th percentiles
+function [min_val, max_val] = calculate_scaling(data)
+    flattened_data = data(:);
+    min_val = prctile(flattened_data, 5);   % 5th percentile
+    max_val = prctile(flattened_data, 99.9); % 99.9th percentile
 end

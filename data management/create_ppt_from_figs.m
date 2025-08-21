@@ -28,6 +28,7 @@ function create_ppt_from_figs(selected_groups, daytime)
 
         % Infos groupe courant
         current_animal_group = selected_groups(k).animal_group;
+        current_dates_group = selected_groups(k).dates;
         current_ages_group = selected_groups(k).ages;
         current_env_group = selected_groups(k).env;
         current_type = selected_groups(k).animal_type;
@@ -45,31 +46,31 @@ function create_ppt_from_figs(selected_groups, daytime)
         slide = add(ppt, 'Title Slide');
         replace(slide, 'Title', current_animal_group);
 
-        % Recording 
-        
+        % Recording     
         [~, all_optical_zoom, all_depth, ~] = ...
             find_recording_infos(gcamp_output_folders, current_env_group);
 
-        DF_group = selected_groups(k).gcamp_data.DF;
+        data = selected_groups(k).data;
 
-        paramTable = createAnimalParametersTable(current_ages_group, all_depth, all_optical_zoom, DF_group);
+        paramTable = createAnimalParametersTable(current_ages_group, all_depth, all_optical_zoom, data.DF_gcamp);
 
          % Ajout des tableaux et figures locales
         addTableSlide(ppt, sprintf('Animal Parameters of %s', current_animal_group), paramTable);
         
+        % Mean image
+
         for path_idx = 1:length(gcamp_output_folders)
             addFiguresFromMeanFolder(ppt, gcamp_output_folders{path_idx});
         end
-        
-        current_dates_group = selected_groups(groupIdx).dates;
-        current_age_group = selected_groups(groupIdx).ages;
-
-        isort1_group = selected_groups(groupIdx).gcamp_data.isort1;
-        MAct_group = selected_groups(groupIdx).gcamp_data.MAct;
-        
-        build_rasterplots(DF_group, isort1_group, MAct_group, current_animal_group, current_dates_group, current_age_group)
-
+               
         % Activity 
+
+        imgFile  =  build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group);
+        slide = add(ppt, 'Title and Content');
+       
+        img = Picture(imgFile);
+        replace(slide, 'Content', img);
+
         is_last_of_type = (k == length(selected_groups)) || ...
                           ~strcmp(selected_groups(k+1).animal_type, current_type);
         
@@ -158,23 +159,6 @@ function addTableSlide(ppt, titleText, tableContent)
     replace(slide, 'Title', titleText);
     replace(slide, 'Table', tableContent);
 end
-
-function addFiguresFromFolder(ppt, folder_path)
-    import mlreportgen.ppt.*;
-
-    png_files = dir(fullfile(folder_path, '*.png'));
-    for i = 1:length(png_files)
-        figure_path = fullfile(png_files(i).folder, png_files(i).name);
-        slide = add(ppt, 'Title and Content');
-        [~, name, ~] = fileparts(png_files(i).name);
-        name = strrep(name, '_', ' ');
-
-        replace(slide, 'Title', name);
-        img = Picture(figure_path);
-        replace(slide, 'Content', img);
-    end
-end
-
 
 function addFiguresFromMeanFolder(ppt, folder_path)
     import mlreportgen.ppt.*;

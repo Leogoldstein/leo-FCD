@@ -1,94 +1,80 @@
-function export_data(identifier, tseries_folders, ages, analysis_choice, pathexcel, current_animal_type, varargin)
-    % Extraire le nom de l'animal type de la cellule
-    animal_type = current_animal_type{1}; % Par exemple, 'FCD'
-
-    % Charger ou créer les en-têtes nécessaires
-    headers_general = {'Identifier', 'TseriesFolder', 'Age', 'RecordingTime', 'OpticalZoom', 'Depth(μm)', 'RecordingDuration(minutes)'};
-    headers_case_3 = {'SamplingRate', 'SynchronousFrames', 'ActiveCellsNumber', 'ActiveCellsNumberBlue', 'MeanFrequencyMinutes', 'MeanFrequencyMinutesBlue', 'StdFrequencyMinutes', 'StdFrequencyMinutesBlue', 'ActiveCellsDensity(/μm2)', 'ActiveCellsDensityBlue', 'MeanMaxPairwiseCorr', 'MeanMaxPairwiseCorrBlue'};
-    headers_case_4 = {'SCEsThreshold', 'SCEsNumber', 'SCEsFrequency(Hz)', 'MeanActiveCellsSCEsNumber', 'PercentageActiveCellsSCEs', 'MeanSCEsduration(ms)'};
-    all_headers = [headers_general, headers_case_3, headers_case_4];
-
-    % Vérifier si le fichier Excel existe
+function export_data(results_analysis, pathexcel, animal_type)
+    % --- Préparer les en-têtes à partir de la structure results_analysis ---
+    all_headers = fieldnames(results_analysis)';  % Transposé pour ligne unique
+    
+    % --- Vérifier si le fichier Excel existe ---
     if isfile(pathexcel)
-        [~, sheet_names] = xlsfinfo(pathexcel); % Liste des feuilles Excel existantes
+        [~, sheet_names] = xlsfinfo(pathexcel);
     else
-        % Si le fichier n'existe pas, initialiser une liste vide de feuilles
         sheet_names = {};
     end
-
-    % Vérifier si la feuille correspondant à 'animal_type' existe
+    
+    % --- Vérifier si la feuille correspondant à 'animal_type' existe ---
     if ~any(strcmp(sheet_names, animal_type))
-        % Si la feuille n'existe pas, écrire les en-têtes dans une nouvelle feuille
+        % Nouvelle feuille -> écrire les en-têtes
         writecell(all_headers, pathexcel, 'Sheet', animal_type, 'WriteMode', 'overwrite');
-        existing_data = [all_headers; cell(0, numel(all_headers))]; % Ajouter en-têtes
+        existing_data = [all_headers; cell(0, numel(all_headers))];
     else
-        % Charger les données existantes depuis la feuille correspondante
+        % Charger les données existantes
         existing_data = readcell(pathexcel, 'Sheet', animal_type);
-        % If sheet exists, ensure it's initialized correctly
         if isempty(existing_data)
-            existing_data = [all_headers; cell(0, numel(all_headers))]; % If data is empty, initialize with headers
+            existing_data = [all_headers; cell(0, numel(all_headers))];
         end
     end
-
-    % Parcourir toutes les dates et âges fournis
-    for m = 1:length(tseries_folders)
+    
+    % --- Parcourir les enregistrements de results_analysis ---
+    for m = 1:numel(results_analysis)
         try
-            % Chercher une ligne correspondante (même Identifier, Date et Age)
-            row_to_update = find_row_for_update(identifier, tseries_folders{m}, ages{m}, existing_data);
-
-            % Vérifier si la ligne existe déjà
+            % Identifier la ligne à mettre à jour
+            row_to_update = find_row_for_update( ...
+                results_analysis(m).current_animal_group, ...
+                results_analysis(m).TseriesFolder, ...
+                results_analysis(m).Age, ...
+                existing_data);
+            
+            % Construire la nouvelle ligne de données
+            new_row = struct2cell(results_analysis(m))';
+            
+            % Si ligne existe déjà → mettre à jour
             if row_to_update ~= -1
-                % Si une ligne existe déjà, mettre à jour uniquement les colonnes nécessaires
-                switch analysis_choice
-                    case 3
-                        existing_data(row_to_update, 4:19) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m), varargin{12}(m), varargin{13}(m), varargin{14}(m), varargin{15}(m), varargin{16}(m)};
-                    case 4
-                        existing_data(row_to_update, 20:25) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
-                end
+                existing_data(row_to_update, :) = new_row;
             else
-                % Si aucune ligne correspondante n'existe, ajouter une nouvelle ligne complète
-                new_row = cell(1, numel(all_headers));
-                new_row(1:3) = {identifier, tseries_folders{m}, ages{m}}; % Identifier, Date, Age
-                switch analysis_choice
-                    case 3
-                        new_row(4:19) = {varargin{1}{m}, varargin{2}{m}, varargin{3}{m}, varargin{4}{m}, varargin{5}{m}, varargin{6}{m}, varargin{7}(m), varargin{8}(m), varargin{9}(m), varargin{10}(m), varargin{11}(m), varargin{12}(m), varargin{13}(m), varargin{14}(m), varargin{15}(m), varargin{16}(m)};
-                    case 4
-                        new_row(20:25) = {varargin{1}{m}, varargin{2}(m), varargin{3}(m), varargin{4}(m), varargin{5}(m), varargin{6}(m)};
-                end
-                existing_data = [existing_data; new_row]; % Ajouter la nouvelle ligne
+                % Sinon → ajouter à la fin
+                existing_data = [existing_data; new_row];
             end
         catch ME
-            % En cas d'erreur, afficher l'erreur et continuer
             disp(['Error exportation group at index ', num2str(m), ': ', ME.message]);
         end
     end
-
-    % Nettoyer les données pour remplacer les valeurs 'missing' par une chaîne vide
+    
+    % --- Nettoyer les données (remplacer missing par '') ---
     existing_data = clean_data(existing_data);
-
-    % Écrire les données mises à jour dans la feuille correspondant à 'animal_type'
+    
+    % --- Écrire dans Excel ---
     writecell(existing_data, pathexcel, 'Sheet', animal_type, 'WriteMode', 'overwrite');
 end
 
-% Fonction pour trouver une ligne existante correspondant à Identifier, Date et Age
-function row = find_row_for_update(identifier, tseries_folder, age, existing_data)
-    row = -1; % Valeur par défaut si aucune ligne n'est trouvée
-
-    % Parcourir les lignes pour Identifier, Date et Age correspondants
-    for i = 2:size(existing_data, 1) % Ignorer les en-têtes
-        if isequal(existing_data{i, 1}, identifier) && isequal(existing_data{i, 2}, tseries_folder) && isequal(existing_data{i, 3}, age)
+% -------------------------------------------------------------------------
+% Trouver une ligne existante (même Animal, TseriesFolder, Age)
+function row = find_row_for_update(current_animal_group, tseries_folder, age, existing_data)
+    row = -1;
+    for i = 2:size(existing_data, 1) % Ignorer la ligne des en-têtes
+        if isequal(existing_data{i, 1}, current_animal_group) && ...
+           isequal(existing_data{i, 2}, tseries_folder) && ...
+           isequal(existing_data{i, 3}, age)
             row = i;
             return;
         end
     end
 end
 
-% Fonction pour nettoyer les données en remplaçant les valeurs 'missing'
+% -------------------------------------------------------------------------
+% Remplacer les valeurs missing par ''
 function cleaned_data = clean_data(data)
     for i = 1:size(data, 1)
         for j = 1:size(data, 2)
             if ismissing(data{i, j})
-                data{i, j} = ''; % Remplacer par une chaîne vide
+                data{i, j} = '';
             end
         end
     end

@@ -16,14 +16,15 @@ function figs = corr_groups_boxplots_all(selected_groups)
             if ~strcmp(selected_groups(groupIdx).animal_type, current_type)
                 continue;
             end
-
+            
+            data = selected_groups(groupIdx).data;
             current_ages_group = selected_groups(groupIdx).ages;
             current_ages = cellfun(@(x) str2double(x(2:end)), current_ages_group);
             [~, x_indices] = ismember(current_ages, age_values);
 
-            all_max_corr_gcamp_gcamp = selected_groups(groupIdx).gcamp_data.max_corr_gcamp_gcamp;
-            all_max_corr_gcamp_mtor = selected_groups(groupIdx).gcamp_data.max_corr_gcamp_mtor;
-            all_max_corr_mtor_mtor = selected_groups(groupIdx).gcamp_data.max_corr_mtor_mtor;
+            all_max_corr_gcamp_gcamp = data.max_corr_gcamp_gcamp;
+            all_max_corr_gcamp_mtor = data.max_corr_gcamp_mtor;
+            all_max_corr_mtor_mtor = data.max_corr_mtor_mtor;
 
             use_animal_colors = all(cellfun(@isempty, all_max_corr_gcamp_mtor)) && all(cellfun(@isempty, all_max_corr_mtor_mtor));
 

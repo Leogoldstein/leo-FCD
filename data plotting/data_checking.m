@@ -1,5 +1,4 @@
 function selected_neurons_all = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_ages_group, meanImgs)
-
     % Initialisation du tableau de résultats (sélections par dossier)
     selected_neurons_all = cell(size(gcamp_output_folders));  % Pour stocker les sélections
 
@@ -7,18 +6,24 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
         try
             if ~isempty(data.F_combined{m})
                 F = data.F_combined{m};
+                DF = data.DF_combined{m};
                 isort1 = data.isort1_combined{m};
                 MAct = data.MAct_combined{m}; 
                 blue_indices = data.blue_indices{m};
             else
                 F = data.F_gcamp{m};
+                DF = data.DF_gcamp{m};
                 isort1 = data.isort1_gcamp{m};
                 MAct = data.MAct_gcamp{m};
                 blue_indices = [];
             end
-            
-            valid_neurons = all(~isnan(F), 2);
+
+            valid_neurons = all(~isnan(DF), 2);
             F = F(valid_neurons, :);
+            %assignin('base', 'F', F);
+
+            DF = DF(valid_neurons, :);
+
             valid_neuron_indices = find(valid_neurons);
             isort1 = isort1(ismember(isort1, valid_neuron_indices));
             [~, isort1] = ismember(isort1, valid_neuron_indices);
@@ -27,11 +32,12 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
             total_neurons = length(isort1);
             num_batches = ceil(total_neurons / batch_size);
             num_columns = size(F, 2);
-    
+
             % Figure principale
             main_fig = figure;
             screen_size = get(0, 'ScreenSize');
             set(main_fig, 'Position', screen_size);
+            figure(main_fig); % <-- rendre active main_fig avant subplot
     
             % Subplots (ax1, ax2, ax3)
             ax1 = subplot('Position', [0.1, 0.75, 0.85, 0.15]);
@@ -49,7 +55,12 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
             xlabel(ax3, 'Frame');
             ylabel(ax3, 'Proportion of Active Cells');
             title(ax3, 'Activity Over Consecutive Frames');
-            xlim(ax3, [0 num_columns]);
+            try
+                xlim(ax3, [1 num_columns]);
+            catch
+                warning('xlim skipped: num_columns invalid (%d)', num_columns);
+            end
+
             grid(ax3, 'on');
                 
             % Initialisation variable sélectionnée
@@ -63,8 +74,8 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
                 'Position', [0.1 0.21 0.85 0.02]);
             
             % Définis maintenant la callback en utilisant le slider_handle défini
-            slider_handle.Callback = @(src, ~) update_batch_display(slider_handle, F, isort1, batch_size, num_columns, ...
-                ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, selected_neurons);
+            slider_handle.Callback = @(src, ~) update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ...
+                ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data);
 
                     
             linkaxes([ax1, ax2, ax3], 'x');
@@ -91,7 +102,7 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
             setappdata(gcamp_fig, 'parent_figure', main_fig);
     
             % Initial display
-            update_batch_display(slider_handle, F, isort1, batch_size, num_columns, ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, selected_neurons);
+            update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data);
 
             % Attendre que la figure GCaMP soit fermée manuellement
             waitfor(gcamp_fig);
@@ -112,6 +123,8 @@ function selected_neurons_all = data_checking(data, gcamp_output_folders, curren
             fprintf('\nErreur à l''étape %d : %s\n', m, ME.message);
             selected_neurons_all{m} = [];
         end
+
+        waitfor(gcamp_fig);
     end
 end
 
@@ -202,11 +215,7 @@ function gcamp_close_callback(fig, index, current_gcamp_folder)
 end
 
 
-function update_batch_display(slider_handle, F, isort1, batch_size, num_columns, ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, selected_neurons)
-    
-    if nargin < 19
-            selected_neurons = [];
-    end
+function update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data)
 
     % Trouver figure GCaMP ou en créer une nouvelle
     figure_handle = findobj('Type', 'figure', 'Name', 'GCaMP Figure');
@@ -245,6 +254,12 @@ function update_batch_display(slider_handle, F, isort1, batch_size, num_columns,
     else
         selected_neurons_cellpose = [];
     end
+    
+    if ~isappdata(figure_handle, 'gcamp_colors')
+        rng(42); % pour reproductibilité
+        gcamp_colors = rand(length(data.outlines_gcampx{m}), 3); % une couleur par neurone
+        setappdata(figure_handle, 'gcamp_colors', gcamp_colors);
+    end
 
     % Réécrire dans appdata (inchangé si déjà existant)
     setappdata(figure_handle, 'selected_neurons_gcamp', selected_neurons_gcamp);
@@ -271,6 +286,7 @@ function update_batch_display(slider_handle, F, isort1, batch_size, num_columns,
     setappdata(figure_handle, 'neurons_in_batch', neurons_in_batch);
     setappdata(figure_handle, 'slider_handle', slider_handle);
     setappdata(figure_handle, 'F', F);
+    setappdata(figure_handle, 'DF', DF);
     setappdata(figure_handle, 'isort1', isort1);
     setappdata(figure_handle, 'batch_size', batch_size);
     setappdata(figure_handle, 'num_columns', num_columns);
@@ -293,8 +309,9 @@ function update_batch_display(slider_handle, F, isort1, batch_size, num_columns,
 
     % Mise à jour raster ax1 (sans neurones validés)
     cla(ax1);
-    imagesc(ax1, F(isort1_filtered, :));
-    [minValue, maxValue] = calculate_scaling(F);
+    DF_z = zscore(DF, [], 2);              % zscore ligne par ligne (chaque cellule)
+    imagesc(ax1, DF_z(isort1_filtered, :));
+    [minValue, maxValue] = calculate_scaling(DF_z);
     clim(ax1, [minValue, maxValue]);
     colormap(ax1, 'hot');
     axis(ax1, 'tight');
@@ -359,80 +376,87 @@ end
 
 
 function update_gcamp_figure(fig_handle)
-    % --- 1. Récupération des données de l'interface ---
-    meanImg = getappdata(fig_handle, 'meanImg');                      % Image de fond
-    outline_gcampx = getappdata(fig_handle, 'outline_gcampx');        % Contours GCaMP (x)
-    outline_gcampy = getappdata(fig_handle, 'outline_gcampy');        % Contours GCaMP (y)
-    outline_cellposex = getappdata(fig_handle, 'outline_cellposex');  % Contours Cellpose (x)
-    outline_cellposey = getappdata(fig_handle, 'outline_cellposey');  % Contours Cellpose (y)
-    neurons_in_batch = getappdata(fig_handle, 'neurons_in_batch');    % Liste des neurones du batch courant
-    selected_gcamp = getappdata(fig_handle, 'selected_neurons_gcamp');      % Neurones sélectionnés (GCaMP)
-    selected_cellpose = getappdata(fig_handle, 'selected_neurons_cellpose');% Neurones sélectionnés (Cellpose)
-    blue_indices = getappdata(fig_handle, 'blue_indices');            % Indices des neurones segmentés par Cellpose
+    % --- 1. Récupération des données ---
+    meanImg = getappdata(fig_handle, 'meanImg');
+    outline_gcampx = getappdata(fig_handle, 'outline_gcampx');
+    outline_gcampy = getappdata(fig_handle, 'outline_gcampy');
+    outline_cellposex = getappdata(fig_handle, 'outline_cellposex');
+    outline_cellposey = getappdata(fig_handle, 'outline_cellposey');
+    neurons_in_batch = getappdata(fig_handle, 'neurons_in_batch');
+    selected_gcamp = getappdata(fig_handle, 'selected_neurons_gcamp');
+    selected_cellpose = getappdata(fig_handle, 'selected_neurons_cellpose');
+    blue_indices = getappdata(fig_handle, 'blue_indices');
 
-    % Sécurité : initialiser vides si non définis
     if isempty(selected_gcamp), selected_gcamp = []; end
     if isempty(selected_cellpose), selected_cellpose = []; end
 
-    % --- 2. Créer une map : idx -> position dans outline_cellposex/y ---
-    % Cela garantit qu'on accède toujours aux bons outlines même en changeant de batch
+    % --- 2. Axe dédié ---
+    if ~isappdata(fig_handle, 'ax_gcamp')
+        ax_gcamp = axes('Parent', fig_handle);
+        setappdata(fig_handle, 'ax_gcamp', ax_gcamp);
+    else
+        ax_gcamp = getappdata(fig_handle, 'ax_gcamp');
+    end
+
+    cla(ax_gcamp);  % on efface uniquement cet axe
+    hold(ax_gcamp, 'on');
+    imagesc(ax_gcamp, meanImg);
+    colormap(ax_gcamp, gray);
+    axis(ax_gcamp, 'image');
+    set(ax_gcamp, 'YDir', 'reverse');
+    title(ax_gcamp, 'GCaMP outlines');
+
+    % --- 3. Couleurs stables pour GCaMP ---
+    if ~isappdata(fig_handle, 'gcamp_colors')
+        rng(42); % pour reproductibilité
+        gcamp_colors = rand(length(outline_gcampx), 3);
+        setappdata(fig_handle, 'gcamp_colors', gcamp_colors);
+    else
+        gcamp_colors = getappdata(fig_handle, 'gcamp_colors');
+    end
+
+    % --- 4. Map Cellpose indices ---
     map_cellpose_idx = containers.Map('KeyType', 'double', 'ValueType', 'double');
     for k0 = 1:length(blue_indices)
         map_cellpose_idx(blue_indices(k0)) = k0;
     end
 
-    % --- 3. Affichage de la figure ---
-    figure(fig_handle);
-    clf;
-    hold on;
-    imagesc(meanImg);           % Affiche l’image de fond
-    colormap(gca, gray);
-    axis image;
-    set(gca, 'YDir', 'reverse');% Inversion verticale pour affichage image classique
-    title('GCaMP outlines');
-
-    % --- 4. Tracer les neurones du batch actuel ---
+    % --- 5. Tracer les neurones du batch ---
     for n = 1:length(neurons_in_batch)
-        idx = neurons_in_batch(n); % Neurone courant
+        idx = neurons_in_batch(n);
 
-        if ismember(idx, blue_indices)
-            if map_cellpose_idx.isKey(idx)
-                k = map_cellpose_idx(idx);
-                if k <= length(outline_cellposex)
-                    color = 'b'; markerSize = 1;
-                    if ismember(idx, selected_cellpose)
-                        color = 'r'; markerSize = 7;
-                    end
-                    % Tracer contour ici
-                    h = plot(outline_cellposex{k}, outline_cellposey{k}, '.', ...
-                    'MarkerSize', markerSize, 'Color', color);
-                    set(h, 'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'cellpose'));
-                    set(h, 'HitTest', 'on', 'PickableParts', 'all');
+        % Cellpose neurons
+        if ismember(idx, blue_indices) && map_cellpose_idx.isKey(idx)
+            k = map_cellpose_idx(idx);
+            if k <= length(outline_cellposex)
+                if ismember(idx, selected_cellpose)
+                    color = 'r'; ms = 7;
                 else
-                    warning('k (%d) dépasse la taille des outlines', k);
+                    color = 'b'; ms = 1;
                 end
-            else
-                warning('Index %d absent dans map_cellpose_idx', idx);
-            end
-        
-        elseif idx <= length(outline_gcampx) && idx <= length(outline_gcampy)
-            % Sinon, c'est un neurone GCaMP
-            color = rand(1,3); markerSize = 1;
-            if ismember(idx, selected_gcamp)
-                color = 'r'; markerSize = 7;
+                h = plot(ax_gcamp, outline_cellposex{k}, outline_cellposey{k}, '.', ...
+                         'MarkerSize', ms, 'Color', color);
+                set(h, 'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'cellpose'));
+                set(h, 'HitTest', 'on', 'PickableParts', 'all');
             end
 
-            % Trace le contour
-            h = plot(outline_gcampx{idx}, outline_gcampy{idx}, '.', ...
-                'MarkerSize', markerSize, 'Color', color);
+        % GCaMP neurons
+        elseif idx <= length(outline_gcampx)
+            if ismember(idx, selected_gcamp)
+                color = 'r'; ms = 7;
+            else
+                color = gcamp_colors(idx, :); ms = 1;
+            end
+            h = plot(ax_gcamp, outline_gcampx{idx}, outline_gcampy{idx}, '.', ...
+                     'MarkerSize', ms, 'Color', color);
             set(h, 'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'gcamp'));
             set(h, 'HitTest', 'on', 'PickableParts', 'all');
         end
     end
 
-    hold off;
+    hold(ax_gcamp, 'off');
 
-    % --- 5. Ajouter le bouton de validation s’il n’existe pas déjà ---
+    % --- 6. Bouton de validation ---
     existing_btn = findobj(fig_handle, 'Type', 'uicontrol', 'String', 'Valider la sélection');
     if isempty(existing_btn)
         uicontrol('Parent', fig_handle, 'Style', 'pushbutton', ...
@@ -441,6 +465,7 @@ function update_gcamp_figure(fig_handle)
             'Callback', @validate_selection_callback);
     end
 end
+
 
 
 function neuron_clicked(~, ~, idx, fig_handle, source)

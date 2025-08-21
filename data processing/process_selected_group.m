@@ -1,4 +1,4 @@
-function [selected_groups, daytime] = process_selected_group(selected_groups)
+function [selected_groups, daytime] = process_selected_group(selected_groups, check_data)
 
     % Prompt for the first choice
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
@@ -71,7 +71,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
     
         % Preprocess and process data
         data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
-    
+        
         % Performing mean images
         meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
 
@@ -79,12 +79,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
         avg_block = 5; % Moyenne toutes les 5 frames
         [motion_energy_group, avg_motion_energy_group]  = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block);      
             
-        % Ask user if they want to check their data
-        check_data = input('Do you want to check your data? (1/2): ', 's');
-        
         if strcmpi(check_data, '1')
-            
-            %build_rasterplot_checking(data.DF, data.isort1, data.MAct, gcamp_output_folders, current_animal_group, current_ages_group, data.sampling_rate, data.DF, data.isort1, data.DF_blue, data.MAct_blue, data.MAct_blue_not_blue, avg_motion_energy_group, avg_block)
 
             % Perform data checking
             selected_neurons_all = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_ages_group, meanImgs);
@@ -97,9 +92,10 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                 filtered_gcamp_folders = current_gcamp_folders_names_group(checked_indices);
                 filtered_blue_folders = current_blue_folders_names_group(checked_indices);
                 
-                % Appeler create_base_folders avec ces dossiers filtrés
+                % Créer des nouveaux dossiers de sortie avec ces dossiers filtrés
                 processing_choice1 = '2';
                 processing_choice2 = '2';
+                daytime = datestr(currentDatetime, 'yy_mm_dd_HH_MM');
                 [gcamp_output_folders_filtered, blue_output_folders_filtered] = create_base_folders(...
                     filtered_date_group_paths, filtered_gcamp_folders, filtered_blue_folders, ...
                     daytime, processing_choice1, processing_choice2, current_animal_group);
@@ -111,7 +107,10 @@ function [selected_groups, daytime] = process_selected_group(selected_groups)
                 % Preprocess and process data
                 data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
                 meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);     
+                
             end
+
+            %build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
         end
         
         build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group)
@@ -188,15 +187,15 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
 
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
-            [~, F_gcamp_sorted, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
-            DF_gcamp = DF_processing(F_gcamp_sorted);
+            [~, F_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
+            DF_gcamp = DF_processing(F_gcamp);
             [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, current_gcamp_folders_group{m}, ops);
             [Raster_gcamp, MAct_gcamp, ~] = Sumactivity(DF_gcamp, MinPeakDistance, data.synchronous_frames{m});
 
-            save(filePath, 'MinPeakDistance', 'F_gcamp_sorted', 'iscell', 'DF_gcamp', 'isort1_gcamp', ...
+            save(filePath, 'MinPeakDistance', 'F_gcamp', 'iscell', 'DF_gcamp', 'isort1_gcamp', ...
                  'isort2_gcamp', 'Sm_gcamp', 'Raster_gcamp', 'MAct_gcamp');
 
-            data.F_gcamp{m} = F_gcamp_sorted;
+            data.F_gcamp{m} = F_gcamp;
             data.DF_gcamp{m} = DF_gcamp;
             data.isort1_gcamp{m} = isort1_gcamp;
             data.isort2_gcamp{m} = isort2_gcamp;
@@ -328,6 +327,9 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
     motion_energy_group = cell(numFolders, 1);
     avg_motion_energy_group = cell(numFolders, 1);
 
+    % chemin vers Fiji (à modifier si nécessaire)
+    fijiPath = 'C:\Users\goldstein\Fiji.app\fiji-windows-x64.exe';
+
     for m = 1:length(date_group_paths)
 
         camPath = fullfile(date_group_paths{m}, 'cam', 'Concatenated');
@@ -347,7 +349,7 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
         filepath = fullfile(camFolders{m}, 'cam_crop.tif');
 
         if exist(filepath, 'file') == 2
- 
+            
             savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat'); 
     
             if exist(savePath, 'file') == 2 
@@ -356,13 +358,21 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
                 motion_energy = data.motion_energy;
     
             else
+                choice = input('Voulez-vous ouvrir le film dans Fiji pour cropper ? (1/2) ', 's');
+                if strcmpi(choice, '1')
+                    fprintf('Ouverture de %s dans Fiji...\n', filepath);
+    
+                    % ouvrir Fiji avec le .tif
+                    system(sprintf('"%s" "%s"', fijiPath, filepath));
+                end
+
                 motion_energy = compute_motion_energy(filepath);
                 save(savePath, 'motion_energy');
+                    
             end
             
             motion_energy_group{m} = motion_energy; 
             avg_motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'  
-
             avg_motion_energy_group{m} = avg_motion_energy;
     
         else

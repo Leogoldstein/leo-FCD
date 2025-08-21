@@ -44,7 +44,10 @@ end
 % Génère les raster plots et sauve
 % garde toutes les données traitées dans selected_groups.
 
-[selected_groups, daytime] = process_selected_group(selected_groups);
+%check_data = input('Do you want to check your data? (1/2): ', 's');
+check_data = 2;
+
+[selected_groups, daytime] = process_selected_group(selected_groups, check_data);
 
 %% Processing and analysis
 
@@ -57,7 +60,16 @@ end
 % Charge ou calcule les données nécessaires (masques, SCEs, clusters, corrélations).
 % Produit et sauvegarde les résultats (fichiers .mat).
 
-[analysis_choices1, selected_groups] = pipeline_for_data_processing(selected_groups);
+
+% % Ask for analysis types, multiple choices separated by spaces
+% analysis_choices_str = input('Choose analysis types (separated by spaces): pairwise correlations (1), SCEs (2), global measures of activity (3), clusters analysis (4)? ', 's');
+% 
+% % Convert the string of choices into an array of numbers
+% analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
+
+analysis_choices = [1 2];
+
+selected_groups = pipeline_for_data_processing(selected_groups, analysis_choices);
 
 %%
 create_ppt_from_figs(selected_groups, daytime)
