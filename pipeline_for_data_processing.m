@@ -88,6 +88,8 @@ function selected_groups = pipeline_for_data_processing(selected_groups, analysi
 
 end
 
+
+
 %% Helper Functions (loading and processing)
 
 function [all_Raster_gcamp,all_sce_n_cells_threshold, all_synchronous_frames, validDirectories, all_IDX2, all_RaceOK, all_clusterMatrix, all_NClOK, all_assemblystat, all_outlines_gcampx, all_outlines_gcampy, all_meandistance_assembly] = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_gcamp_folders_group, current_env_group)

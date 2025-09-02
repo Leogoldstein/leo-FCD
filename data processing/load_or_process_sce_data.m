@@ -17,6 +17,9 @@ function data = load_or_process_sce_data(current_animal_group, current_dates_gro
     for m = 1:numFolders
         % Create the full file path for results_SCEs.mat
         filePath = fullfile(gcamp_output_folders{m}, 'results_SCEs.mat');
+        
+         % Option : supprimer un champs pour le recharger
+        removeFieldsByIndex(filePath, new_fields, 1:5);
 
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
@@ -55,4 +58,34 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
     else
         value = defaultValue;
     end
+end
+
+function removeFieldsByIndex(filePath, fields, indicesToRemove)
+    % Vérifie si le fichier existe
+    if exist(filePath, 'file') ~= 2
+        error('Le fichier %s n''existe pas.', filePath);
+    end
+
+    % Charger les données
+    loaded = load(filePath);
+
+    % Vérifier que les indices sont valides
+    if any(indicesToRemove < 1) || any(indicesToRemove > numel(fields))
+        error('Indices invalides. Ils doivent être compris entre 1 et %d.', numel(fields));
+    end
+
+    % Boucle sur les indices
+    for i = 1:numel(indicesToRemove)
+        fieldName = fields{indicesToRemove(i)};
+        if isfield(loaded, fieldName)
+            loaded = rmfield(loaded, fieldName);
+            fprintf('Champ "%s" supprimé.\n', fieldName);
+        else
+            warning('Champ "%s" absent du fichier.\n', fieldName);
+        end
+    end
+
+    % Sauvegarder les données mises à jour
+    save(filePath, '-struct', 'loaded');
+    fprintf('Mise à jour terminée.\n');
 end

@@ -1,4 +1,4 @@
-function plot_DF(all_DF, current_animal_group, current_ages_group, gcamp_output_folders, all_DF_all, all_blue_indices)
+function plot_DF_all(all_DF, current_animal_group, current_ages_group, gcamp_output_folders, all_DF_all, all_blue_indices)
 
     % Boucle sur chaque élément de all_DF
     for idx = 1:length(all_DF)

@@ -94,8 +94,10 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
         if strcmpi(check_data, '1')
 
             % Perform data checking
-            selected_neurons_all = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_ages_group, meanImgs);
-
+            [selected_neurons_all, selected_in_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs);
+            
+            waitfor(selected_neurons_all);
+            
             checked_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
             
             if ~isempty(checked_indices)
@@ -153,18 +155,51 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
     end
 end
 
+function removeFieldsByIndex(filePath, fields, indicesToRemove)
+    % Vérifie si le fichier existe
+    if exist(filePath, 'file') ~= 2
+        error('Le fichier %s n''existe pas.', filePath);
+    end
+
+    % Charger les données
+    loaded = load(filePath);
+
+    % Vérifier que les indices sont valides
+    if any(indicesToRemove < 1) || any(indicesToRemove > numel(fields))
+        error('Indices invalides. Ils doivent être compris entre 1 et %d.', numel(fields));
+    end
+
+    % Boucle sur les indices
+    for i = 1:numel(indicesToRemove)
+        fieldName = fields{indicesToRemove(i)};
+        if isfield(loaded, fieldName)
+            loaded = rmfield(loaded, fieldName);
+            fprintf('Champ "%s" supprimé.\n', fieldName);
+        else
+            warning('Champ "%s" absent du fichier.\n', fieldName);
+        end
+    end
+
+    % Sauvegarder les données mises à jour
+    save(filePath, '-struct', 'loaded');
+    fprintf('Mise à jour terminée.\n');
+end
+
+
 
 function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path)
 
     numFolders = length(gcamp_output_folders);
 
     % Définir tous les champs dans une seule structure
-    fields = {'F_gcamp', 'DF_gcamp', 'sampling_rate', 'synchronous_frames', ...
-              'isort1_gcamp', 'isort2_gcamp', 'Sm_gcamp', 'Raster_gcamp', 'MAct_gcamp', ...
+    fields = {'F_gcamp', 'DF_gcamp', 'iscell', 'sampling_rate', 'synchronous_frames', ...
+              'isort1_gcamp', 'isort2_gcamp', 'Sm_gcamp', ...
+              'thresholds_gcamp', 'Acttmp2_gcamp', 'Raster_gcamp', 'MAct_gcamp', ...
               'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth', ...
-              'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', 'Raster_blue', 'MAct_blue', 'MAct_gcamp_not_blue', ...
+              'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', ...
+              'thresholds_blue', 'Raster_blue', 'MAct_blue', 'MAct_gcamp_not_blue', ...
               'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', ...
-              'F_combined', 'DF_combined', 'isort1_combined', 'blue_indices', 'isort2_combined', 'Raster_combined', 'MAct_combined', 'Sm_combined'};
+              'F_combined', 'DF_combined', 'isort1_combined', 'blue_indices', 'isort2_combined', 'thresholds_combined', 'Raster_combined', 'MAct_combined', 'Sm_combined'};
 
     % Initialisation
     data = init_data_struct(numFolders, fields);
@@ -187,7 +222,11 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                 data.(fields{f}){m} = getFieldOrDefault(loaded, fields{f}, []);
             end
         end
-
+        
+        % Option : supprimer un champs pour le recharger
+        % Supprimer les 3 premiers champs
+        %removeFieldsByIndex(filePath, fields, 1:11);
+        
         % Sampling rate et synchronous_frames
         if isempty(data.sampling_rate{m})
             [~, sampling_rate, ~] = find_key_value(current_env_group{m});
@@ -196,22 +235,38 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         if isempty(data.synchronous_frames{m})
             data.synchronous_frames{m} = round(0.2 * data.sampling_rate{m});
         end
-
+        
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
             [~, F_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
             DF_gcamp = DF_processing(F_gcamp);
-            [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(DF_gcamp, current_gcamp_folders_group{m}, ops);
-            [Raster_gcamp, MAct_gcamp, ~] = Sumactivity(DF_gcamp, MinPeakDistance, data.synchronous_frames{m});
-
-            save(filePath, 'MinPeakDistance', 'F_gcamp', 'iscell', 'DF_gcamp', 'isort1_gcamp', ...
-                 'isort2_gcamp', 'Sm_gcamp', 'Raster_gcamp', 'MAct_gcamp');
-
+            
+            save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp');
+            
             data.F_gcamp{m} = F_gcamp;
             data.DF_gcamp{m} = DF_gcamp;
+            data.iscell{m} = iscell;
+        end
+
+        if isempty(data.isort1_gcamp{m})
+            [~, ~, ops, ~, ~] = load_data(current_gcamp_folders_group{m});
+            [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(data.DF_gcamp{m}, current_gcamp_folders_group{m}, ops);
+         
+            save(filePath, 'isort1_gcamp','isort2_gcamp', 'Sm_gcamp', '-append');
+
             data.isort1_gcamp{m} = isort1_gcamp;
             data.isort2_gcamp{m} = isort2_gcamp;
             data.Sm_gcamp{m} = Sm_gcamp;
+
+        end
+        
+        if isempty(data.thresholds_gcamp{m})
+            [Raster_gcamp, MAct_gcamp, Acttmp2_gcamp, thresholds_gcamp] = Sumactivity(data.DF_gcamp{m}, MinPeakDistance, data.synchronous_frames{m});
+
+            save(filePath, 'MinPeakDistance', 'thresholds_gcamp', 'Acttmp2_gcamp', 'Raster_gcamp', 'MAct_gcamp', '-append');
+            
+            data.thresholds_gcamp{m} = thresholds_gcamp;
+            data.Acttmp2_gcamp{m} = Acttmp2_gcamp;
             data.Raster_gcamp{m} = Raster_gcamp;
             data.MAct_gcamp{m} = MAct_gcamp;
         end
@@ -276,7 +331,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
             % Traitement DF/F
             DF_blue = DF_processing(F_blue);
-            [Raster_blue, MAct_blue, ~] = Sumactivity(DF_blue, MinPeakDistance, data.synchronous_frames{m});
+            [Raster_blue, MAct_blue, ~, thresholds_blue] = Sumactivity(DF_blue, MinPeakDistance, data.synchronous_frames{m});
         
             DF_gcamp_not_blue = DF_processing(F_gcamp_not_blue);
             [~, MAct_gcamp_not_blue, ~] = Sumactivity(DF_gcamp_not_blue, MinPeakDistance, data.synchronous_frames{m});
@@ -288,13 +343,14 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
             % Sauvegarde
             save(filePath, 'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', ...
-                'Raster_blue', 'MAct_blue', 'MAct_gcamp_not_blue', '-append');
+                'thresholds_blue', 'Raster_blue', 'MAct_blue', 'MAct_gcamp_not_blue', '-append');
         
             % Mise à jour de la structure data
             data.F_blue{m} = F_blue;
             data.F_gcamp_not_blue{m} = F_gcamp_not_blue;
             data.DF_blue{m} = DF_blue;
             data.DF_gcamp_not_blue{m} = DF_gcamp_not_blue;
+            data.thresholds_blue{m} = thresholds_blue;
             data.Raster_blue{m} = Raster_blue;
             data.MAct_blue{m} = MAct_blue;
             data.MAct_gcamp_not_blue{m} = MAct_gcamp_not_blue;
@@ -314,10 +370,10 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
             % Traitement raster et tri
             [isort1_combined, isort2_combined, Sm_combined] = raster_processing(DF_combined, current_gcamp_folders_group{m});
-            [Raster_combined, MAct_combined, ~] = Sumactivity(DF_combined, MinPeakDistance, data.synchronous_frames{m});
+            [Raster_combined, MAct_combined, ~, thresholds_combined] = Sumactivity(DF_combined, MinPeakDistance, data.synchronous_frames{m});
         
             % Sauvegarde
-            save(filePath, 'F_combined', 'DF_combined', 'Raster_combined', 'MAct_combined', 'isort1_combined', 'blue_indices', '-append');
+            save(filePath, 'F_combined', 'DF_combined', 'thresholds_combined', 'Raster_combined', 'MAct_combined', 'isort1_combined', 'blue_indices', '-append');
         
             % Mise à jour de la structure data
             data.F_combined{m} = F_combined;
@@ -326,6 +382,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             data.isort2_combined{m} = isort2_combined;
             data.blue_indices{m} = blue_indices;  
             data.Sm_combined{m} = Sm_combined;
+            data.thresholds_combined{m} = thresholds_combined;
             data.Raster_combined{m} = Raster_combined;
             data.MAct_combined{m} = MAct_combined;
         end

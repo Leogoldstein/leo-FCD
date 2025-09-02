@@ -1,6 +1,7 @@
 %% Preprocessing
 
 clear
+close all
 
 % % Définir le chemin vers Python dans l'environnement Suite2p
 pyExec = "C:\Users\goldstein\AppData\Local\anaconda3\envs\suite2p\python.exe";
@@ -45,9 +46,13 @@ end
 % garde toutes les données traitées dans selected_groups.
 
 %check_data = input('Do you want to check your data? (1/2): ', 's');
-check_data = 2;
+check_data = '1';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, check_data);
+
+
+%%
+analyze_variability_summary(selected_groups)
 
 %% Processing and analysis
 
@@ -66,7 +71,8 @@ check_data = 2;
 % analysis_choices = str2num(analysis_choices_str); %#ok<ST2NM>
 
 analysis_choices = [1 2 3];
+%analysis_choices = 2;
 
 selected_groups = pipeline_for_data_processing(selected_groups, analysis_choices);
-
+%%
 create_ppt_from_figs(selected_groups, daytime)

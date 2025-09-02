@@ -7,7 +7,7 @@ function handleSingleImages(subDir, saveSingleImDir) {
     var SubFolders = getFileList(subDir);
     for (var m = 0; m < SubFolders.length; m++) {
         if (startsWith(SubFolders[m], "SingleImage") && File.isDirectory(subDir + File.separator + SubFolders[m])) {
-            var SingleImageFolder = subDir + File.separator + SubFolders[m] + File.separator;
+            var SingleImageFolder = subDir + SubFolders[m];
             var tifFiles = getFileList(SingleImageFolder);
             for (var n = 0; n < tifFiles.length; n++) {
                 if (endsWith(tifFiles[n], ".ome.tif")) {
@@ -295,21 +295,26 @@ function processTifFile(tifFilePath, saveDir) {
             return;
         }
 
-        open(tifFilePath);
-
-        if (channel == "Ch2") {
-            run("Green");
-        } else if (channel == "Ch1") {
-            run("Red");
-        } else if (channel == "Ch3") {
-            run("Blue");
-        } else {
-            print("Canal non reconnu : " + channel);
-            return;
-        }
-
-        print("Saving to: " + fullPath);
-        saveAs("Tiff", fullPath);
+        if (File.exists(tifFilePath)) {
+		    open(tifFilePath);
+	
+	        if (channel == "Ch2") {
+	            run("Green");
+	        } else if (channel == "Ch1") {
+	            run("Red");
+	        } else if (channel == "Ch3") {
+	            run("Blue");
+	        } else {
+	            print("Canal non reconnu : " + channel);
+	            return;
+	        }
+	
+	        print("Saving to: " + fullPath);
+	        saveAs("Tiff", fullPath);
+	        
+	    } else {
+		    print("Fichier non trouvé ou format non supporté : " + tifFilePath);
+		}
 
     } else {
         print("Nom du fichier ne correspond pas au modèle attendu.");
