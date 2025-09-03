@@ -65,8 +65,6 @@ function selectedFolders = select_folders(initial_folder)
 
                     'mTor16\ani4\2024-11-21';
 
-                    'mTor16\ani6\2024-11-23';
-
                     'mTor17\ani3\2024-12-19'
 
                 };

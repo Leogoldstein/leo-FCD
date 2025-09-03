@@ -1,4 +1,4 @@
-function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
+function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder, badIdx)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -25,7 +25,10 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
         end
         
         F_unsorted = F_unsorted(:, 1:36000);
-        F = double(F_unsorted(iscell(:,1) > 0, :));  
+        keepMask = iscell(:,1) > 0;  % garde seulement les vraies cellules
+        F = double(F_unsorted(keepMask, :));  
+        iscell = iscell(keepMask, :);
+        stat   = stat(keepMask);
 
     elseif strcmp(ext, '.mat')
         % Load .mat files
@@ -35,10 +38,35 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
         F_unsorted = data.F;
         iscell = data.iscell;
         ops = data.ops;
-        stat = data.stat;  % Assuming stat is available in .mat file
+        stat = data.stat;
         
-        F = double(F_unsorted(iscell(:,1) > 0, :));  
+        keepMask = iscell(:,1) > 0;
+        F = double(F_unsorted(keepMask, :));  
+        iscell = iscell(keepMask, :);
+        stat   = stat(keepMask);
+
     else
         error('Unsupported file type: %s', ext);
     end   
+    
+    % ---- SUPPRESSION DES CELLULES QUI TOMBENT À 0 ----
+    rowsWithZero = any(F == 0, 2);
+
+    % ---- SUPPRESSION DES INDICES DONNÉS EN ARGUMENT (par rapport à F final) ----
+    rowsToRemove = rowsWithZero;
+    if ~isempty(badIdx)
+        % Vérifie que les indices sont valides
+        badIdx = badIdx(badIdx >= 1 & badIdx <= size(F,1));
+        rowsToRemove(badIdx) = true;
+    end
+
+    % Appliquer la suppression
+    F(rowsToRemove, :) = [];
+    iscell(rowsToRemove, :) = [];
+    stat(rowsToRemove) = [];
+
+    % ---- LOG ----
+    fprintf('Suppression de %d cellules (dont %d à cause de F==0, %d via argument).\n', ...
+        sum(rowsToRemove), sum(rowsWithZero), numel(badIdx));
+
 end

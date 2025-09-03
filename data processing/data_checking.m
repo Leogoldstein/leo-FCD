@@ -103,12 +103,28 @@ function [selected_neurons_ordered, selected_neurons_original] = data_checking(d
             linkaxes([ax1, ax2, ax3], 'x');
             sgtitle(sprintf('%s – %s - %s', current_animal_group, current_dates_group{m}, current_ages_group{m}), 'FontWeight', 'bold');
     
-            % --- Affichage initial ---
+           % --- Affichage initial ---
             update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ...
                 ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, gcamp_fig);
-        catch ME
-            fprintf('\nErreur à l''étape %d : %s\n', m, ME.message);
-            selected_neurons_ordered{m} = [];
+            
+            % --- Récupérer résultats ---
+            uiwait(gcamp_fig);
+            
+            % --- Récupérer résultats ---
+            key = sprintf('selected_result_%d', m);
+            if isappdata(0, key)
+                selected_neurons_ordered{m} = getappdata(0, key);
+                rmappdata(0, key);  % nettoyage
+            else
+                selected_neurons_ordered{m} = [];
+            end
+            
+            % Conversion en indices originaux
+            if ~isempty(selected_neurons_ordered{m})
+                selected_neurons_original{m} = valid_neuron_indices(selected_neurons_ordered{m});
+            else
+                selected_neurons_original{m} = [];
+            end
         end
     end
 end
@@ -247,7 +263,6 @@ function update_gcamp_figure(fig_handle)
     neurons_in_batch = getappdata(fig_handle, 'neurons_in_batch');
     blue_indices = getappdata(fig_handle, 'blue_indices');
     selected_total = getappdata(fig_handle, 'selected_neurons_total');
-
     if isempty(selected_total), selected_total = []; end
 
     % --- 2. Axe dédié ---
@@ -257,6 +272,7 @@ function update_gcamp_figure(fig_handle)
     else
         ax_gcamp = getappdata(fig_handle, 'ax_gcamp');
     end
+
     cla(ax_gcamp);
     hold(ax_gcamp, 'on');
     imagesc(ax_gcamp, meanImg);
@@ -265,7 +281,13 @@ function update_gcamp_figure(fig_handle)
     set(ax_gcamp, 'YDir', 'reverse');
     title(ax_gcamp, 'GCaMP outlines');
 
-    % --- 3. Couleurs stables pour GCaMP ---
+    % --- 3. Vérifier le flag pour masquage partiel ---
+    show_traces = true;
+    if isappdata(fig_handle, 'show_selected_traces')
+        show_traces = getappdata(fig_handle, 'show_selected_traces');
+    end
+
+    % --- 4. Couleurs stables pour GCaMP ---
     if ~isappdata(fig_handle, 'gcamp_colors')
         rng(42); % reproductible
         gcamp_colors = rand(length(outline_gcampx), 3);
@@ -274,15 +296,20 @@ function update_gcamp_figure(fig_handle)
         gcamp_colors = getappdata(fig_handle, 'gcamp_colors');
     end
 
-    % --- 4. Map Cellpose indices ---
+    % --- 5. Map Cellpose indices ---
     map_cellpose_idx = containers.Map('KeyType', 'double', 'ValueType', 'double');
     for k0 = 1:length(blue_indices)
         map_cellpose_idx(blue_indices(k0)) = k0;
     end
 
-    % --- 5. Tracer les neurones du batch ---
+    % --- 6. Tracer les neurones du batch ---
     for n = 1:length(neurons_in_batch)
         idx = neurons_in_batch(n);
+
+        % Si neurone sélectionné et show_traces == false → on saute
+        if ~show_traces && ismember(idx, selected_total)
+            continue;
+        end
 
         % Cellpose neurons
         if ismember(idx, blue_indices) && map_cellpose_idx.isKey(idx)
@@ -409,8 +436,11 @@ function toggle_traces_display(fig_handle, btn)
         btn.String = 'Masquer traces';
     end
 
+    % Mettre à jour les 2 affichages
     update_traces_subplot(fig_handle);
+    update_gcamp_figure(fig_handle);
 end
+
 
 % --- Clic cellule ---
 function neuron_clicked(~, ~, idx, fig_handle, source)
@@ -437,34 +467,50 @@ function neuron_clicked(~, ~, idx, fig_handle, source)
 end
 
 
-% --- Validation bouton ---
 function validate_selection(fig, index, current_gcamp_folder)
     if ~isvalid(fig), return; end
-    key = sprintf('selected_result_%d', index);
-    if isappdata(0, key)
-        selected_neurons = getappdata(0, key);
+
+    % Récupérer la sélection courante depuis la figure
+    if isappdata(fig, 'selected_neurons_total')
+        selected_neurons = getappdata(fig, 'selected_neurons_total');
     else
         selected_neurons = [];
     end
 
+    % Sauvegarder temporairement dans le root pour récupération après uiwait
+    setappdata(0, sprintf('selected_result_%d', index), selected_neurons);
+
     % Ask the user if they want to launch Suite2p
     answer = questdlg('Voulez-vous démarrer Suite2p pour processer cet enregistrement?', ...
-        'Oui', 'Non');
-    
-    % If the user answers "Yes", launch suite2p
+                      'Suite2p', 'Oui', 'Non', 'Non');
+
+    % Sauvegarder la réponse
     if strcmp(answer, 'Oui')
-            setappdata(0, sprintf('selection_saved_%d', index), true);
-            setappdata(0, sprintf('selected_result_%d', index), selected_neurons);
-            show_recap_figure(fig, selected_neurons, index, current_gcamp_folder);
-            if isvalid(fig), delete(fig); end
+        setappdata(0, sprintf('selection_saved_%d', index), true);
+        show_recap_figure(fig, selected_neurons, index, current_gcamp_folder);
     elseif strcmp(answer, 'Non')
-            setappdata(0, sprintf('selection_saved_%d', index), false);
-            setappdata(0, sprintf('selected_result_%d', index), selected_neurons);
-            if isvalid(fig), delete(fig); end
+        setappdata(0, sprintf('selection_saved_%d', index), false);
     else
-            return;
+        setappdata(0, sprintf('selection_saved_%d', index), false);
     end
+    
+    % Fermer les figures et reprendre l'exécution
+    try
+        uiresume(fig);  % libère uiwait dans la fonction principale
+    catch
+    end
+
+    if isappdata(fig, 'parent_figure')
+        parent_fig = getappdata(fig, 'parent_figure');
+        if ~isempty(parent_fig) && isvalid(parent_fig)
+            set(parent_fig, 'DeleteFcn', '');
+            delete(parent_fig);
+        end
+    end
+    set(fig, 'DeleteFcn', '');
+    delete(fig);
 end
+
 
 % --- Affichage récapitulatif ---
 function show_recap_figure(fig, selected_neurons, index, current_gcamp_folder)
@@ -557,31 +603,66 @@ function [min_val, max_val] = calculate_scaling(data)
 end
 
 function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, current_ages_group)
-    % --- 1. Récupérer les neurones sélectionnés ---
-    selected_neurons_ordered = getappdata(gcamp_fig, 'selected_neurons_total');
+    % --- 1. Récupérer les neurones sélectionnés dans le batch courant ---
+    selected_neurons_total = getappdata(gcamp_fig, 'selected_neurons_total');
+    neurons_in_batch = getappdata(gcamp_fig, 'neurons_in_batch');
+
+    % Filtrer uniquement ceux du batch courant
+    selected_neurons_ordered = intersect(selected_neurons_total, neurons_in_batch, 'stable');
+
     if isempty(selected_neurons_ordered)
-        warndlg('Aucun neurone sélectionné pour l''inspection.', 'Attention');
+        warndlg('Aucun neurone sélectionné dans ce batch.', 'Attention');
         return;
     end
 
-    % --- 2. Récupérer DF pour calculer les neurones valides ---
+    % --- 2. Récupérer DF et indices valides ---
     DF = data.DF_gcamp{idx};
+    F = data.F_gcamp{idx};
     valid_neurons = any(~isnan(DF), 2);
     valid_neuron_indices = find(valid_neurons);
 
-    % --- 3. Transformer en indices originaux ---
+    % Indices originaux
     selected_neurons_original = valid_neuron_indices(selected_neurons_ordered);
 
-    % --- 4. Préparer les données pour plot_F_and_DF_selected ---
-    all_F = {data.F_gcamp{idx}};
-    all_DF = {DF};
-    all_thresholds = {data.thresholds_gcamp{idx}};    
-    all_Acttmp2 = {data.Acttmp2_gcamp{idx}};          
-    sampling_rate = data.sampling_rate{idx};          
+    % --- 3. Préparer figure unique ---
+    fig = figure('Name', sprintf('Inspection – %s (%s)', current_animal_group, current_ages_group{idx}));
+    screen_size = get(0, 'ScreenSize');
+    set(fig, 'Position', [50, 50, screen_size(3)*0.8, screen_size(4)*0.8]);
 
-    % --- 5. Appel de la fonction d’inspection ---
-    neighbor_range = 2; % afficher +/- 2 voisins
-    plot_F_and_DF_selected(all_F, all_DF, all_thresholds, all_Acttmp2, ...
-        sampling_rate, current_animal_group, current_ages_group, ...
-        selected_neurons_original, neighbor_range);
+    tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+    % --- 4. Tracer F ---
+    ax1 = nexttile;
+    hold(ax1, 'on');
+    offset = 0;
+    for k = 1:length(selected_neurons_original)
+        cellIdx = selected_neurons_original(k);
+        trace = F(cellIdx, :);
+        plot(ax1, trace + offset, 'LineWidth', 1);
+        text(size(F,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax1);
+        offset = offset + max(trace)*1.2;
+    end
+    hold(ax1, 'off');
+    xlabel(ax1, 'Frame');
+    ylabel(ax1, 'F (a.u.)');
+    title(ax1, 'Traces F des neurones sélectionnés');
+    grid(ax1, 'on');
+
+    % --- 5. Tracer ΔF/F ---
+    ax2 = nexttile;
+    hold(ax2, 'on');
+    offset = 0;
+    for k = 1:length(selected_neurons_original)
+        cellIdx = selected_neurons_original(k);
+        trace = DF(cellIdx, :);
+        plot(ax2, trace + offset, 'LineWidth', 1);
+        text(size(DF,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax2);
+        offset = offset + max(trace)*1.5;
+    end
+    hold(ax2, 'off');
+    xlabel(ax2, 'Frame');
+    ylabel(ax2, '\DeltaF/F');
+    title(ax2, 'Traces ΔF/F des neurones sélectionnés');
+    grid(ax2, 'on');
 end
+

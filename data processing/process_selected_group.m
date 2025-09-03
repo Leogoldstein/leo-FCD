@@ -1,4 +1,4 @@
-function [selected_groups, daytime] = process_selected_group(selected_groups, check_data)
+function [selected_groups, daytime] = process_selected_group(selected_groups, check_data, processing_choice1, processing_choice2)
     
     last_animal_type = '';
 
@@ -7,23 +7,6 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
         current_animal_group = selected_groups(k).animal_group;
         current_animal_type = selected_groups(k).animal_type;
         
-        % Vérifier s’il y a un changement d’animal_type
-        if ~strcmp(current_animal_type, last_animal_type)
-                
-            disp(['Changement de type détecté : ' last_animal_type ' -> ' current_animal_type]);
-               
-            % Prompt for the first choice
-            processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
-            
-            % Check if processing_choice1 is 'no'
-            if strcmp(processing_choice1, '2')
-                % If the answer is 'no', prompt for the second choice
-                processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
-            else
-                processing_choice2 = [];
-            end
-        end
-    
         % Mettre à jour la valeur pour la prochaine itération
         last_animal_type = current_animal_type;
         
@@ -78,9 +61,34 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
         currentDatetime = datetime('now');
         daytime = datestr(currentDatetime, 'yy_mm_dd_HH_MM');
         [gcamp_output_folders, blue_output_folders] = create_base_folders(date_group_paths, current_gcamp_folders_names_group, current_blue_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);     
-        assignin('base', 'gcamp_output_folders', gcamp_output_folders);
-        assignin('base', 'blue_output_folders', blue_output_folders);
-    
+
+        for m = 1:length(gcamp_output_folders)
+            folder_path = gcamp_output_folders{m};
+            parent_fig = fileparts(folder_path);  % dossier parent
+
+            % Lister tous les fichiers et dossiers à l'intérieur de parent_fig
+            contents = dir(parent_fig);
+            contents = contents(~ismember({contents.name}, {'.','..'})); % exclure . et ..
+
+            % Supprimer chaque élément sauf folder_path lui-même
+            for i = 1:length(contents)
+                item_path = fullfile(parent_fig, contents(i).name);
+                if strcmp(item_path, folder_path)
+                    continue; % ne rien faire pour folder_path
+                end
+                if contents(i).isdir
+                    % Supprimer le sous-dossier et son contenu
+                    rmdir(item_path, 's');
+                else
+                    % Supprimer le fichier
+                    delete(item_path);
+                end
+            end
+
+            fprintf('Contenu de %s supprimé (sauf %s).\n', parent_fig, folder_path);
+        end
+
+
         % Preprocess and process data
         data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
         
@@ -95,33 +103,20 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
 
             % Perform data checking
             [selected_neurons_all, selected_in_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs);
-            
-            waitfor(selected_neurons_all);
-            
-            checked_indices = find(~cellfun(@isempty, selected_neurons_all));  % Indices des dossiers avec des neurones sélectionnés
+            disp(selected_in_original)
+
+            checked_indices = find(~cellfun(@isempty, selected_in_original));  % Indices des dossiers avec des neurones sélectionnés
             
             if ~isempty(checked_indices)
                 % Filtrer les variables d'input en fonction de checked_indices
-                filtered_date_group_paths = date_group_paths(checked_indices);
-                filtered_gcamp_folders = current_gcamp_folders_names_group(checked_indices);
-                filtered_blue_folders = current_blue_folders_names_group(checked_indices);
-                
-                % Créer des nouveaux dossiers de sortie avec ces dossiers filtrés
-                processing_choice1 = '2';
-                processing_choice2 = '2';
-                daytime = datestr(currentDatetime, 'yy_mm_dd_HH_MM');
-                [gcamp_output_folders_filtered, blue_output_folders_filtered] = create_base_folders(...
-                    filtered_date_group_paths, filtered_gcamp_folders, filtered_blue_folders, ...
-                    daytime, processing_choice1, processing_choice2, current_animal_group);
-                
-                % Mettre à jour uniquement les éléments aux indices checked_indices
-                gcamp_output_folders(checked_indices) = gcamp_output_folders_filtered;
-                blue_output_folders(checked_indices) = blue_output_folders_filtered;
-               
-                % Preprocess and process data
-                data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path);                    
-                meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);     
-                
+                folders_groups = {
+                    [current_gcamp_folders_group(checked_indices), current_gcamp_folders_names_group(checked_indices)],  % Group gCamp
+                    [current_red_folders_group(checked_indices),   current_red_folders_names_group(checked_indices)],    % Group Red
+                    [current_blue_folders_group(checked_indices),  current_blue_folders_names_group(checked_indices)],   % Group Blue
+                    [current_green_folders_group(checked_indices), current_green_folders_names_group(checked_indices)]   % Group Green
+                };
+
+                data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, blue_output_folders(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), selected_in_original(checked_indices));                    
             end
 
             %build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
@@ -187,7 +182,11 @@ end
 
 
 
-function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path)
+function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, blue_output_folders, date_group_paths, current_gcamp_TSeries_path, badIdx_list)
+    
+    if nargin < 8
+        badIdx_list = cell(size(gcamp_output_folders));  % cellule vide
+    end
 
     numFolders = length(gcamp_output_folders);
 
@@ -209,7 +208,12 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
     R = 5;
 
     for m = 1:numFolders
-        filePath = fullfile(gcamp_output_folders{m}, 'results.mat');        
+        filePath = fullfile(gcamp_output_folders{m}, 'results.mat'); 
+
+        if ~isempty(badIdx_list{m})
+            delete(filePath);
+            fprintf('Fichier supprimé : %s\n', filePath);
+        end
 
         if ~isfolder(gcamp_output_folders{m})
             mkdir(gcamp_output_folders{m});
@@ -238,7 +242,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
-            [~, F_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m});
+            [~, F_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m}, badIdx_list{m});
             DF_gcamp = DF_processing(F_gcamp);
             
             save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp');
@@ -249,10 +253,15 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         end
 
         if isempty(data.isort1_gcamp{m})
-            [~, ~, ops, ~, ~] = load_data(current_gcamp_folders_group{m});
+            [~, ~, ops, ~, ~] = load_data(current_gcamp_folders_group{m}, badIdx_list{m});
             [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(data.DF_gcamp{m}, current_gcamp_folders_group{m}, ops);
-         
+            
             save(filePath, 'isort1_gcamp','isort2_gcamp', 'Sm_gcamp', '-append');
+
+            if ~isempty(badIdx_list{m})
+                badIdx = badIdx_list{m};
+                save(filePath, 'badIdx', '-append');
+            end
 
             data.isort1_gcamp{m} = isort1_gcamp;
             data.isort2_gcamp{m} = isort2_gcamp;

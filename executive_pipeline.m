@@ -45,10 +45,22 @@ end
 % Génère les raster plots et sauve
 % garde toutes les données traitées dans selected_groups.
 
+ % Prompt for the first choice
+%processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
+processing_choice1 = '2';
+
+% Check if processing_choice1 is 'no'
+if strcmp(processing_choice1, '2')
+    % If the answer is 'no', prompt for the second choice
+    processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
+else
+    processing_choice2 = [];
+end        
+
 %check_data = input('Do you want to check your data? (1/2): ', 's');
 check_data = '1';
 
-[selected_groups, daytime] = process_selected_group(selected_groups, check_data);
+[selected_groups, daytime] = process_selected_group(selected_groups, check_data, processing_choice1, processing_choice2);
 
 
 %%
