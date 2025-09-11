@@ -34,9 +34,9 @@ function figs = RasterChange_around_SCEs(selected_groups)
 
             for pathIdx = 1:length(group.dates)
                 try
-                    Raster = group.gcamp_data.Raster{pathIdx};
-                    TRace = group.gcamp_data.TRace{pathIdx};
-                    sampling_rate = group.gcamp_data.sampling_rate{pathIdx};
+                    Raster = group.data.Raster_gcamp{pathIdx};
+                    TRace = group.data.TRace_gcamp{pathIdx};
+                    sampling_rate = group.data.sampling_rate{pathIdx};
 
                     window_size = round(0.5 * sampling_rate);
                     num_frames = size(Raster, 2);

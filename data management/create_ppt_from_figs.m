@@ -59,20 +59,20 @@ function create_ppt_from_figs(selected_groups, daytime)
         
         % Mean image
 
-        for path_idx = 1:length(gcamp_output_folders)
-            addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, 'Mean_image*');
-        end
-               
-        % Activity 
-        if numel(gcamp_output_folders) > 1
-            imgFile  =  build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group);
-            slide = add(ppt, 'Title and Content');
-        else
-            for path_idx = 1:length(gcamp_output_folders)
-                addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, '*_rastermap');
-            end
-        end
-       
+        % for path_idx = 1:length(gcamp_output_folders)
+        %     addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, 'Mean_image*');
+        % end
+        % 
+        % % Activity 
+        % if numel(gcamp_output_folders) > 1
+        %     imgFile  =  build_rasterplots(data, current_animal_group, current_dates_group, current_ages_group);
+        %     slide = add(ppt, 'Title and Content');
+        % else
+        %     for path_idx = 1:length(gcamp_output_folders)
+        %         addFiguresFromFolder(ppt, gcamp_output_folders{path_idx}, '*_rastermap');
+        %     end
+        % end
+        % 
         img = Picture(imgFile);
         replace(slide, 'Content', img);
 

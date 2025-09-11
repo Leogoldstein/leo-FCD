@@ -1,7 +1,10 @@
-function [stat, iscell] = load_data_mat_npy(dataFolder)
+function [stat, iscell] = load_data_mat_npy(dataFolder, badIdx)
     % Load and preprocess data from .mat or .npy files in a specified folder.
+    %
     % Input:
     % - dataFolder: Path to the folder containing the files.
+    % - badIdx: indices des cellules à supprimer (par rapport à iscell/stat)
+    %
     % Output:
     % - stat: Structure or data array loaded from stat.npy or .mat file.
     % - iscell: Array indicating cell status from iscell.npy or .mat file.
@@ -31,7 +34,6 @@ function [stat, iscell] = load_data_mat_npy(dataFolder)
             warning(['Variable "stat" not found in: ' dataFolder]);
         end
 
-        % Display a message indicating successful loading
         disp(['Loaded data from: ' dataFolder]);
 
     elseif ~isempty(npy_file)
@@ -52,5 +54,35 @@ function [stat, iscell] = load_data_mat_npy(dataFolder)
         
     else
         error('Unsupported file type: %s', ext);
+    end
+
+    if nargin > 1 && ~isempty(badIdx)
+        % Vérifie que les indices sont valides
+        badIdx = badIdx(badIdx >= 1 & badIdx <= size(iscell,1));
+
+        if ~isempty(badIdx)
+            % Supprimer dans iscell
+            iscell(badIdx,:) = [];
+
+            % Supprimer dans stat
+            if isa(stat, 'py.list')
+                keepIdx = setdiff(1:size(iscell,1)+numel(badIdx), badIdx); 
+                stat = subset_pylist(stat, keepIdx);
+            else
+                stat(badIdx) = [];
+            end
+
+            fprintf('Suppression de %d cellules via badIdx.\n', numel(badIdx));
+        end
+    end
+end
+
+function out = subset_pylist(pylist, idx)
+    % Retourne un cell array MATLAB en sélectionnant certains éléments d'un py.list
+    % Python est 0-based, MATLAB est 1-based
+    out = cell(1, numel(idx));
+    for k = 1:numel(idx)
+        py_idx = py.int(idx(k)-1);
+        out{k} = pylist{py_idx};
     end
 end

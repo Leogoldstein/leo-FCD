@@ -4,9 +4,9 @@ function [figs] = compare_groups_barplots(grouped_data_by_age)
     num_groups = numel(animal_types);
     
     % Define the measures
-    measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'AvgActiveSCE', 'SCEDuration', 'propSCEs'};
+    measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'SCEDuration', 'propSCEs', 'Pburst'};
     measure_titles = {'NCells', 'Activity Frequency (per minute)', 'Number of SCEs', 'SCE Frequency', ...
-                      'Number of Active Cells in SCEs (averaged)', 'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)'};
+                      'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)', 'Fraction of events in bursts (P_burst)'};
     
     % Define the age labels
     age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};

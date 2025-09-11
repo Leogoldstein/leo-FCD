@@ -28,7 +28,14 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder, badIdx)
         keepMask = iscell(:,1) > 0;  % garde seulement les vraies cellules
         F = double(F_unsorted(keepMask, :));  
         iscell = iscell(keepMask, :);
-        stat   = stat(keepMask);
+
+        % ---- Gestion py.list vs MATLAB array ----
+        if isa(stat, 'py.list')
+            idx = find(keepMask);              
+            stat = subset_pylist(stat, idx);           
+        else
+            stat = stat(keepMask);             
+        end
 
     elseif strcmp(ext, '.mat')
         % Load .mat files
@@ -60,13 +67,29 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder, badIdx)
         rowsToRemove(badIdx) = true;
     end
 
-    % Appliquer la suppression
+    % ---- Appliquer la suppression ----
     F(rowsToRemove, :) = [];
-    iscell(rowsToRemove, :) = [];
-    stat(rowsToRemove) = [];
+    iscell(rowsToRemove, :);
+
+    if isa(stat, 'py.list')
+        stat = subset_pylist(stat, find(~rowsToRemove));
+    else
+        stat(rowsToRemove) = [];
+    end
 
     % ---- LOG ----
     fprintf('Suppression de %d cellules (dont %d à cause de F==0, %d via argument).\n', ...
         sum(rowsToRemove), sum(rowsWithZero), numel(badIdx));
 
+end
+
+function out = subset_pylist(pylist, idx)
+    % Retourne un cell array MATLAB en sélectionnant certains éléments d'un py.list
+    % Python est 0-based, MATLAB est 1-based
+    out = cell(1, numel(idx));
+    for k = 1:numel(idx)
+        % Convertir en py.int en soustrayant 1 pour l'indexation 0-based Python
+        py_idx = py.int(idx(k)-1);
+        out{k} = pylist{py_idx};
+    end
 end

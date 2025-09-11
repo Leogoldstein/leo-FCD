@@ -12,7 +12,7 @@ function [selected_neurons_ordered, selected_neurons_original] = data_checking(d
                 DF = data.DF_combined{m};
                 isort1 = data.isort1_combined{m};
                 MAct = data.MAct_combined{m};
-                blue_indices = data.blue_indices{m};
+                blue_indices = data.blue_indices_combined{m};
             else
                 F = data.F_gcamp{m};
                 DF = data.DF_gcamp{m};

@@ -29,7 +29,7 @@ function [cross_corr_gcamp_gcamp, cross_corr_gcamp_mtor, cross_corr_mtor_mtor] =
             mtor_logical = ismember(1:size(DF_all,1), mtor_indices);
             DF_mtor = DF_all(mtor_logical,:);
             DF_gcamp = DF_all(~mtor_logical,:);
-            cross_corr_gcamp_mtor = corrcoef(DF_gcamp', DF_mtor');
+            cross_corr_gcamp_mtor = corr(DF_gcamp', DF_mtor');  % utilisez corr au lieu de corrcoef
         end
 
         % --- mTOR-mTOR ---

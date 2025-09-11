@@ -70,7 +70,7 @@ function selectedFolders = select_folders(initial_folder)
                 };
 
             
-            elseif lastFolderName == "CTRL"   
+            elseif lastFolderName == "WT"   
                 folder_names = {
                     'an1\2024-03-04';
                     'an2\2024-04-29';

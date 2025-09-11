@@ -18,9 +18,6 @@ function data = load_or_process_sce_data(current_animal_group, current_dates_gro
         % Create the full file path for results_SCEs.mat
         filePath = fullfile(gcamp_output_folders{m}, 'results_SCEs.mat');
         
-         % Option : supprimer un champs pour le recharger
-        removeFieldsByIndex(filePath, new_fields, 1:5);
-
         if exist(filePath, 'file') == 2
             disp(['Loading file: ', filePath]);
             % Try to load the pre-existing results from the file

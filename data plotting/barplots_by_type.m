@@ -1,6 +1,6 @@
 function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
 
-    animal_types = {'jm', 'FCD', 'CTRL'};
+    animal_types = {'jm', 'FCD', 'WT'};
     num_types = numel(animal_types);
 
     grouped_data_by_age = struct(); 
@@ -27,10 +27,10 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
         data_by_age = struct('NCells', nan(numel(age_labels), num_groups), ...
                              'NumSCEs', nan(numel(age_labels), num_groups), ...
                              'SCEFreq', nan(numel(age_labels), num_groups), ...
-                             'AvgActiveSCE', nan(numel(age_labels), num_groups), ...
                              'SCEDuration', nan(numel(age_labels), num_groups), ...
                              'propSCEs', nan(numel(age_labels), num_groups), ...
-                             'ActivityFreq', nan(numel(age_labels), num_groups));  % Ajout de ActivityFreq
+                             'ActivityFreq', nan(numel(age_labels), num_groups), ...
+                             'Pburst', nan(numel(age_labels), num_groups));
 
         for groupIdx = 1:num_groups
             current_animal_group = groups_subset(groupIdx).animal_group;
@@ -45,6 +45,7 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
             for pathIdx = 1:length(current_dates_group)
                 try
                     DF             = data.DF_gcamp{pathIdx};
+                    Acttmp2        = data.Acttmp2_gcamp{pathIdx};
                     Raster         = data.Raster_gcamp{pathIdx};
                     TRace          = data.TRace_gcamp{pathIdx};
                     Race           = data.Race_gcamp{pathIdx};
@@ -68,16 +69,16 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
 
                     % Fréquence d'activité par minute
                     [NCell, Nz] = size(Raster);
-                    mean_activity = mean(Raster, 1);
-                    activity_frequency_minutes = mean(mean_activity) * sampling_rate * 60;
+                    frequency = zeros(1, NCell);
+                    for i = 1:NCell
+                        frequency(i) = numel(Acttmp2{i}) / Nz * sampling_rate * 60;
+                    end
+                    activity_frequency_minutes = mean(frequency,'omitnan');
 
                     % SCEs
                     num_sces = numel(TRace);
                     nb_seconds = Nz / sampling_rate;
                     sce_frequency_minutes = (num_sces / nb_seconds) * 60;
-
-                    % Cellules actives pendant les SCEs
-                    avg_active_cell_SCEs = mean(sum(Race, 1));
 
                     % Proportion de cellules actives par SCE
                     pourcentageActif = zeros(length(TRace), 1);
@@ -93,14 +94,32 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                     durations_ms = distances * frame_duration_ms;
                     avg_duration_ms = mean(durations_ms, 'omitnan');
 
+                    % === Nouvelle mesure : Fraction d’événements en bursts (P_burst) ===
+                    pop_counts = sum(Raster,1);
+                    smoothSigma = 3; 
+                    win = ceil(6*smoothSigma);
+                    g = exp(-((-win:win).^2)/(2*smoothSigma^2));
+                    g = g/sum(g);
+                    smooth_pop = conv(pop_counts,g,'same');
+                    zThresh = 3;
+                    thr = mean(smooth_pop) + zThresh*std(smooth_pop);
+                    inBurstFrames = smooth_pop > thr;
+                    totalEvents = sum(Raster(:));
+                    eventsInBursts = sum(Raster(:,inBurstFrames),'all');
+                    if totalEvents>0
+                        P_burst = eventsInBursts/totalEvents;
+                    else
+                        P_burst = NaN;
+                    end
+
                     % Stockage
                     data_by_age.NCells(x_indices(pathIdx), groupIdx)       = NCell;
                     data_by_age.NumSCEs(x_indices(pathIdx), groupIdx)      = num_sces;
                     data_by_age.SCEFreq(x_indices(pathIdx), groupIdx)      = sce_frequency_minutes;
-                    data_by_age.AvgActiveSCE(x_indices(pathIdx), groupIdx) = avg_active_cell_SCEs;
                     data_by_age.SCEDuration(x_indices(pathIdx), groupIdx)  = avg_duration_ms;
                     data_by_age.propSCEs(x_indices(pathIdx), groupIdx)     = prop_active_cell_SCEs;
                     data_by_age.ActivityFreq(x_indices(pathIdx), groupIdx) = activity_frequency_minutes;
+                    data_by_age.Pburst(x_indices(pathIdx), groupIdx)       = P_burst;
 
                 catch ME
                     fprintf('Error in group %s, path %d: %s\n', current_animal_group, pathIdx, ME.message);
@@ -109,9 +128,10 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
         end
 
         % === Plotting ===
-        measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'AvgActiveSCE', 'SCEDuration', 'propSCEs'};
+        measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'SCEDuration', 'propSCEs', 'Pburst'};
         measure_titles = {'NCells', 'Activity Frequency (per minute)', 'Number of SCEs', 'SCE Frequency', ...
-                          'Number of Active Cells in SCEs (averaged)', 'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)'};
+                          'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)', ...
+                          'Fraction of events in bursts (P_burst)'};
         
         num_measures = numel(measures);
         num_rows = ceil(num_measures / 2);
@@ -149,7 +169,6 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
             xlabel('Age');
             ylabel(measure_titles{measureIdx});
 
-            % Protection contre les NaN pour ylim
             ymax = max(means + stds, [], 'omitnan');
             if isempty(ymax) || isnan(ymax) || ymax == 0
                 ymax = 1;

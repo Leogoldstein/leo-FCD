@@ -2,6 +2,7 @@
     % Nombre de dossiers à traiter
     numFolders = length(gcamp_output_folders);
 
+
     % Champs à créer dynamiquement
     new_fields = {'max_corr_gcamp_gcamp', 'max_corr_gcamp_mtor', 'max_corr_mtor_mtor'};
 
@@ -17,6 +18,7 @@
     for m = 1:numFolders
         % Chemin vers le fichier de sauvegarde
         filePath = fullfile(gcamp_output_folders{m}, 'results_corrs.mat');
+        disp(filePath)
 
         % Si le fichier existe, charger les données
         if exist(filePath, 'file') == 2
@@ -24,15 +26,12 @@
             for f = 1:length(new_fields)
                 data.(new_fields{f}){m} = getFieldOrDefault(loaded, new_fields{f}, []);
             end
-        end
-
-        % Si les données sont manquantes, les recalculer
-        if isempty(data.max_corr_gcamp_gcamp{m})
+        else
 
             disp(['Computing and saving pairwise correlations for folder ', num2str(m)]);
 
             [max_corr_gcamp_gcamp, max_corr_gcamp_mtor, max_corr_mtor_mtor] = ...
-                compute_pairwise_corr(data.DF_gcamp{m}, gcamp_output_folders{m}, data.DF_combined{m}, data.blue_indices{m});
+                compute_pairwise_corr(data.DF_gcamp{m}, gcamp_output_folders{m}, data.DF_combined{m}, data.blue_indices_combined{m});
 
             % Mise à jour
             data.max_corr_gcamp_gcamp{m} = max_corr_gcamp_gcamp;

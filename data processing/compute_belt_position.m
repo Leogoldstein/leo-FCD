@@ -1,7 +1,7 @@
 % ===============================
 % Parameters
 % ===============================
-                              % Need chan1, chan2 and lap_signal from csv
+% Need chan1, chan2 and lap_signal from csv
 chan1 = TSeries080520251523028Cycle00001VoltageRecording001.Input5;
 chan2 = TSeries080520251523028Cycle00001VoltageRecording001.Input6;
 lap_signal =TSeries080520251523028Cycle00001VoltageRecording001.Input7;

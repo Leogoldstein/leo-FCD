@@ -16,7 +16,7 @@ function [Raster, MAct, Acttmp2, thresholds] = Sumactivity(DF, MinPeakDistance, 
     % Detect calcium transients for each cell
     for i = 1:NCell
         % Calculate the threshold for detecting peaks
-        th = max([3 * iqr(DF(i,:)), 2 * std(DF(i,:)), minithreshold]);
+        th = max([3 * iqr(DF(i,:)), 3 * std(DF(i,:)), minithreshold]);
         thresholds(i) = th; % Save threshold for this cell
         
         % Find peaks in the data for the current cell

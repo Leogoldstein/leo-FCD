@@ -2,7 +2,7 @@ function figs = corr_groups_boxplots_all(selected_groups)
     num_animals = length(selected_groups);
     age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};
     age_values = 7:15;
-    animal_types = {'jm', 'FCD', 'CTRL'};
+    animal_types = {'jm', 'FCD', 'WT'};
     figs = struct();
 
     % Stocker les données gcamp-gcamp par type et par âge

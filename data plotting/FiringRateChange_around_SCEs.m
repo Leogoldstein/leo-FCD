@@ -24,9 +24,9 @@ function figs = FiringRateChange_around_SCEs(selected_groups)
                 if ageIdx == 0, continue; end
 
                 try
-                    Raster = group.gcamp_data.Raster{pathIdx}; % matrice binaire (neurones x frames)
-                    TRace = group.gcamp_data.TRace{pathIdx};   % frames des SCEs
-                    sampling_rate = group.gcamp_data.sampling_rate{pathIdx};
+                    Raster = group.data.Raster_gcamp{pathIdx}; % matrice binaire (neurones x frames)
+                    TRace = group.data.TRace_gcamp{pathIdx};   % frames des SCEs
+                    sampling_rate = group.data.sampling_rate{pathIdx};
 
                     window_size = round(0.5 * sampling_rate);
                     num_neurons = size(Raster, 1);
