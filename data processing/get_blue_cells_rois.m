@@ -1,14 +1,9 @@
-function [F_blue, F_gcamp_not_blue] = get_blue_cells_rois(F_gcamp, matched_gcamp_idx, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath)
-    [~, num_frames] = size(F_gcamp);
-    
-    used_gcamp_indices = unique(matched_gcamp_idx);
-    F_gcamp_not_blue = F_gcamp;
-    F_gcamp_not_blue(used_gcamp_indices, :) = []; % on enlève les lignes dont les indices apparaissent dans matched_gcamp_idx
-
+function F_blue = get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cellpose, mask_cellpose, currentTSeriesPath)
+ 
     if iscell(ncells_cellpose)
         ncells_cellpose = ncells_cellpose{1};
     end
-    
+    [~, num_frames] = size(F_gcamp);
     F_blue = NaN(ncells_cellpose, num_frames);
     
     unmatched_gcamp_idx = [];

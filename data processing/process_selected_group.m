@@ -1,15 +1,9 @@
 function [selected_groups, daytime] = process_selected_group(selected_groups, check_data, processing_choice1, processing_choice2)
     
-    last_animal_type = '';
-
     % Perform analyses for each group
     for k = 1:length(selected_groups)
         current_animal_group = selected_groups(k).animal_group;
-        current_animal_type = selected_groups(k).animal_type;
-        
-        % Mettre à jour la valeur pour la prochaine itération
-        last_animal_type = current_animal_type;
-        
+        current_animal_type = selected_groups(k).animal_type;       
         current_ani_path_group = selected_groups(k).path;
         current_dates_group = selected_groups(k).dates;
         current_ages_group = selected_groups(k).ages;
@@ -102,12 +96,12 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
         if strcmpi(check_data, '1')
 
             % Perform data checking
-            [selected_neurons_all, selected_in_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs);
-            disp(selected_in_original)
+            [~, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs);
+            disp(selected_gcamp_neurons_original)
 
-            checked_indices = find(~cellfun(@isempty, selected_in_original));  % Indices des dossiers avec des neurones sélectionnés
-            
-            if ~isempty(checked_indices)
+            checked_indices = find(~cellfun(@isempty, selected_gcamp_neurons_original) | ~cellfun(@isempty, selected_blue_neurons_original)); % Indices des dossiers avec des neurones sélectionnés
+                                                   
+            if ~isempty(checked_indices)            
                 % Filtrer les variables d'input en fonction de checked_indices
                 folders_groups = {
                     [current_gcamp_folders_group(checked_indices), current_gcamp_folders_names_group(checked_indices)],  % Group gCamp
@@ -115,8 +109,10 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, ch
                     [current_blue_folders_group(checked_indices),  current_blue_folders_names_group(checked_indices)],   % Group Blue
                     [current_green_folders_group(checked_indices), current_green_folders_names_group(checked_indices)]   % Group Green
                 };
-
-                data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), selected_in_original(checked_indices));                    
+                
+                bad_gcamp_ind_list = selected_gcamp_neurons_original(checked_indices);
+                bad_blue_ind_list = selected_blue_neurons_original(checked_indices);
+                data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), bad_gcamp_ind_list, bad_blue_ind_list);                    
             end
 
             build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
@@ -150,68 +146,15 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
     end
 end
 
-function removeFieldsByName(filePath, fieldsToRemove)
-    % Vérifie si le fichier existe
-    if exist(filePath, 'file') ~= 2
-        error('Le fichier %s n''existe pas.', filePath);
-    end
 
-    % Charger les données
-    loaded = load(filePath);
-    allFields = fieldnames(loaded);
-
-    % Vérifier que fieldsToRemove est une cellule de chaînes
-    if ~iscellstr(fieldsToRemove)
-        error('fieldsToRemove doit être une cellule de chaînes de caractères.');
-    end
-
-    % Liste finale de champs à supprimer
-    expandedFields = {};
-
-    for i = 1:numel(fieldsToRemove)
-        token = fieldsToRemove{i};
-
-        % Vérifie si c'est une plage (format "champ1:champ2")
-        parts = strsplit(token, ':');
-        if numel(parts) == 2
-            startIdx = find(strcmp(allFields, parts{1}));
-            endIdx   = find(strcmp(allFields, parts{2}));
-            if isempty(startIdx) || isempty(endIdx)
-                warning('Plage "%s" ignorée car champs introuvables.', token);
-                continue;
-            end
-            if startIdx <= endIdx
-                expandedFields = [expandedFields; allFields(startIdx:endIdx)];
-            else
-                expandedFields = [expandedFields; allFields(endIdx:startIdx)];
-            end
-        else
-            expandedFields = [expandedFields; token];
-        end
-    end
-
-    % Suppression effective des champs
-    for i = 1:numel(expandedFields)
-        fieldName = expandedFields{i};
-        if isfield(loaded, fieldName)
-            loaded = rmfield(loaded, fieldName);
-            fprintf('Champ "%s" supprimé.\n', fieldName);
-        else
-            warning('Champ "%s" absent du fichier.\n', fieldName);
-        end
-    end
-
-    % Sauvegarder les données mises à jour
-    save(filePath, '-struct', 'loaded');
-    fprintf('Mise à jour terminée.\n');
-end
-
-
-
-function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, date_group_paths, current_gcamp_TSeries_path, badIdx_list)
+function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, date_group_paths, current_gcamp_TSeries_path, bad_gcamp_ind_list, bad_blue_ind_list)
     
     if nargin < 8
-        badIdx_list = cell(size(gcamp_output_folders));  % cellule vide
+        bad_gcamp_ind_list = cell(size(gcamp_output_folders));  % cellule vide
+    end
+
+    if nargin < 9
+        bad_blue_ind_list = cell(size(gcamp_output_folders));  % cellule vide
     end
 
     numFolders = length(gcamp_output_folders);
@@ -221,7 +164,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
               'isort1_gcamp', 'isort2_gcamp', 'Sm_gcamp', ...
               'thresholds_gcamp', 'Acttmp2_gcamp', 'Raster_gcamp', 'MAct_gcamp', ...
               'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth', ...
-              'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', ...
+              'matched_gcamp_idx', 'matched_cellpose_idx', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', ...
               'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', ...
               'thresholds_blue', 'Acttmp2_blue', 'MAct_blue', 'Raster_blue', ...         
               'F_combined', 'DF_combined', 'blue_indices_combined', ...
@@ -238,13 +181,9 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
     for m = 1:numFolders
         filePath = fullfile(gcamp_output_folders{m}, 'results.mat'); 
 
-        if ~isempty(badIdx_list{m})
-            removeFieldsByName(filePath, {'F_gcamp:imageWidth'});
-        end
-
-        if ~isfolder(gcamp_output_folders{m})
-            mkdir(gcamp_output_folders{m});
-        end
+        % if ~isfolder(gcamp_output_folders{m})
+        %     mkdir(gcamp_output_folders{m});
+        % end
 
         % Charger les données existantes si elles existent
         if exist(filePath, 'file') == 2
@@ -265,24 +204,58 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
-            [~, F_gcamp, ops, ~, iscell] = load_data(current_gcamp_folders_group{m}, badIdx_list{m});
+            [~, F_gcamp, ops, stat, iscell] = load_data(current_gcamp_folders_group{m});
             DF_gcamp = DF_processing(F_gcamp);
             
             save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp');
+           
+            [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
+            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
+
+            save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp',  ...
+                'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask','gcamp_props', 'imageHeight', 'imageWidth', '-append');
             
             data.F_gcamp{m} = F_gcamp;
             data.DF_gcamp{m} = DF_gcamp;
             data.iscell{m} = iscell;
+            data.outlines_gcampx{m} = outlines_gcampx;
+            data.outlines_gcampy{m} = outlines_gcampy;
+            data.gcamp_mask{m} = gcamp_mask;
+            data.gcamp_props{m} = gcamp_props;
+ 
+      elseif ~isempty(bad_gcamp_ind_list{m})
+            
+            bad_gcamp_inds = bad_gcamp_ind_list{m};
+            data.F_gcamp{m}(bad_gcamp_inds) = [];
+            data.DF_gcamp{m}(bad_gcamp_inds) = [];
+            data.iscell{m}(bad_gcamp_inds) = [];
+            data.outlines_gcampx{m}(bad_gcamp_inds) = [];
+            data.outlines_gcampy{m}(bad_gcamp_inds) = [];
+            data.gcamp_mask{m}(bad_gcamp_inds) = [];
+            data.gcamp_props{m}(bad_gcamp_inds) = [];
+
+            F_gcamp = data.F_gcamp{m};
+            DF_gcamp = data.DF_gcamp{m};
+            iscell = data.iscell{m};
+            outlines_gcampx = data.outlines_gcampx{m};
+            outlines_gcampy = data.outlines_gcampy{m};
+            gcamp_mask = data.gcamp_mask{m};
+            gcamp_props = data.gcamp_props{m};
+
+            removeFieldsByName(filePath, {'F_gcamp:gcamp_props'});
+
+            save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp',  ...
+                'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask','gcamp_props', '-append');
         end
 
         if isempty(data.isort1_gcamp{m})
-            [~, ~, ops, ~, ~] = load_data(current_gcamp_folders_group{m}, badIdx_list{m});
+            [~, ~, ops, ~, ~] = load_data(current_gcamp_folders_group{m});
             [isort1_gcamp, isort2_gcamp, Sm_gcamp] = raster_processing(data.DF_gcamp{m}, current_gcamp_folders_group{m}, ops);
             
             save(filePath, 'isort1_gcamp','isort2_gcamp', 'Sm_gcamp', '-append');
 
-            if ~isempty(badIdx_list{m})
-                badIdx = badIdx_list{m};
+            if ~isempty(bad_gcamp_ind_list{m})
+                badIdx = bad_gcamp_ind_list{m};
                 save(filePath, 'badIdx', '-append');
             end
 
@@ -300,23 +273,6 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             data.Acttmp2_gcamp{m} = Acttmp2_gcamp;
             data.Raster_gcamp{m} = Raster_gcamp;
             data.MAct_gcamp{m} = MAct_gcamp;
-        end
-
-        % Traitement outlines GCaMP
-        if isempty(data.outlines_gcampx{m})
-            [stat, iscell] = load_data_mat_npy(current_gcamp_folders_group{m}, badIdx_list{m});
-            [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat);
-            [gcamp_mask, gcamp_props, imageHeight, imageWidth] = process_poly2mask(stat, NCell, outlines_gcampx, outlines_gcampy);
-
-            save(filePath, 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', ...
-                 'gcamp_props', 'imageHeight', 'imageWidth', '-append');
-
-            data.outlines_gcampx{m} = outlines_gcampx;
-            data.outlines_gcampy{m} = outlines_gcampy;
-            data.gcamp_mask{m} = gcamp_mask;
-            data.gcamp_props{m} = gcamp_props;
-            data.imageHeight{m} = imageHeight;
-            data.imageWidth{m} = imageWidth;
         end
 
         % Traitement cellules bleues
@@ -349,43 +305,92 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                 meanImg_channels = uint16(meanImg_channels);
             end
 
-            save(filePath, 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', '-append');
-
-            data.num_cells_mask{m} = num_cells_mask;
-            data.mask_cellpose{m} = mask_cellpose;
-            data.props_cellpose{m} = props_cellpose;
-            data.outlines_x_cellpose{m} = outlines_x_cellpose;
-            data.outlines_y_cellpose{m} = outlines_y_cellpose;
-
             disp('Extracting fluorescence from cellpose masks...');
             % Affichage et correspondance des masques
             [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(...
-                data.gcamp_props{m}, data.props_cellpose{m}, meanImg_channels, aligned_image, ...
+                data.gcamp_props{m}, props_cellpose, meanImg_channels, aligned_image, ...
                 data.outlines_gcampx{m}, data.outlines_gcampy{m}, ...
-                data.outlines_x_cellpose{m}, data.outlines_y_cellpose{m}, R, m, current_blue_folders_group);
+                outlines_x_cellpose, outlines_y_cellpose, R, m, current_blue_folders_group);
             
             % Extraire les traces fluorescence
-            currentTSeriesPath = current_gcamp_TSeries_path{m};
-            [F_blue, F_gcamp_not_blue] = get_blue_cells_rois(...
-                data.F_gcamp{m}, matched_gcamp_idx, matched_cellpose_idx, ...
-                data.num_cells_mask{m}, data.mask_cellpose{m}, currentTSeriesPath);
+            used_gcamp_indices = unique(matched_gcamp_idx);
+            F_gcamp_not_blue = data.F_gcamp{m};
+            F_gcamp_not_blue(used_gcamp_indices, :) = []; % on enlève les lignes dont les indices apparaissent dans matched_gcamp_idx
+
+            DF_gcamp_not_blue = data.DF_gcamp{m};
+            DF_gcamp_not_blue(used_gcamp_indices, :) = [];
         
-            % Traitement DF/F
+            currentTSeriesPath = current_gcamp_TSeries_path{m};
+            F_blue = get_blue_cells_rois(data.F_gcamp{m}, matched_cellpose_idx, num_cells_mask, mask_cellpose, currentTSeriesPath);
             DF_blue = DF_processing(F_blue);
 
-            DF_gcamp_not_blue = DF_processing(F_gcamp_not_blue);
             % Ajuster la longueur pour cohérence
             min_cols = min(size(DF_gcamp_not_blue, 2), size(DF_blue, 2));
             DF_gcamp_not_blue = DF_gcamp_not_blue(:, 1:min_cols);
             DF_blue = DF_blue(:, 1:min_cols);
 
-            save(filePath, 'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', '-append');
-
+            save(filePath, 'matched_gcamp_idx', 'matched_cellpose_idx', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', 'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', '-append');
+            
+            % Ensuite sauvegarder
+            data.matched_gcamp_idx{m} = matched_gcamp_idx;
+            data.matched_cellpose_idx{m} = matched_cellpose_idx;
+            data.num_cells_mask{m} = num_cells_mask;
+            data.mask_cellpose{m} = mask_cellpose;
+            data.props_cellpose{m} = props_cellpose;
+            data.outlines_x_cellpose{m} = outlines_x_cellpose;
+            data.outlines_y_cellpose{m} = outlines_y_cellpose;
             data.F_blue{m} = F_blue;
             data.F_gcamp_not_blue{m} = F_gcamp_not_blue;
             data.DF_blue{m} = DF_blue;
             data.DF_gcamp_not_blue{m} = DF_gcamp_not_blue;
         
+        elseif ~isempty(bad_blue_ind_list{m})
+                N_gcamp = size(data.DF_gcamp_not_blue{m},1);
+                blue_indices_original = bad_blue_ind_list{m} - N_gcamp; % cf. ligne 411
+            
+                % Retirer ces neurones de toutes les structures Cellpose
+                data.num_cells_mask{m}(blue_indices_original) = [];
+                data.mask_cellpose{m}(blue_indices_original) = [];
+                data.props_cellpose{m}(blue_indices_original) = [];
+                data.outlines_x_cellpose{m}(blue_indices_original) = [];
+                data.outlines_y_cellpose{m}(blue_indices_original) = [];
+
+                % Recalculer matched_gcamp_idx et matched_cellpose_idx basé
+                % sur les nouvelles matrices (indices ont changé si
+                % bad_gcamp_ind_list non vide)
+                [matched_gcamp_idx, matched_cellpose_idx] = show_masks_and_overlaps(...
+                data.gcamp_props{m}, props_cellpose, meanImg_channels, aligned_image, ...
+                data.outlines_gcampx{m}, data.outlines_gcampy{m}, ...
+                data.outlines_x_cellpose{m}, data.outlines_y_cellpose{m}, R, m, current_blue_folders_group);
+                
+                data.matched_gcamp_idx{m} = matched_gcamp_idx;
+                data.matched_cellpose_idx{m} = matched_cellpose_idx;
+
+                used_gcamp_indices = unique(matched_gcamp_idx);
+                F_gcamp_not_blue = data.F_gcamp{m};
+                F_gcamp_not_blue(used_gcamp_indices, :) = []; % on enlève les lignes dont les indices apparaissent dans matched_gcamp_idx
+                DF_gcamp_not_blue = data.DF_gcamp{m};
+                DF_gcamp_not_blue(used_gcamp_indices, :) = [];
+                
+                data.F_gcamp_not_blue{m} = F_gcamp_not_blue;
+                data.DF_gcamp_not_blue{m} = DF_gcamp_not_blue;
+
+                % Retirer aussi de DF_blue
+                data.F_blue{m}(blue_indices_original, :) = [];
+                data.DF_blue{m}(blue_indices_original, :) = [];      
+                
+                % Supprimer et remplacer par les nouvelles données
+                removeFieldsByName(filePath, {'matched_gcamp_idx:Raster_combined'});
+                
+                num_cells_mask =  data.num_cells_mask{m};
+                mask_cellpose = data.mask_cellpose{m};
+                props_cellpose = data.props_cellpose{m};
+                outlines_x_cellpose = data.outlines_x_cellpose{m};
+                outlines_y_cellpose = data.outlines_y_cellpose{m};
+                F_blue = data.F_blue{m};
+                DF_blue = data.DF_blue{m};
+
+                save(filePath, 'matched_gcamp_idx', 'matched_cellpose_idx', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', 'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', '-append');
         end
 
         if ~isempty(data.DF_blue{m}) && isempty(data.MAct_blue{m})
@@ -409,9 +414,8 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             DF_combined = [data.DF_gcamp_not_blue{m}; data.DF_blue{m}];
 
             % Indices des cellules bleues
-            NCells = size(data.DF_gcamp_not_blue{m}, 1);
-            blue_indices_combined = (NCells + 1):size(DF_combined, 1);
-        
+            blue_indices_combined = (size(data.DF_gcamp_not_blue{m},1) + 1) : size(DF_combined,1);
+
             % Traitement raster et tri
             [isort1_combined, ~, ~] = raster_processing(DF_combined, current_gcamp_folders_group{m});
             [Raster_combined, MAct_combined, Acttmp2_combined, thresholds_combined] = Sumactivity(DF_combined, MinPeakDistance, data.synchronous_frames{m});
@@ -471,25 +475,104 @@ function [motion_energy_group, avg_motion_energy_group] = load_or_process_movie(
     
             else
                 choice = input('Voulez-vous ouvrir le film dans Fiji pour cropper ? (1/2) ', 's');
+                
                 if strcmpi(choice, '1')
                     fprintf('Ouverture de %s dans Fiji...\n', filepath);
-    
-                    % ouvrir Fiji avec le .tif
+                    % Ouvrir Fiji avec le .tif
                     system(sprintf('"%s" "%s"', fijiPath, filepath));
-                end
-
-                motion_energy = compute_motion_energy(filepath);
-                save(savePath, 'motion_energy');
                     
-            end
+                    motion_energy = compute_motion_energy(filepath);
+                    save(savePath, 'motion_energy');
+                    
+                elseif strcmpi(choice, '2')
+                    subchoice = input('Voulez-vous calculer la motion_energy sur le film tel quel ou passer cette étape ? (1/2) ', 's');
+                    if strcmpi(subchoice, '1')
+                        motion_energy = compute_motion_energy(filepath);
+                        save(savePath, 'motion_energy');
+                    else
+                        motion_energy = [];  % Ne pas calculer
+                    end
+                else
+                    fprintf('Motion energy non calculée.\n');
+                    motion_energy = [];
+                end
             
+                motion_energy_group{m} = motion_energy; 
+            
+                if ~isempty(motion_energy)
+                    avg_motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'  
+                    avg_motion_energy_group{m} = avg_motion_energy;
+                else
+                    avg_motion_energy_group{m} = [];
+                end
+            end
+
             motion_energy_group{m} = motion_energy; 
-            avg_motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'  
-            avg_motion_energy_group{m} = avg_motion_energy;
-    
+            if ~isempty(motion_energy)
+                avg_motion_energy = average_frames(motion_energy, avg_block);  % ou 'trim'  
+                avg_motion_energy_group{m} = avg_motion_energy;
+            else
+                avg_motion_energy_group{m} = [];
+            end
         else
             fprintf('No movie found in %s.\n', camFolders{m});
             motion_energy_group{m} = [];
         end
     end
+end
+
+function removeFieldsByName(filePath, fieldsToRemove)
+    % Vérifie si le fichier existe
+    if exist(filePath, 'file') ~= 2
+        error('Le fichier %s n''existe pas.', filePath);
+    end
+
+    % Charger les données
+    loaded = load(filePath);
+    allFields = fieldnames(loaded);
+
+    % Vérifier que fieldsToRemove est une cellule de chaînes
+    if ~iscellstr(fieldsToRemove)
+        error('fieldsToRemove doit être une cellule de chaînes de caractères.');
+    end
+
+    % Liste finale de champs à supprimer
+    expandedFields = {};
+
+    for i = 1:numel(fieldsToRemove)
+        token = fieldsToRemove{i};
+
+        % Vérifie si c'est une plage (format "champ1:champ2")
+        parts = strsplit(token, ':');
+        if numel(parts) == 2
+            startIdx = find(strcmp(allFields, parts{1}));
+            endIdx   = find(strcmp(allFields, parts{2}));
+            if isempty(startIdx) || isempty(endIdx)
+                warning('Plage "%s" ignorée car champs introuvables.', token);
+                continue;
+            end
+            if startIdx <= endIdx
+                expandedFields = [expandedFields; allFields(startIdx:endIdx)];
+            else
+                expandedFields = [expandedFields; allFields(endIdx:startIdx)];
+            end
+        else
+            expandedFields = [expandedFields; token];
+        end
+    end
+
+    % Suppression effective des champs
+    for i = 1:numel(expandedFields)
+        fieldName = expandedFields{i};
+        if isfield(loaded, fieldName)
+            loaded = rmfield(loaded, fieldName);
+            fprintf('Champ "%s" supprimé.\n', fieldName);
+        else
+            warning('Champ "%s" absent du fichier.\n', fieldName);
+        end
+    end
+
+    % Sauvegarder les données mises à jour
+    save(filePath, '-struct', 'loaded');
+    fprintf('Mise à jour terminée.\n');
 end

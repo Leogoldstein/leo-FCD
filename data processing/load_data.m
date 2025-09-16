@@ -1,4 +1,4 @@
-function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder, badIdx)
+function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -59,28 +59,19 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder, badIdx)
     % ---- SUPPRESSION DES CELLULES QUI TOMBENT À 0 ----
     rowsWithZero = any(F == 0, 2);
 
-    % ---- SUPPRESSION DES INDICES DONNÉS EN ARGUMENT (par rapport à F final) ----
-    rowsToRemove = rowsWithZero;
-    if ~isempty(badIdx)
-        % Vérifie que les indices sont valides
-        badIdx = badIdx(badIdx >= 1 & badIdx <= size(F,1));
-        rowsToRemove(badIdx) = true;
-    end
-
     % ---- Appliquer la suppression ----
-    F(rowsToRemove, :) = [];
-    iscell(rowsToRemove, :);
+    F(rowsWithZero, :) = [];
+    iscell(rowsWithZero, :) = [];
 
     if isa(stat, 'py.list')
-        stat = subset_pylist(stat, find(~rowsToRemove));
+        stat = subset_pylist(stat, find(~rowsWithZero));
     else
-        stat(rowsToRemove) = [];
+        stat(rowsWithZero) = [];
     end
 
     % ---- LOG ----
-    fprintf('Suppression de %d cellules (dont %d à cause de F==0, %d via argument).\n', ...
-        sum(rowsToRemove), sum(rowsWithZero), numel(badIdx));
-
+    fprintf('Suppression de %d cellules à cause de F==0.\n', ...
+        sum(rowsWithZero));
 end
 
 function out = subset_pylist(pylist, idx)

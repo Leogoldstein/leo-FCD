@@ -43,6 +43,12 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 aligned_image_path = select_or_default(aligned_files, canal_str, '*.tif');
                 aligned_image = normalize_image(imread(aligned_image_path));
                 
+                % Récupérer l'image brute et lancer l'animation
+                tif_file_path = select_or_default(tif_files_canal, canal_str, '*.tif');
+                image_tiff = normalize_image(imread(tif_file_path));
+
+                display_animation(image_tiff, aligned_image);
+
                 % Lancer Cellpose
                 npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
             else
@@ -85,15 +91,14 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                     aligned_image = imread(aligned_image_path);
                 end
             elseif isfile(aligned_image_path)
-                aligned_image = imread(aligned_image_path);
-                filePath = fullfile(fileparts(current_blue_folders_group), 'meanImg_channels.mat');
-                if exist(filePath, 'file') == 2
-                    data = load(filePath);
-                    if isfield(data, 'meanImg_channels')
-                        meanImg_channels = data.meanImg_channels;
-                        meanImg = meanImg_channels{4};
-                    end
+                aligned_image = normalize_image(imread(aligned_image_path));
+                for j = 1:numChannels
+                    tif_file_path = string(folders_groups{j}{m, 1});
+                    [meanImg, ~] = load_ops_or_mat(tif_file_path, '', numChannels);
+                    meanImg_channels{j} = meanImg;
                 end
+                display_animation(meanImg_channels{4}, aligned_image);
+
                 npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
             else
                 % Recalcul meanImg_channels
@@ -102,8 +107,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                     [meanImg, ~] = load_ops_or_mat(tif_file_path, '', numChannels);
                     meanImg_channels{j} = meanImg;
                 end
-                save(fullfile(fileparts(current_blue_folders_group), 'meanImg_channels.mat'), 'meanImg_channels');
-                
+
                 % Alignement si possible
                 % ==============================================================
                 % Récapitulatif des alignements de canaux

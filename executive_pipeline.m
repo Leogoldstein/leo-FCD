@@ -47,7 +47,7 @@ end
 
 % Prompt for the first choice
 %processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
-processing_choice1 = '1';
+processing_choice1 = '2';
 
 % Check if processing_choice1 is 'no'
 if strcmp(processing_choice1, '2')

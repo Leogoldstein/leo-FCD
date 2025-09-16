@@ -1,8 +1,8 @@
-function [selected_neurons_ordered, selected_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs)
+function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs)
     
     % Initialisation du tableau de résultats (sélections par dossier)
     selected_neurons_ordered = cell(size(gcamp_output_folders));
-    selected_neurons_original = cell(size(gcamp_output_folders));
+    selected_gcamp_neurons_original = cell(size(gcamp_output_folders));
     
     for m = 1:length(gcamp_output_folders)
         try
@@ -121,9 +121,21 @@ function [selected_neurons_ordered, selected_neurons_original] = data_checking(d
             
             % Conversion en indices originaux
             if ~isempty(selected_neurons_ordered{m})
-                selected_neurons_original{m} = valid_neuron_indices(selected_neurons_ordered{m});
+                selected_gcamp_neurons_original{m} = valid_neuron_indices(selected_neurons_ordered{m});
             else
-                selected_neurons_original{m} = [];
+                selected_gcamp_neurons_original{m} = [];
+            end
+            
+            % --- Sélection des neurones bleus ---
+            if ~isempty(selected_gcamp_neurons_original{m}) && ~isempty(blue_indices)
+                selected_blue_neurons_original{m} = intersect(selected_gcamp_neurons_original{m}, blue_indices);
+            else
+                selected_blue_neurons_original{m} = [];
+            end
+            
+            % --- Exclure les neurones bleus des neurones GCaMP classiques ---
+            if ~isempty(selected_gcamp_neurons_original{m}) && ~isempty(selected_blue_neurons_original{m})
+                selected_gcamp_neurons_original{m} = setdiff(selected_gcamp_neurons_original{m}, selected_blue_neurons_original{m});
             end
         end
     end
@@ -622,7 +634,7 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
     valid_neuron_indices = find(valid_neurons);
 
     % Indices originaux
-    selected_neurons_original = valid_neuron_indices(selected_neurons_ordered);
+    selected_gcamp_neurons_original = valid_neuron_indices(selected_neurons_ordered);
 
     % --- 3. Préparer figure unique ---
     fig = figure('Name', sprintf('Inspection – %s (%s)', current_animal_group, current_ages_group{idx}));
@@ -635,8 +647,8 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
     ax1 = nexttile;
     hold(ax1, 'on');
     offset = 0;
-    for k = 1:length(selected_neurons_original)
-        cellIdx = selected_neurons_original(k);
+    for k = 1:length(selected_gcamp_neurons_original)
+        cellIdx = selected_gcamp_neurons_original(k);
         trace = F(cellIdx, :);
         plot(ax1, trace + offset, 'LineWidth', 1);
         text(size(F,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax1);
@@ -652,8 +664,8 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
     ax2 = nexttile;
     hold(ax2, 'on');
     offset = 0;
-    for k = 1:length(selected_neurons_original)
-        cellIdx = selected_neurons_original(k);
+    for k = 1:length(selected_gcamp_neurons_original)
+        cellIdx = selected_gcamp_neurons_original(k);
         trace = DF(cellIdx, :);
         plot(ax2, trace + offset, 'LineWidth', 1);
         text(size(DF,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax2);
@@ -665,4 +677,3 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
     title(ax2, 'Traces ΔF/F des neurones sélectionnés');
     grid(ax2, 'on');
 end
-
