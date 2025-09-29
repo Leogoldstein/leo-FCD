@@ -47,7 +47,7 @@ end
 
 % Prompt for the first choice
 %processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
-processing_choice1 = '2';
+processing_choice1 = '1';
 
 % Check if processing_choice1 is 'no'
 if strcmp(processing_choice1, '2')
@@ -59,7 +59,7 @@ else
 end        
 
 %check_data = input('Do you want to check your data? (1/2): ', 's');
-check_data = '1';
+check_data = '2';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, check_data, processing_choice1, processing_choice2);
 
@@ -97,8 +97,10 @@ for k = 1:length(selected_groups)
     current_ages_group = selected_groups(k).ages;
     current_env_group = selected_groups(k).env; 
     gcamp_output_folders = selected_groups(k).gcamp_output_folders;
-    data = selected_groups(k).data;
-    
+    data = selected_groups(k).data; 
+
+    %plot_threshold_frequency_all_neurons(data.thresholds_gcamp, data.Acttmp2_gcamp, data.F_gcamp, data.sampling_rate, current_animal_group, current_ages_group)
+
     % Correlation analysis
     data = load_or_process_corr_data(gcamp_output_folders, data);
     selected_groups(k).data = data;

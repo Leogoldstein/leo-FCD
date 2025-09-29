@@ -1,8 +1,9 @@
-function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs)
+function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_blue_neurons_original, suite2p] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs)
     
     % Initialisation du tableau de résultats (sélections par dossier)
     selected_neurons_ordered = cell(size(gcamp_output_folders));
     selected_gcamp_neurons_original = cell(size(gcamp_output_folders));
+    suite2p = false;
     
     for m = 1:length(gcamp_output_folders)
         try
@@ -29,7 +30,7 @@ function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_bl
             isort1 = isort1(ismember(isort1, valid_neuron_indices));
             [~, isort1] = ismember(isort1, valid_neuron_indices);
     
-            batch_size = 50;
+            batch_size = 30;
             total_neurons = length(isort1);
             num_batches = ceil(total_neurons / batch_size);
             num_columns = size(DF, 2);
@@ -101,8 +102,10 @@ function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_bl
                 num_columns, ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, gcamp_fig);
     
             linkaxes([ax1, ax2, ax3], 'x');
-            sgtitle(sprintf('%s – %s - %s', current_animal_group, current_dates_group{m}, current_ages_group{m}), 'FontWeight', 'bold');
-    
+            sgtitle(main_fig, ...
+                    sprintf('%s – %s - %s', current_animal_group, current_dates_group{m}, current_ages_group{m}), ...
+                    'FontWeight', 'bold');
+
            % --- Affichage initial ---
             update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ...
                 ax1, ax1_right, ax2, meanImgs, MAct, blue_indices, NCell, m, data, gcamp_fig);
@@ -500,6 +503,7 @@ function validate_selection(fig, index, current_gcamp_folder)
     if strcmp(answer, 'Oui')
         setappdata(0, sprintf('selection_saved_%d', index), true);
         show_recap_figure(fig, selected_neurons, index, current_gcamp_folder);
+        suite2p = true;
     elseif strcmp(answer, 'Non')
         setappdata(0, sprintf('selection_saved_%d', index), false);
     else

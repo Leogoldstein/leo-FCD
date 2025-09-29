@@ -1,4 +1,4 @@
-function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
+function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -7,12 +7,14 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
     if ~isempty(files)
         % Unpack .npy file paths
         newFPath = fullfile(workingFolder, 'F.npy');
+        newSpksPath = fullfile(workingFolder, 'spks.npy');
         newStatPath = fullfile(workingFolder, 'stat.npy');
         newIscellPath = fullfile(workingFolder, 'iscell.npy');
         newOpsPath = fullfile(workingFolder, 'ops.npy');
 
         % Load .npy files
         F_unsorted = readNPY(newFPath);
+        F_deconv_unsorted = readNPY(newSpksPath);
         iscell = readNPY(newIscellPath);
 
         % Call the Python function to load stats and ops
@@ -26,7 +28,8 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
         
         F_unsorted = F_unsorted(:, 1:36000);
         keepMask = iscell(:,1) > 0;  % garde seulement les vraies cellules
-        F = double(F_unsorted(keepMask, :));  
+        F = double(F_unsorted(keepMask, :));
+        F_deconv = double(F_deconv_unsorted(keepMask, :)); 
         iscell = iscell(keepMask, :);
 
         % ---- Gestion py.list vs MATLAB array ----
@@ -43,12 +46,14 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
 
         % Extract data from .mat file
         F_unsorted = data.F;
+        F_deconv_unsorted = data.spks;
         iscell = data.iscell;
         ops = data.ops;
         stat = data.stat;
         
         keepMask = iscell(:,1) > 0;
-        F = double(F_unsorted(keepMask, :));  
+        F = double(F_unsorted(keepMask, :));
+        F_deconv = double(F_deconv_unsorted(keepMask, :)); 
         iscell = iscell(keepMask, :);
         stat   = stat(keepMask);
 
@@ -61,6 +66,7 @@ function [F_unsorted, F, ops, stat, iscell] = load_data(workingFolder)
 
     % ---- Appliquer la suppression ----
     F(rowsWithZero, :) = [];
+    F_deconv(rowsWithZero, :) = [];
     iscell(rowsWithZero, :) = [];
 
     if isa(stat, 'py.list')

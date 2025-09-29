@@ -45,6 +45,11 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 
                 % Récupérer l'image brute et lancer l'animation
                 tif_file_path = select_or_default(tif_files_canal, canal_str, '*.tif');
+                if isempty(tif_file_path)
+                    disp(['Aucun fichier "', canal_str, '" sélectionné ou trouvé.']);
+                 return;
+                end
+                
                 image_tiff = normalize_image(imread(tif_file_path));
 
                 display_animation(image_tiff, aligned_image);

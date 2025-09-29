@@ -123,9 +123,9 @@ function folder_names = get_folder_list(type, lastFolderName)
                         'mTor19\ani6\2025-02-01';
                         'mTor19\ani7\2025-01-31';
                         %'mTor17\ani1\2024-12-21';
-                        'mTor17\ani3\2024-12-21';
-                        'mTor17\ani3\2024-12-22';
-                        'mTor17\ani3\2024-12-23';
+                        %'mTor17\ani3\2024-12-21';
+                        %'mTor17\ani3\2024-12-22';
+                        %'mTor17\ani3\2024-12-23';
                     };
             end
         otherwise
