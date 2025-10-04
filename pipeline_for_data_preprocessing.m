@@ -1,6 +1,6 @@
 function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     % Définition des chemins de base
-    jm_folder = '\\10.51.106.5\data\Data\jm'; 
+    jm_folder = '\\10.51.106.233\jm'; 
     destinationFolder = 'D:/Imaging/jm/'; 
     fcd_folder = 'D:\Imaging\FCD'; 
     ctrl_folder = 'D:\Imaging\WT';

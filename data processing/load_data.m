@@ -26,6 +26,9 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
             error('Failed to call Python function: %s', ME.message);
         end
         
+        % dict = stat{1};
+        % disp(dict.keys())
+
         F_unsorted = F_unsorted(:, 1:36000);
         keepMask = iscell(:,1) > 0;  % garde seulement les vraies cellules
         F = double(F_unsorted(keepMask, :));
@@ -81,12 +84,52 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
 end
 
 function out = subset_pylist(pylist, idx)
-    % Retourne un cell array MATLAB en sélectionnant certains éléments d'un py.list
-    % Python est 0-based, MATLAB est 1-based
-    out = cell(1, numel(idx));
+    % subset_pylist : extrait certains éléments d'un py.list et les convertit en struct MATLAB
+    %
+    % Entrées :
+    %   - pylist : liste Python (py.list) contenant des py.dict
+    %   - idx    : indices MATLAB des éléments à garder (1-based)
+    %
+    % Sortie :
+    %   - out : cell array MATLAB contenant des structs
+    
+    out = cell(1, numel(idx));   % Prépare un cell array vide
     for k = 1:numel(idx)
-        % Convertir en py.int en soustrayant 1 pour l'indexation 0-based Python
-        py_idx = py.int(idx(k)-1);
-        out{k} = pylist{py_idx};
+        % ⚠ Python est 0-based, MATLAB est 1-based
+        py_idx = py.int(idx(k)-1);      
+        dict = pylist{py_idx};   % Récupère le py.dict correspondant
+
+        % ---- Récupération des clés du dict ----
+        keys = cellfun(@char, cell(py.list(dict.keys())), 'UniformOutput', false);
+
+        % ---- Conversion en struct MATLAB ----
+        s = struct();
+        for kk = 1:numel(keys)
+            key = keys{kk};        % ex: 'xpix'
+            value = dict{key};     % valeur associée à cette clé
+
+            % Conversion selon le type Python
+            if isa(value, 'py.list') || isa(value, 'py.tuple')
+                % Convertir en vecteur MATLAB
+                val = double(py.array.array('d', py.numpy.array(value)));
+            elseif isa(value, 'py.dict')
+                % (optionnel : récursif si tu veux garder des sous-structs)
+                val = struct();
+            else
+                % Tentative de conversion simple
+                try
+                    val = double(value);
+                catch
+                    % Si impossible -> on garde brut
+                    val = value;
+                end
+            end
+
+            % Ajout du champ dans le struct MATLAB
+            s.(key) = val;
+        end
+        out{k} = s;  % Sauvegarde dans la sortie
     end
 end
+
+

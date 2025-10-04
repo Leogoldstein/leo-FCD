@@ -6,7 +6,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
     meanImg = [];
     
     % ==== Cas principal : chercher dans folders_groups ====
-    current_blue_folders_group = folders_groups{3}{:, 1};
+    current_blue_folders_group = folders_groups{3}{:,1};
     disp(current_blue_folders_group);
 
     if isempty(current_blue_folders_group)

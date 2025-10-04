@@ -26,14 +26,14 @@ if count(py.sys.path, new_path) == 0
 end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
-
+%
 % env_paths_all = selected_groups.env;
 % for idx = 1:length(env_paths_all)
 %     [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
 %     disp(optical_zoom)
 %     disp(position)
 % end
-%%
+
 % Ce que fait cette fonction :
 % 1. Demande des choix à l’utilisateur (traiter dossier récent ou non, créer/sélectionner un dossier).
 % 2. Prépare la structure selected_groups en ajoutant un champs pour les data (gcamp, mtor, all).
@@ -122,11 +122,9 @@ for k = 1:length(selected_groups)
 %     plot_clusters_metrics(gcamp_output_folders, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, gcamp_data.Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group);
 % 
 end
-
-
 %%
 corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysis required
- 
+
 %%  
 [grouped_data_by_age, barplots] = barplots_by_type(selected_groups); % SCEs analysis required
 %%
@@ -134,7 +132,6 @@ comparison_barplots = compare_groups_barplots(grouped_data_by_age); % several an
 %%
 
 figs = RasterChange_around_SCEs(selected_groups);
-%%
 figs = FiringRateChange_around_SCEs(selected_groups);
 
 

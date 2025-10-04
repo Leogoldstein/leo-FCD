@@ -20,18 +20,21 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
         animal_group = cell(num_groups, 1);
         colors = lines(num_groups);
 
-        % Data containers for aggregation
+        % Définition des âges
         age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};
         age_values = 7:15;
 
+        % Conteneur des données
         data_by_age = struct('NCells', nan(numel(age_labels), num_groups), ...
+                             'ActivityFreq', nan(numel(age_labels), num_groups), ...
+                             'PairwiseCorr', nan(numel(age_labels), num_groups), ...
                              'NumSCEs', nan(numel(age_labels), num_groups), ...
                              'SCEFreq', nan(numel(age_labels), num_groups), ...
                              'SCEDuration', nan(numel(age_labels), num_groups), ...
                              'propSCEs', nan(numel(age_labels), num_groups), ...
-                             'ActivityFreq', nan(numel(age_labels), num_groups), ...
                              'Pburst', nan(numel(age_labels), num_groups));
 
+        % Parcours des groupes d'animaux
         for groupIdx = 1:num_groups
             current_animal_group = groups_subset(groupIdx).animal_group;
             animal_group{groupIdx} = current_animal_group;
@@ -48,34 +51,51 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                     Acttmp2        = data.Acttmp2_gcamp{pathIdx};
                     Raster         = data.Raster_gcamp{pathIdx};
                     TRace          = data.TRace_gcamp{pathIdx};
-                    Race           = data.Race_gcamp{pathIdx};
                     RasterRace     = data.RasterRace_gcamp{pathIdx};
                     sces_distances = data.sces_distances_gcamp{pathIdx};
                     sampling_rate  = data.sampling_rate{pathIdx};
-
+                    all_max_corr_gcamp_gcamp = data.max_corr_gcamp_gcamp{pathIdx};
+                    
                     % Vérifier cohérence DF / Raster
                     if size(DF, 1) ~= size(Raster, 1)
-                        warning('Mismatch in the number of neurons between DF and Raster for group %d. Adjusting.', groupIdx);
+                        warning('Mismatch in number of neurons between DF and Raster for group %d.', groupIdx);
                         min_cells = min(size(DF, 1), size(Raster, 1));
                         DF = DF(1:min_cells, :);
                         Raster = Raster(1:min_cells, :);
                     end
                     if size(DF, 2) ~= size(Raster, 2)
-                        warning('Mismatch in the number of frames between DF and Raster for group %d. Adjusting.', groupIdx);
+                        warning('Mismatch in number of frames between DF and Raster for group %d.', groupIdx);
                         min_frames = min(size(DF, 2), size(Raster, 2));
                         DF = DF(:, 1:min_frames);
                         Raster = Raster(:, 1:min_frames);
                     end
 
-                    % Fréquence d'activité par minute
+                    % === Mesures ===
                     [NCell, Nz] = size(Raster);
+
+                    % Fréquence d'activité (événements par minute)
                     frequency = zeros(1, NCell);
                     for i = 1:NCell
                         frequency(i) = numel(Acttmp2{i}) / Nz * sampling_rate * 60;
                     end
-                    activity_frequency_minutes = mean(frequency,'omitnan');
+                    activity_frequency_minutes = mean(frequency, 'omitnan');
 
-                    % SCEs
+                    % Corrélation pairwise (normalisation Fisher z)
+                    if ~isempty(all_max_corr_gcamp_gcamp) && isnumeric(all_max_corr_gcamp_gcamp)
+                        r = all_max_corr_gcamp_gcamp(:);
+                        r = r(~isnan(r) & abs(r) < 1); % exclure NaN et ±1
+                        if ~isempty(r)
+                            z = 0.5 * log((1 + r) ./ (1 - r));
+                            mean_z = mean(z, 'omitnan');
+                            mean_pairwise_corr = (exp(2*mean_z) - 1) / (exp(2*mean_z) + 1);
+                        else
+                            mean_pairwise_corr = NaN;
+                        end
+                    else
+                        mean_pairwise_corr = NaN;
+                    end
+
+                    % Nombre et fréquence des SCEs
                     num_sces = numel(TRace);
                     nb_seconds = Nz / sampling_rate;
                     sce_frequency_minutes = (num_sces / nb_seconds) * 60;
@@ -88,13 +108,13 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                     end
                     prop_active_cell_SCEs = mean(pourcentageActif);
 
-                    % Durée des SCEs
+                    % Durée moyenne des SCEs
                     distances = sces_distances(:, 2);
                     frame_duration_ms = 1000 / sampling_rate;
                     durations_ms = distances * frame_duration_ms;
                     avg_duration_ms = mean(durations_ms, 'omitnan');
 
-                    % === Nouvelle mesure : Fraction d’événements en bursts (P_burst) ===
+                    % Fraction d’événements en bursts (P_burst)
                     pop_counts = sum(Raster,1);
                     smoothSigma = 3; 
                     win = ceil(6*smoothSigma);
@@ -112,13 +132,14 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                         P_burst = NaN;
                     end
 
-                    % Stockage
+                    % === Stockage ===
                     data_by_age.NCells(x_indices(pathIdx), groupIdx)       = NCell;
+                    data_by_age.ActivityFreq(x_indices(pathIdx), groupIdx) = activity_frequency_minutes;
+                    data_by_age.PairwiseCorr(x_indices(pathIdx), groupIdx) = mean_pairwise_corr;
                     data_by_age.NumSCEs(x_indices(pathIdx), groupIdx)      = num_sces;
                     data_by_age.SCEFreq(x_indices(pathIdx), groupIdx)      = sce_frequency_minutes;
                     data_by_age.SCEDuration(x_indices(pathIdx), groupIdx)  = avg_duration_ms;
                     data_by_age.propSCEs(x_indices(pathIdx), groupIdx)     = prop_active_cell_SCEs;
-                    data_by_age.ActivityFreq(x_indices(pathIdx), groupIdx) = activity_frequency_minutes;
                     data_by_age.Pburst(x_indices(pathIdx), groupIdx)       = P_burst;
 
                 catch ME
@@ -128,16 +149,21 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
         end
 
         % === Plotting ===
-        measures = {'NCells', 'ActivityFreq', 'NumSCEs', 'SCEFreq', 'SCEDuration', 'propSCEs', 'Pburst'};
-        measure_titles = {'NCells', 'Activity Frequency (per minute)', 'Number of SCEs', 'SCE Frequency', ...
-                          'SCE Duration (ms)', 'Percentage of Active Cells in SCEs (averaged)', ...
+        measures = {'NCells', 'ActivityFreq', 'PairwiseCorr', ...
+                    'NumSCEs', 'SCEFreq', 'SCEDuration', 'propSCEs', 'Pburst'};
+        measure_titles = {'NCells', 'Activity Frequency (per minute)', ...
+                          'Mean Pairwise Correlation (Fisher z normalized)', ...
+                          'Number of SCEs', 'SCE Frequency', ...
+                          'SCE Duration (ms)', ...
+                          'Percentage of Active Cells in SCEs (averaged)', ...
                           'Fraction of events in bursts (P_burst)'};
         
         num_measures = numel(measures);
         num_rows = ceil(num_measures / 2);
         num_columns = 2;
         
-        figure('Name', sprintf('Animal Type: %s', current_type), 'Position', [100, 100, 1200, 800]);
+        figure('Name', sprintf('Animal Type: %s', current_type), ...
+               'Position', [100, 100, 1200, 800]);
         legend_handles = gobjects(num_groups, 1);
         
         for measureIdx = 1:num_measures
