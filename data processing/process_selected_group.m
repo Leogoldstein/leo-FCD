@@ -67,8 +67,6 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
         daytime = datestr(currentDatetime, 'yy_mm_dd_HH_MM');
         gcamp_output_folders = create_base_folders(date_group_paths, current_gcamp_folders_names_group, daytime, processing_choice1, processing_choice2, current_animal_group);     
         
-        disp(gcamp_output_folders)
-
         % for m = 1:length(gcamp_output_folders)
         %     folder_path = gcamp_output_folders{m};
         %     parent_fig = fileparts(folder_path);  % dossier parent

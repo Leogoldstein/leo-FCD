@@ -1,8 +1,4 @@
 %% Preprocessing
-
-clear
-close all
-
 % % Définir le chemin vers Python dans l'environnement Suite2p
 pyExec = "C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe";
 %pyExec = "C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe"; 
@@ -26,14 +22,17 @@ if count(py.sys.path, new_path) == 0
 end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
-%
-% env_paths_all = selected_groups.env;
-% for idx = 1:length(env_paths_all)
-%     [recording_time, sampling_rate, optical_zoom, position, time_minutes] = find_key_value(env_paths_all{idx});
-%     disp(optical_zoom)
-%     disp(position)
-% end
 %%
+% for k = 1:length(selected_groups)
+% current_env_group = selected_groups(k).env;
+%     for idx = 1:length(current_env_group)
+%         [recording_time, sampling_rate, optical_zoom, position, time_minutes, pixel_size] = find_key_value(current_env_group{idx});
+%         %disp(optical_zoom)
+%         disp(position)
+%         %disp(pixel_size)
+%     end
+% end
+
 %processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
 processing_choice1 = '1';
 if strcmp(processing_choice1, '2')
@@ -124,7 +123,8 @@ corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysi
 %%
 [grouped_data_by_age, barplots] = barplots_by_type(selected_groups); % SCEs analysis required
 %%
-comparison_barplots = compare_groups_barplots(grouped_data_by_age); % several animal type required (jm, FCD, WT)
+pooled_level = 2; % 1 = pas de pooling
+comparison_barplots = compare_groups_barplots(grouped_data_by_age, pooled_level); % several animal type required (jm, FCD, WT)
 %%
 figs = RasterChange_around_SCEs(selected_groups);
 figs = FiringRateChange_around_SCEs(selected_groups);
