@@ -1,76 +1,79 @@
-function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
-    % select_synchronies processes data from a single folder, detecting synchronies (SCEs),
-    % creating raster plots, and saving the results.
-    %
-    % Inputs:
-    % - directory: Directory to save the results
-    % - DF: dF/F traces for the folder
-    % - MAct: Sum of max cell activities for the folder
-    % - MinPeakDistance: Minimum distance between peaks in frames
-    % - Raster: Raster data for the folder
-    % - synchronous_frames: Number of frames considered for synchrony detection
-    % - WinActive: A window of active frames
-    %
-    % Outputs:
-    % - sce_n_cells_threshold: Threshold for the number of cells for SCE detection
-    % - Race: Matrix containing Race data for the folder
-    % - RasterRace: Matrix containing RasterRace data for the folder
+function [sce_n_cells_threshold, sce_ratio_threshold, TRace, Race, sces_distances, RasterRace] = ...
+    select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
+% Detects synchronous calcium events (SCEs) based on cell activity synchrony.
+%
+% Inputs:
+% - directory: output folder for results
+% - synchronous_frames: temporal window (frames) for synchrony
+% - WinActive: active window (used for random shift)
+% - DF: ΔF/F traces (n_cells x time)
+% - MAct: total number of active cells over time (1 x T)
+% - MinPeakDistancesce: minimal distance between SCEs (frames)
+% - Raster: binary activity matrix (n_cells x T)
+% - animal, date: identifiers for output naming
+%
+% Outputs:
+% - sce_n_cells_threshold : absolute threshold (#cells)
+% - sce_ratio_threshold   : normalized threshold (fraction)
+% - TRace                 : frame indices of detected SCE peaks
+% - Race, RasterRace      : SCE-related activity matrices
+% - sces_distances        : [peak_frame, event_duration]
 
     try
         [NCell, Nz] = size(DF);
+        NShfl = 100;                    % number of shuffles
+        percentile = 95;                % significance level
 
-        % Select synchronies (SCEs)
+        % --- Step 1 : Shuffling-based null distribution ---
+        Sumactsh = zeros(Nz - synchronous_frames, NShfl);
 
-        %%%% shuffling to find threshold for number of cells for SCE detection
-        MActsh = zeros(1, Nz - synchronous_frames);   
-        Rastersh = zeros(NCell, Nz);   
-        NShfl = 100;
-        Sumactsh = zeros(Nz - synchronous_frames, NShfl);   
-        
         for n = 1:NShfl
+            Rastersh = zeros(NCell, Nz);
             for c = 1:NCell
                 l = randi(Nz - length(WinActive));
                 Rastersh(c,:) = circshift(Raster(c,:), l, 2);
             end
-            for i = 1:Nz - synchronous_frames   
+
+            MActsh = zeros(1, Nz - synchronous_frames);
+            for i = 1:(Nz - synchronous_frames)
                 MActsh(i) = sum(max(Rastersh(:, i:i + synchronous_frames), [], 2));
             end
-            Sumactsh(:, n) = MActsh;
+
+            % Store as fraction of active cells
+            Sumactsh(:, n) = MActsh / NCell;
         end
 
-        % Calculate the 99th percentile for threshold
-        percentile = 95;
-        sce_n_cells_threshold = prctile(Sumactsh, percentile, "all");
-        disp(['sce_n_cells_threshold: ' num2str(sce_n_cells_threshold)])
+        % --- Step 2 : Determine significance threshold ---
+        sce_ratio_threshold = prctile(Sumactsh, percentile, "all");
+        sce_n_cells_threshold = sce_ratio_threshold * NCell;
 
-        % Select synchronies (SCEs)
-        [~, TRace] = findpeaks(MAct, 'MinPeakHeight', sce_n_cells_threshold, 'MinPeakDistance', MinPeakDistancesce);
+        disp(['sce_ratio_threshold = ', num2str(sce_ratio_threshold, '%.3f')]);
+        disp(['sce_n_cells_threshold = ', num2str(sce_n_cells_threshold)]);
+
+        % --- Step 3 : Detect SCE peaks on normalized MAct ---
+        MAct_ratio = MAct / NCell;
+        [~, TRace] = findpeaks(MAct_ratio, ...
+            'MinPeakHeight', sce_ratio_threshold, ...
+            'MinPeakDistance', MinPeakDistancesce);
+
         NRace = length(TRace);
-        disp(['nSCE: ' num2str(NRace)])
+        disp(['Detected SCEs: ', num2str(NRace)]);
 
-         % Calcul des intersections et distances
-        sces_distances = zeros(NRace, 2); % Matrice pour stocker les intersections et distances
+        % --- Step 4 : Compute event boundaries and durations ---
+        sces_distances = zeros(NRace, 2);
         for i = 1:NRace
-            % Identifiez les frames avant le pic où MAct croise le seuil
-            left_idx = find(MAct(1:TRace(i)) < sce_n_cells_threshold, 1, 'last');
-            if isempty(left_idx)
-                left_idx = 1; % Par sécurité si aucun croisement trouvé
-            end
-            
-            % Identifiez les frames après le pic où MAct croise le seuil
-            right_idx = find(MAct(TRace(i):end) < sce_n_cells_threshold, 1, 'first');
-            if isempty(right_idx)
-                right_idx = Nz - TRace(i); % Par sécurité si aucun croisement trouvé
-            end
+            left_idx = find(MAct_ratio(1:TRace(i)) < sce_ratio_threshold, 1, 'last');
+            if isempty(left_idx), left_idx = 1; end
+
+            right_idx = find(MAct_ratio(TRace(i):end) < sce_ratio_threshold, 1, 'first');
+            if isempty(right_idx), right_idx = Nz - TRace(i); end
             right_idx = TRace(i) + right_idx - 1;
 
-            % Calculez la distance entre les intersections
-            distance = right_idx - left_idx;
-
-            % Stockez les résultats
-            sces_distances(i, :) = [TRace(i), distance];
+            duration = right_idx - left_idx;
+            sces_distances(i, :) = [TRace(i), duration];
         end
-        % Create Race and RasterRace matrices
+
+        % --- Step 5 : Build Race / RasterRace matrices ---
         Race = zeros(NCell, NRace);
         RasterRace = zeros(NCell, Nz);
 
@@ -81,47 +84,45 @@ function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = sele
             RasterRace(Race(:, i) == 1, TRace(i)) = 1;
         end
 
-        % Plotting and saving results
+        % --- Step 6 : Visualization ---
         fig = figure('Units', 'normalized', 'OuterPosition', [0 0 1 1]);
 
-        % First subplot: RasterRace
+        % Raster plot of detected events
         subplot(2, 1, 1);
         hold on;
         for i = 1:NCell
             spike_times = find(RasterRace(i, :));
-            y_values = i * ones(1, length(spike_times));
-            plot(spike_times, y_values, '.', 'Color', 'k');
+            if ~isempty(spike_times)
+                plot(spike_times, i * ones(1, numel(spike_times)), '.', 'Color', 'k');
+            end
         end
+        xlabel('Time (frames)');
+        ylabel('Cell #');
+        title('Raster of detected synchronous events (Race)');
+        xlim([1 Nz]);
         hold off;
-        xlabel('Time');
-        ylabel('Cell');
-        title('Raster Plot of Race Data');
-        xlim([1 size(RasterRace, 2)]);
 
-        % Second subplot: Sum of Max Cell Activity with Threshold
+        % Global synchrony trace
         subplot(2, 1, 2);
-        plot(MAct, 'LineWidth', 2);
-        hold on;
-        yline(sce_n_cells_threshold, '--r', 'LineWidth', 2);
-        xlabel('Time Frames');
-        ylabel('Sum of Max Cell Activity');
-        title('Sum of Max Cell Activity with Threshold');
-        legend('Actual Activity', 'Threshold');
-        xlim([1 length(MAct)]);
-        hold off;
+        plot(MAct_ratio, 'k', 'LineWidth', 2); hold on;
+        yline(sce_ratio_threshold, '--r', 'LineWidth', 1.5);
+        plot(TRace, MAct_ratio(TRace), 'ro', 'MarkerFaceColor', 'r');
+        xlabel('Frame');
+        ylabel('Active cell ratio');
+        title('Global synchrony and threshold');
+        legend('MAct ratio', 'SCE threshold', 'Detected SCEs');
+        xlim([1 Nz]); hold off;
 
-        % Generate the figure name using animal and date
-        fig_name = sprintf('Raster_plot_of_Race_data_of_%s_%s', animal, date);
+        % Save figure and data
+        fig_name = sprintf('SCEs_%s_%s', animal, date);
+        saveas(fig, fullfile(directory, [fig_name '.png']));
+        close(fig);
 
-        % Save the figure
-        save_path = fullfile(directory, [fig_name, '.png']);
-        saveas(gcf, save_path);
-        close(gcf);
+        save(fullfile(directory, 'results_SCEs.mat'), ...
+            'Race', 'TRace', 'sces_distances', 'RasterRace', ...
+            'sce_ratio_threshold', 'sce_n_cells_threshold');
 
-        % Save the results to .mat file for the current directory
-        save(fullfile(directory, 'results_SCEs.mat'), 'Race', 'TRace', 'sces_distances', 'RasterRace', 'sce_n_cells_threshold');
-        
     catch ME
-        warning('Error processing folder %s: %s', directory, ME.message);
+        warning('Error in select_synchronies (%s): %s', directory, ME.message);
     end
 end

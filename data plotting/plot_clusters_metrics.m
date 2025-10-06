@@ -1,4 +1,4 @@
-function plot_clusters_metrics(current_folders_group, all_NClOK, all_RaceOK, all_IDX2, all_clusterMatrix, all_Raster, all_sce_n_cells_threshold, all_synchronous_frames, current_animal_group, current_dates_group)
+function plot_clusters_metrics(current_folders_group, data, current_animal_group, current_dates_group)
     % plot_clusters_metrics processes clustering results for directories and generates figures.
 
     % Loop through each valid directory
@@ -7,15 +7,15 @@ function plot_clusters_metrics(current_folders_group, all_NClOK, all_RaceOK, all
             % Access data for the current directory with checks for cell arrays vs. numeric arrays
             disp(['Processing directory: ', current_folders_group{k}]);
 
-            RaceOK = all_RaceOK{k};  % Already numeric
-            clusterMatrix = all_clusterMatrix{k};  % Already numeric
-            Raster = all_Raster{k};  % Already numeric
-            NClOK = all_NClOK{k};  % Already numeric
-            IDX2 = all_IDX2{k};  % Already numeric
+            RaceOK = data.RaceOK{k};  % Already numeric
+            clusterMatrix = data.clusterMatrix{k};  % Already numeric
+            Raster = data.Raster_gcamp{k};  % Already numeric
+            NClOK = data.NClOK{k};  % Already numeric
+            IDX2 = data.IDX2{k};  % Already numeric
 
             % Check for other numeric variables
-            synchronous_frames = all_synchronous_frames{k};  % Should already be numeric
-            sce_n_cells_threshold = all_sce_n_cells_threshold{k};  % Should already be numeric
+            synchronous_frames = data.synchronous_frames{k};  % Should already be numeric
+            sce_n_cells_threshold = data.sce_n_cells_threshold{k};  % Should already be numeric
 
             % Ensure the clusterMatrix is a numeric matrix (if it was cell)
             if iscell(clusterMatrix)

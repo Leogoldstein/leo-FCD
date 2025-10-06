@@ -82,6 +82,12 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
         'Units','normalized','Position',[0.05 0.36 0.90 0.06], ...
         'Callback', @(src,~) save_callback(fig, synchronous_frames));
 
+    % --- Exclure l’enregistrement ---
+    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Exclure enregistrement', ...
+        'Units','normalized','Position',[0.05 0.28 0.90 0.06], ...
+        'BackgroundColor',[0.85 0.3 0.3], 'ForegroundColor','w', 'FontWeight','bold', ...
+        'Callback', @(src,~) exclude_recording(fig));
+
     % --- Contrôles détection ---
     make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.70 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,10,opts.prominence_factor,[0.05 0.64 0.90 0.06]);
@@ -111,20 +117,30 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     uiwait(fig);
 
     % ---- Sorties GUI ----
-    if ishghandle(fig) && isappdata(fig,'last_save_outputs')
+    if isappdata(fig,'excluded') && getappdata(fig,'excluded')
+        % Si exclu -> tout vide
+        disp('Enregistrement exclu — aucune donnée sauvegardée.');
+        Raster     = [];
+        Acttmp2    = [];
+        MAct       = [];
+        thresholds = [];
+    elseif ishghandle(fig) && isappdata(fig,'last_save_outputs')
         out = getappdata(fig,'last_save_outputs');
         Raster     = out.Raster;
         Acttmp2    = out.Acttmp2;
         MAct       = out.MAct;
         thresholds = out.thresholds;
-        delete(fig);
     else
         Raster     = false(size(DF));
         Acttmp2    = repmat({[]}, size(DF,1),1);
         MAct       = [];
         thresholds = nan(size(DF,1),1);
-        if ishghandle(fig), delete(fig); end
     end
+    
+    if ishghandle(fig)
+        delete(fig);
+    end
+
 end
 
 
@@ -603,4 +619,18 @@ function save_callback(fig, synchronous_frames)
     % assignin('base','opts_used',   opts);
 
     if ishghandle(fig), uiresume(fig); close(fig); end
+end
+
+function exclude_recording(fig)
+    % Fonction appelée quand on clique sur "Exclure enregistrement"
+    disp('Enregistrement exclu par l’utilisateur.');
+    
+    % Stocke un flag dans les appdata
+    setappdata(fig, 'excluded', true);
+    
+    % Ferme proprement le GUI
+    if ishghandle(fig)
+        uiresume(fig);
+        close(fig);
+    end
 end

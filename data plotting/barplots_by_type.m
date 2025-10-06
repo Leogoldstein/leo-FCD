@@ -4,7 +4,7 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
     num_types = numel(animal_types);
 
     grouped_data_by_age = struct(); 
-    figs = struct();  % Structure pour stocker les figures par type d'animal
+    figs = struct();
 
     % Grouper les selected_groups par type d'animal
     for typeIdx = 1:num_types
@@ -24,17 +24,17 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
         age_labels = {'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15'};
         age_values = 7:15;
 
-        % Conteneur des données
+        % === Conteneur des données ===
         data_by_age = struct('NCells', nan(numel(age_labels), num_groups), ...
                              'ActivityFreq', nan(numel(age_labels), num_groups), ...
                              'PairwiseCorr', nan(numel(age_labels), num_groups), ...
                              'NumSCEs', nan(numel(age_labels), num_groups), ...
-                             'SCEFreq', nan(numel(age_labels), num_groups), ...
+                             'SCE_Interv', nan(numel(age_labels), num_groups), ...
                              'SCEDuration', nan(numel(age_labels), num_groups), ...
                              'propSCEs', nan(numel(age_labels), num_groups), ...
                              'Pburst', nan(numel(age_labels), num_groups));
 
-        % Parcours des groupes d'animaux
+        % === Parcours des groupes d'animaux ===
         for groupIdx = 1:num_groups
             current_animal_group = groups_subset(groupIdx).animal_group;
             animal_group{groupIdx} = current_animal_group;
@@ -73,17 +73,17 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                     % === Mesures ===
                     [NCell, Nz] = size(Raster);
 
-                    % Fréquence d'activité (événements par minute)
+                    % Fréquence d'activité (événements/minute)
                     frequency = zeros(1, NCell);
                     for i = 1:NCell
                         frequency(i) = numel(Acttmp2{i}) / Nz * sampling_rate * 60;
                     end
                     activity_frequency_minutes = mean(frequency, 'omitnan');
 
-                    % Corrélation pairwise (normalisation Fisher z)
+                    % Corrélation pairwise (Fisher z)
                     if ~isempty(all_max_corr_gcamp_gcamp) && isnumeric(all_max_corr_gcamp_gcamp)
                         r = all_max_corr_gcamp_gcamp(:);
-                        r = r(~isnan(r) & abs(r) < 1); % exclure NaN et ±1
+                        r = r(~isnan(r) & abs(r) < 1);
                         if ~isempty(r)
                             z = 0.5 * log((1 + r) ./ (1 - r));
                             mean_z = mean(z, 'omitnan');
@@ -95,10 +95,16 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                         mean_pairwise_corr = NaN;
                     end
 
-                    % Nombre et fréquence des SCEs
+                    % Nombre de SCEs
                     num_sces = numel(TRace);
-                    nb_seconds = Nz / sampling_rate;
-                    sce_frequency_minutes = (num_sces / nb_seconds) * 60;
+
+                    % === Intervalle inter-SCE (sec) ===
+                    if num_sces > 1
+                        SCE_intervals = diff(TRace) / sampling_rate; % en secondes
+                        mean_SCE_interv = mean(SCE_intervals, 'omitnan');
+                    else
+                        mean_SCE_interv = NaN;
+                    end
 
                     % Proportion de cellules actives par SCE
                     pourcentageActif = zeros(length(TRace), 1);
@@ -137,7 +143,7 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
                     data_by_age.ActivityFreq(x_indices(pathIdx), groupIdx) = activity_frequency_minutes;
                     data_by_age.PairwiseCorr(x_indices(pathIdx), groupIdx) = mean_pairwise_corr;
                     data_by_age.NumSCEs(x_indices(pathIdx), groupIdx)      = num_sces;
-                    data_by_age.SCEFreq(x_indices(pathIdx), groupIdx)      = sce_frequency_minutes;
+                    data_by_age.SCE_Interv(x_indices(pathIdx), groupIdx)   = mean_SCE_interv;
                     data_by_age.SCEDuration(x_indices(pathIdx), groupIdx)  = avg_duration_ms;
                     data_by_age.propSCEs(x_indices(pathIdx), groupIdx)     = prop_active_cell_SCEs;
                     data_by_age.Pburst(x_indices(pathIdx), groupIdx)       = P_burst;
@@ -150,10 +156,10 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
 
         % === Plotting ===
         measures = {'NCells', 'ActivityFreq', 'PairwiseCorr', ...
-                    'NumSCEs', 'SCEFreq', 'SCEDuration', 'propSCEs', 'Pburst'};
+                    'NumSCEs', 'SCE_Interv', 'SCEDuration', 'propSCEs', 'Pburst'};
         measure_titles = {'NCells', 'Activity Frequency (per minute)', ...
                           'Mean Pairwise Correlation (Fisher z normalized)', ...
-                          'Number of SCEs', 'SCE Frequency', ...
+                          'Number of SCEs', 'Inter-SCE Interval (s)', ...
                           'SCE Duration (ms)', ...
                           'Percentage of Active Cells in SCEs (averaged)', ...
                           'Fraction of events in bursts (P_burst)'};
@@ -204,9 +210,7 @@ function [grouped_data_by_age, figs] = barplots_by_type(selected_groups)
 
         legend(legend_handles, animal_group, 'Location', 'bestoutside');
         
-        % Enregistrer la figure pour ce type d'animal
         figs.(current_type) = gcf;
         grouped_data_by_age.(current_type) = data_by_age;
-
     end
 end

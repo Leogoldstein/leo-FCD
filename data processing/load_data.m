@@ -1,4 +1,4 @@
-function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
+function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] = load_data(workingFolder)
 
     % Determine file extension and check for .npy files
     [~, ~, ext] = fileparts(workingFolder);
@@ -15,7 +15,7 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
         % Load .npy files
         F_unsorted = readNPY(newFPath);
         F_deconv_unsorted = readNPY(newSpksPath);
-        iscell = readNPY(newIscellPath);
+        iscell_raw = readNPY(newIscellPath);   % ← ne jamais écraser l’original
 
         % Call the Python function to load stats and ops
         try
@@ -25,49 +25,71 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
         catch ME
             error('Failed to call Python function: %s', ME.message);
         end
-        
-        % dict = stat{1};
-        % disp(dict.keys())
 
-        F_unsorted = F_unsorted(:, 1:36000);
-        keepMask = iscell(:,1) > 0;  % garde seulement les vraies cellules
-        F = double(F_unsorted(keepMask, :));
-        F_deconv = double(F_deconv_unsorted(keepMask, :)); 
-        iscell = iscell(keepMask, :);
+        % --- Vérification cohérence taille ---
+        nCells = size(F_unsorted,1);
+        if size(iscell_raw,1) ~= nCells
+            warning('iscell and F_unsorted differ in length (%d vs %d). Truncating.', ...
+                size(iscell_raw,1), nCells);
+            nMin = min(size(iscell_raw,1), nCells);
+            iscell_raw = iscell_raw(1:nMin,:);
+            F_unsorted = F_unsorted(1:nMin,:);
+            F_deconv_unsorted = F_deconv_unsorted(1:nMin,:);
+        end
+
+        % --- Masques logiques ---
+        keepMask = logical(iscell_raw(:,1));   % vraies cellules
+        falseMask = ~keepMask;                 % fausses cellules
+
+        % --- Séparation F / F_deconv / iscell ---
+        F          = double(F_unsorted(keepMask, :));
+        F_deconv   = double(F_deconv_unsorted(keepMask, :));
+        iscell     = iscell_raw(keepMask, :);
+        iscell_false = iscell_raw(falseMask, :);
 
         % ---- Gestion py.list vs MATLAB array ----
         if isa(stat, 'py.list')
-            idx = find(keepMask);              
-            stat = subset_pylist(stat, idx);           
+            idx_true  = find(keepMask);
+            idx_false = find(falseMask);
+
+            stat_true  = subset_pylist(stat, idx_true);
+            stat_false = subset_pylist(stat, idx_false);
+
+            stat = stat_true; % remplacer la variable principale
         else
-            stat = stat(keepMask);             
+            stat_true  = stat(keepMask);
+            stat_false = stat(falseMask);
+            stat = stat_true;
         end
 
     elseif strcmp(ext, '.mat')
         % Load .mat files
         data = load(workingFolder);
 
-        % Extract data from .mat file
+        % Extract data
         F_unsorted = data.F;
         F_deconv_unsorted = data.spks;
-        iscell = data.iscell;
+        iscell_raw = data.iscell;
+        %assignin('base', "iscell_raw", iscell_raw);
         ops = data.ops;
         stat = data.stat;
-        
-        keepMask = iscell(:,1) > 0;
-        F = double(F_unsorted(keepMask, :));
-        F_deconv = double(F_deconv_unsorted(keepMask, :)); 
-        iscell = iscell(keepMask, :);
-        stat   = stat(keepMask);
 
+        keepMask = iscell_raw(:,1) > 0;
+        falseMask = ~keepMask;
+
+        F = double(F_unsorted(keepMask, :));
+        F_deconv = double(F_deconv_unsorted(keepMask, :));
+        iscell = iscell_raw(keepMask, :);
+        iscell_false = iscell_raw(falseMask, :);
+        stat_false = stat(falseMask);
+        stat = stat(keepMask);
     else
         error('Unsupported file type: %s', ext);
-    end   
-    
-    % ---- SUPPRESSION DES CELLULES QUI TOMBENT À 0 ----
-    rowsWithZero = any(F == 0, 2);
+    end
 
-    % ---- Appliquer la suppression ----
+    % ---- SUPPRESSION DES CELLULES QUI TOMBENT À 0 ----
+    rowsWithZero = all(F == 0, 2);
+
     F(rowsWithZero, :) = [];
     F_deconv(rowsWithZero, :) = [];
     iscell(rowsWithZero, :) = [];
@@ -79,8 +101,7 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell] = load_data(workingFolder)
     end
 
     % ---- LOG ----
-    fprintf('Suppression de %d cellules à cause de F==0.\n', ...
-        sum(rowsWithZero));
+    fprintf('Suppression de %d cellules à cause de F==0.\n', sum(rowsWithZero));
 end
 
 function out = subset_pylist(pylist, idx)
@@ -131,5 +152,3 @@ function out = subset_pylist(pylist, idx)
         out{k} = s;  % Sauvegarde dans la sortie
     end
 end
-
-
