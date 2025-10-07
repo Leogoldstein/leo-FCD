@@ -22,7 +22,7 @@ if count(py.sys.path, new_path) == 0
 end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
-%%
+
 % for k = 1:length(selected_groups)
 % current_env_group = selected_groups(k).env;
 %     for idx = 1:length(current_env_group)
@@ -32,7 +32,7 @@ end
 %         %disp(pixel_size)
 %     end
 % end
-
+%%
 %processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
 processing_choice1 = '1';
 if strcmp(processing_choice1, '2')
@@ -57,7 +57,7 @@ end
 include_blue_cells = '2';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, processing_choice1, processing_choice2, checking_choice2, include_blue_cells);
-
+%%
 % Processing and analysis
 PathSave = 'D:\Imaging\Outputs\';
 all_results = [];  % tableau de structures vide
@@ -136,5 +136,4 @@ close all
 create_ppt_from_figs(selected_groups, daytime)
 
 %%
-which kmeansopttest -all
-which kmeansoptrnd -all
+close all

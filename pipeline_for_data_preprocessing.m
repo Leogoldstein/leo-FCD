@@ -39,6 +39,9 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         selected_groups_old = struct([]);
     end
 
+    kept_groups = string.empty(1, 0); % Liste des groupes explicitement conservés
+    replace_all = []; % mémorisation du choix utilisateur "remplacer tous" ou non
+
     %===================%
     %   Traitement des choix
     %===================%
@@ -87,7 +90,6 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     %   Construction des structures
     %===================%
     idx = 1;
-    replace_all = []; % demandé uniquement si besoin
 
     for j = 1:length(choices)
         group_type = group_order{choices(j)};
@@ -128,8 +130,8 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
             existing_idx = [];
             if ~isempty(selected_groups_old)
                 for sg = 1:numel(selected_groups_old)
-                    if strcmp(selected_groups_old(sg).animal_group, current_animal_group) && ...
-                       any(ismember(selected_groups_old(sg).dates, date_part_all(date_indices)))
+                    if isfield(selected_groups_old(sg), 'animal_group') && ...
+                       strcmp(selected_groups_old(sg).animal_group, current_animal_group)
                         existing_idx = sg;
                         break;
                     end
@@ -138,7 +140,6 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
 
             % === Gestion du remplacement ===
             if ~isempty(existing_idx)
-                % Première fois qu'on détecte un doublon → on demande
                 if isempty(replace_all)
                     fprintf('\nDes groupes déjà existants ont été détectés.\n');
                     disp('1 : Remplacer tous les groupes existants');
@@ -148,26 +149,13 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 end
 
                 if ~replace_all
-                    old_group = selected_groups_old(existing_idx);
-                    if isempty(selected_groups)
-                        selected_groups = old_group;
-                    else
-                        all_fields = unique([fieldnames(selected_groups); fieldnames(old_group)]);
-                        for f = 1:numel(all_fields)
-                            fn = all_fields{f};
-                            if ~isfield(selected_groups, fn)
-                                [selected_groups.(fn)] = deal([]);
-                            end
-                            if ~isfield(old_group, fn)
-                                old_group.(fn) = [];
-                            end
-                        end
-                        selected_groups(idx) = orderfields(old_group, selected_groups);
-                    end
-                    idx = idx + 1;
+                    fprintf('Groupe "%s" déjà existant conservé (aucune modification)\n', current_animal_group);
+                    kept_groups(end+1) = current_animal_group; % Sauvegarde pour le garder
                     continue;
                 else
-                    fprintf('Remplacement du groupe "%s"\n', current_animal_group);
+                    fprintf('Remplacement automatique du groupe "%s"\n', current_animal_group);
+                    % Supprimer ancien avant d'ajouter le nouveau
+                    selected_groups_old(existing_idx) = [];
                 end
             end
 
@@ -200,14 +188,20 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     end
 
     %===================%
-    %   Nettoyage avec confirmation (1/2)
+    %   Nettoyage final
     %===================%
     if ~isempty(selected_groups_old)
-        keep_mask = ismember(cellstr({selected_groups_old.animal_group}), cellstr({selected_groups.animal_group}));
-        removed_groups = {selected_groups_old(~keep_mask).animal_group};
+        old_names = string({selected_groups_old.animal_group});
+        new_names = string([]);
+        if isfield(selected_groups, 'animal_group')
+            new_names = string({selected_groups.animal_group});
+        end
+        all_kept_names = unique([new_names, kept_groups]); % garde aussi ceux conservés
 
-        if exist('removed_groups', 'var') && ~isempty(removed_groups)
-            removed_groups = cellstr(string(removed_groups));
+        keep_mask = ismember(old_names, all_kept_names);
+        removed_groups = old_names(~keep_mask);
+
+        if ~isempty(removed_groups)
             fprintf('\nGroupes non sélectionnés détectés : %s\n', strjoin(removed_groups, ', '));
             disp('1 : Supprimer les groupes non sélectionnés');
             disp('2 : Conserver tous les groupes existants');
@@ -218,30 +212,15 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
             else
                 fprintf('Aucun groupe supprimé — tous les groupes existants sont conservés.\n');
             end
-        else
-            fprintf('Aucun groupe non sélectionné trouvé.\n');
         end
 
         % Fusion propre anciens + nouveaux
-        if ~isempty(selected_groups_old)
-            fields_old = fieldnames(selected_groups_old);
-            fields_new = fieldnames(selected_groups);
-            all_fields = unique([fields_old; fields_new]);
-            for f = 1:numel(all_fields)
-                fn = all_fields{f};
-                if ~isfield(selected_groups_old, fn)
-                    [selected_groups_old.(fn)] = deal([]);
-                end
-                if ~isfield(selected_groups, fn)
-                    [selected_groups.(fn)] = deal([]);
-                end
-            end
-            selected_groups = [selected_groups_old(:); selected_groups(:)];
-        end
+        selected_groups = [selected_groups_old(:); selected_groups(:)];
     end
 
     %===================%
     %   Sauvegarde finale
     %===================%
     selected_groups = selected_groups(~cellfun(@isempty, {selected_groups.animal_group}));
+    fprintf('\n Mise à jour terminée : %d groupes actifs dans le workspace.\n', numel(selected_groups));
 end

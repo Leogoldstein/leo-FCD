@@ -88,51 +88,53 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
         %             %Supprimer le fichier
         %             delete(item_path);
         %         end
-        %     end
+        %      end
         % 
         %     fprintf('Contenu de %s supprimé (sauf %s).\n', parent_fig, folder_path);
         % end
 
         % Preprocess and process data
-        data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells);                    
-        
-        % Performing mean images
-        meanImgs_gcamp = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
-
-        % Performing motion_energy
-        avg_block = 5; % Moyenne toutes les 5 frames
-        [motion_energy_group, avg_motion_energy_group]  = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block);      
-            
-        if ~isempty(checking_choice2)
-            
-            %plot_random_F_and_DF(data, current_animal_group, current_ages_group);
-            [~, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2);
-
-            checked_indices = find(~cellfun(@isempty, selected_gcamp_neurons_original) | ~cellfun(@isempty, selected_blue_neurons_original)); % Indices des dossiers avec des neurones sélectionnés
-                                                   
-            if ~isempty(checked_indices)            
-                % Filtrer les variables d'input en fonction de checked_indices
-                folders_groups = {
-                    [current_gcamp_folders_group(checked_indices), current_gcamp_folders_names_group(checked_indices)],  % Group gCamp
-                    [current_red_folders_group(checked_indices),   current_red_folders_names_group(checked_indices)],    % Group Red
-                    [current_blue_folders_group(checked_indices),  current_blue_folders_names_group(checked_indices)],   % Group Blue
-                    [current_green_folders_group(checked_indices), current_green_folders_names_group(checked_indices)]   % Group Green
-                };
+        if ~isfield(selected_groups(k), 'data') || isempty(selected_groups(k).data)
+            data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells);                    
+    
+            % Performing mean images
+            meanImgs_gcamp = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
+    
+            % Performing motion_energy
+            avg_block = 5; % Moyenne toutes les 5 frames
+            [motion_energy_group, avg_motion_energy_group]  = load_or_process_movie(date_group_paths, gcamp_output_folders, avg_block);      
                 
-                bad_gcamp_ind_list = selected_gcamp_neurons_original(checked_indices);
-                bad_blue_ind_list = selected_blue_neurons_original(checked_indices);
-                data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p);                    
+            if ~isempty(checking_choice2)
+                
+                %plot_random_F_and_DF(data, current_animal_group, current_ages_group);
+                [~, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2);
+    
+                checked_indices = find(~cellfun(@isempty, selected_gcamp_neurons_original) | ~cellfun(@isempty, selected_blue_neurons_original)); % Indices des dossiers avec des neurones sélectionnés
+                                                       
+                if ~isempty(checked_indices)            
+                    % Filtrer les variables d'input en fonction de checked_indices
+                    folders_groups = {
+                        [current_gcamp_folders_group(checked_indices), current_gcamp_folders_names_group(checked_indices)],  % Group gCamp
+                        [current_red_folders_group(checked_indices),   current_red_folders_names_group(checked_indices)],    % Group Red
+                        [current_blue_folders_group(checked_indices),  current_blue_folders_names_group(checked_indices)],   % Group Blue
+                        [current_green_folders_group(checked_indices), current_green_folders_names_group(checked_indices)]   % Group Green
+                    };
+                    
+                    bad_gcamp_ind_list = selected_gcamp_neurons_original(checked_indices);
+                    bad_blue_ind_list = selected_blue_neurons_original(checked_indices);
+                    data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p);                    
+                end
+    
+                build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
             end
-
-            build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
+            
+            build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group)
+           
+            % Store processed data in selected_groups for this group
+            selected_groups(k).gcamp_output_folders = gcamp_output_folders;
+            selected_groups(k).current_blue_folders_group = current_blue_folders_group;
+            selected_groups(k).data = data;
         end
-        
-        build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group)
-       
-        % Store processed data in selected_groups for this group
-        selected_groups(k).gcamp_output_folders = gcamp_output_folders;
-        selected_groups(k).current_blue_folders_group = current_blue_folders_group;
-        selected_groups(k).data = data;        
     end
 end
 

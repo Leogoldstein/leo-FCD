@@ -13,7 +13,7 @@ function [figs] = compare_groups_barplots(grouped_data_by_age, pooled_level)
     % --- Définir les mesures ---
     measures = {'NCells', 'Z_position', 'ActivityFreq', 'PairwiseCorr', ...
                 'NumSCEs', 'SCE_Interv', 'SCEDuration', ...
-                'propSCEs', 'Pburst'};
+                'propSCEs', 'Pburst', 'Stability'};
 
     measure_titles = {'NCells', ...
                       'Z Position (µm)', ...
@@ -23,7 +23,8 @@ function [figs] = compare_groups_barplots(grouped_data_by_age, pooled_level)
                       'Inter-SCE Interval (s)', ...
                       'SCE Duration (ms)', ...
                       'Percentage of Active Cells in SCEs (averaged)', ...
-                      'Fraction of events in bursts (P_burst)'};
+                      'Fraction of events in bursts (P_burst)', ...
+                      'Stability (mean successive Jaccard)'};
 
     % --- Âges disponibles ---
     base_ages = 7:15;
@@ -59,8 +60,8 @@ function [figs] = compare_groups_barplots(grouped_data_by_age, pooled_level)
 
     % --- Créer la figure principale ---
     figs = figure('Name', 'Comparing Animal Groups by Age / Pooled Levels', ...
-                  'Position', [100, 100, 1300, 850]);
-    
+                  'Position', [100, 100, 1400, 900]);
+
     num_measures = numel(measures);
     num_rows = ceil(num_measures / 2);
     num_columns = 2;
