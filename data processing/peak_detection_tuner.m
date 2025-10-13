@@ -1,4 +1,4 @@
-function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, thresholds] = ...
+function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, MAct, thresholds] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -18,7 +18,7 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
-        'prominence_factor', 6, ...
+        'prominence_factor', 7.3, ...
         'refrac_fr', 3 ...
     );
 
@@ -33,7 +33,8 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     end
 
     % --- Prétraitement ---
-    [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0] = DF_processing(F, opts);
+    [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
+        quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts);
 
     % === MODE BATCH (pas de GUI) ===
     if nogui
@@ -43,8 +44,9 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
         setappdata(fig,'opts',opts);
         setappdata(fig,'noise_est',noise_est);
         setappdata(fig,'baseline_F',baseline_F);
+        setappdata(fig,'quality_index', quality_index);
 
-        [Raster, Acttmp2, MAct, thresholds, ~] = save_peak_matrix(fig, synchronous_frames);
+        [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, ~] = save_peak_matrix(fig, synchronous_frames);
 
         if ishghandle(fig), delete(fig); end
         return;
@@ -59,15 +61,15 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     ctrl_panel = uipanel('Parent',fig,'Units','normalized','Position',[0.01 0.05 0.22 0.92], ...
         'Title','Contrôles','FontSize',10,'Tag','ctrl_panel');
 
-    % --- Slider SNR threshold ---
-    uicontrol('Parent',ctrl_panel,'Style','text','String',sprintf('SNR threshold = %.2f',snr_thr0), ...
-        'Units','normalized','Position',[0.05 0.92 0.90 0.04], 'Tag','lbl_snr_thr', ...
+    % --- Slider Quality threshold ---
+    uicontrol('Parent',ctrl_panel,'Style','text','String',sprintf('Quality threshold = %.2f',quality_thr0), ...
+        'Units','normalized','Position',[0.05 0.92 0.90 0.04], 'Tag','lbl_quality_thr', ...
         'HorizontalAlignment','left');
-
-    uicontrol('Parent',ctrl_panel,'Style','slider','Min',snr_min,'Max',snr_max, ...
-        'Value',snr_thr0,'Units','normalized','Position',[0.05 0.87 0.90 0.04], ...
-        'Tag','sldr_snr_thr', ...
-        'Callback',@(src,~) update_snr_threshold(fig,get(src,'Value')));
+    
+    uicontrol('Parent',ctrl_panel,'Style','slider','Min',quality_min,'Max',quality_max, ...
+        'Value',quality_thr0,'Units','normalized','Position',[0.05 0.87 0.90 0.04], ...
+        'Tag','sldr_quality_thr', ...
+        'Callback',@(src,~) update_quality_threshold(fig,get(src,'Value')));
 
     % --- Navigation ---
     uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Cellule suivante', ...
@@ -110,9 +112,13 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     setappdata(fig,'opts',opts);
     setappdata(fig,'SNR_mean',SNR_mean);
     setappdata(fig,'ax1',ax1);
+    setappdata(fig,'quality_index', quality_index);
+    setappdata(fig,'quality_min', quality_min);
+    setappdata(fig,'quality_max', quality_max);
+    setappdata(fig,'quality_thr', quality_thr0);
 
     % Init ordre cellules + affichage
-    update_snr_threshold(fig,snr_thr0);
+    update_quality_threshold(fig, quality_thr0);
 
     uiwait(fig);
 
@@ -120,12 +126,18 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     if isappdata(fig,'excluded') && getappdata(fig,'excluded')
         % Si exclu -> tout vide
         disp('Enregistrement exclu — aucune donnée sauvegardée.');
+        valid_cells = [];
+        DF_sg      = [];
+        baseline_F = [];
         Raster     = [];
         Acttmp2    = [];
         MAct       = [];
         thresholds = [];
     elseif ishghandle(fig) && isappdata(fig,'last_save_outputs')
         out = getappdata(fig,'last_save_outputs');
+        valid_cells = out.valid_cells;
+        DF_sg      = out.DF_sg;
+        baseline_F = out.baseline_F;
         Raster     = out.Raster;
         Acttmp2    = out.Acttmp2;
         MAct       = out.MAct;
@@ -140,12 +152,13 @@ function [DF, baseline_F, noise_est, SNR, DF_sg, Raster, Acttmp2, MAct, threshol
     if ishghandle(fig)
         delete(fig);
     end
-
 end
 
 
 %% ===================== DF PROCESSING (unique) =======================
-function [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0] = DF_processing(F, opts)
+function [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
+          quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts)
+
     % Calcule DF, baseline, SavGol (DF_sg), bruit (rolling) et SNR.
     %
     % Seuls opts.window_size, opts.savgol_win, opts.savgol_poly sont utilisés ici.
@@ -214,6 +227,30 @@ function [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr
     snr_min  = min(SNR_mean);
     snr_max  = max(SNR_mean);
     snr_thr0 = (snr_min + snr_max)/2;
+
+    % ---- Indices qualité ----
+    contrast_metric = std(DF_sg, [], 2) ./ mean(noise_est, 2);
+    baseline_q5 = prctile(baseline_F, 5);
+    low_baseline_flag = baseline_F < baseline_q5;
+    
+    baseline_width = zeros(size(DF_sg,1),1);
+    for n = 1:size(DF_sg,1)
+        th = prctile(DF_sg(n,:),10);
+        baseline_width(n) = std(DF_sg(n, DF_sg(n,:) < th), [], 'omitnan');
+    end
+    
+    noise_ratio = mean(noise_est, 2) ./ std(DF_sg, [], 2);
+    quality_index = contrast_metric ./ (1 + noise_ratio);
+    
+    % bornes qualité
+    quality_min  = min(quality_index);
+    quality_max  = max(quality_index);
+    quality_thr0 = (quality_min + quality_max) / 2;
+    
+    % pour inspection future
+    SNR_info = table(baseline_F, contrast_metric, baseline_width, noise_ratio, quality_index, ...
+        'VariableNames', {'F0','Contrast','BaselineWidth','NoiseRatio','Quality'});
+
 end
 
 %% ===================== AUTO DETECT =======================
@@ -344,22 +381,79 @@ function refresh_data(fig)
             plot(ax,[1 T],[thr_lo thr_lo],':','Color',[.7 .1 .1],'LineWidth',1);
         end
     end
+        % --- Indicateur de qualité ---
+    if isappdata(fig, 'quality_index')
+        quality_index = getappdata(fig, 'quality_index');
+        cid = getappdata(fig, 'cell_id');
+        qval = quality_index(cid);
+
+        % Détermination couleur et style selon qualité
+        if qval >= 1.5
+            qcolor = [0 0.6 0];        % vert
+            qstyle = 'normal';
+        elseif qval >= 1
+            qcolor = [0.9 0.5 0];      % orange
+            qstyle = 'normal';
+        elseif qval >= 0.5
+            qcolor = [0.8 0 0];        % rouge
+            qstyle = 'normal';
+        else
+            qcolor = [0.8 0 0];        % rouge gras
+            qstyle = 'bold';
+        end
+
+        % Position du texte (coin supérieur gauche)
+        yMax = max(x,[],'omitnan');
+        yPos = yMax - 0.05*(yMax - min(x,[],'omitnan'));
+        text(ax, 0.02*length(x), yPos, sprintf('Qualité = %.2f', qval), ...
+            'Color', qcolor, 'FontSize', 12, 'FontWeight', qstyle, ...
+            'BackgroundColor',[1 1 1 0.6], 'Margin', 3);
+    end
 end
 
 %% ===================== SAVE PEAK MATRIX =======================
-function [Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames)
+function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames)
     DF_sg   = getappdata(fig,'DF_sg');
     opts    = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
+    baseline_F = getappdata(fig,'baseline_F');
     nCells = size(DF_sg,1);
     Nz     = size(DF_sg,2);
 
+    % --- Récupérer Quality Index ---
+    if isappdata(fig, 'quality_index')
+        quality_index = getappdata(fig, 'quality_index');
+    else
+        quality_index = ones(nCells,1); % fallback si non présent
+    end
+
+    % --- Initialiser sorties ---
     Raster     = false(nCells, Nz);
     Acttmp2    = cell(nCells,1);
     thresholds = nan(nCells,1);
     minithreshold = 0.1;
+    n_kept = 0;
 
     for cid = 1:nCells
+        % --- Exclure les cellules de mauvaise qualité ---
+        if quality_index(cid) <= 0.5
+            % Vide les sorties
+            Acttmp2{cid} = [];
+            thresholds(cid) = NaN;
+            Raster(cid,:) = false;
+    
+            % Vide les traces pour éviter réutilisation ultérieure
+            if exist('DF_sg', 'var')
+                DF_sg(cid,:) = NaN;
+            end
+    
+            fprintf('Cellule %d ignorée (qualité %.2f ≤ 0.5)\n', cid, quality_index(cid));
+            continue; % passe à la cellule suivante
+        end
+
+        % --- Si on arrive ici, la cellule est conservée ---
+        n_kept = n_kept + 1;
+
         x  = DF_sg(cid,:).';   % signal pour détection
         Nx = numel(x);
 
@@ -436,6 +530,10 @@ function [Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synch
         thresholds(cid) = thr_lo;
     end
 
+    % --- Afficher le nombre de cellules restantes ---
+    fprintf('\n=> %d cellules conservées sur %d (%.1f%%)\n', ...
+        n_kept, nCells, 100 * n_kept / nCells);
+
     % activité multi-cellules
     if Nz > synchronous_frames
         MAct = zeros(1, Nz - synchronous_frames);
@@ -453,15 +551,24 @@ function [Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synch
     % ylabel(sprintf('Active cells in %d-frame window', synchronous_frames));
     % title('Synchronous activity (MAct)');
     % grid on;
+
+    invalid_cells = all(isnan(DF_sg), 2);  
+    valid_cells = find(~invalid_cells);
+
+    DF_sg = DF_sg(valid_cells, :);
+    baseline_F = baseline_F(valid_cells, :);
+    thresholds = thresholds(valid_cells, :);
+    Acttmp2 = Acttmp2(valid_cells);
+    Raster = Raster(valid_cells, :);
 end
 
-%% ===================== SNR THRESHOLD / TRI =======================
-function update_snr_threshold(fig, thr)
-    SNR_mean = getappdata(fig,'SNR_mean');
-    valid_cells = find(SNR_mean >= thr);
+%% ===================== QUALITY THRESHOLD / TRI =======================
+function update_quality_threshold(fig, thr)
+    quality_index = getappdata(fig,'quality_index');
+    valid_cells = find(quality_index >= thr);
 
-    lbl = findobj(fig,'Tag','lbl_snr_thr');
-    if ~isempty(lbl), lbl.String = sprintf('SNR threshold = %.2f',thr); end
+    lbl = findobj(fig,'Tag','lbl_quality_thr');
+    if ~isempty(lbl), lbl.String = sprintf('Quality threshold = %.2f',thr); end
 
     ax = getappdata(fig,'ax1');
 
@@ -469,24 +576,25 @@ function update_snr_threshold(fig, thr)
         setappdata(fig,'order_cells', []);
         setappdata(fig,'cell_index_in_order', []);
         cla(ax);
-        title(ax, sprintf('Aucune cellule avec SNR >= %.2f',thr));
+        title(ax, sprintf('Aucune cellule avec Quality >= %.2f',thr));
         drawnow;
         return;
     end
 
-    [~, ord] = sort(SNR_mean(valid_cells),'ascend');
+    [~, ord] = sort(quality_index(valid_cells),'ascend');
     order_cells = valid_cells(ord);
 
     setappdata(fig,'order_cells', order_cells);
     setappdata(fig,'cell_index_in_order', 1);
     setappdata(fig,'cell_id', order_cells(1));
-    setappdata(fig,'snr_thr', thr);
+    setappdata(fig,'quality_thr', thr);
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_lo_last'), rmappdata(fig,'thr_lo_last'); end
 
     auto_detect_and_add(fig);
     refresh_data(fig);
 end
+
 
 %% ===================== NAVIGATION =======================
 function next_cell(fig)
@@ -574,24 +682,26 @@ function update_param(fig, field, value)
     % Si savgol_win change: recalcul DF_sg, noise, SNR + MAJ slider SNR
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
-        [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0] = DF_processing(F_raw, opts);
-
+        [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
+            quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
+    
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
         setappdata(fig,'baseline_F', baseline_F);
         setappdata(fig,'noise_est', noise_est);
         setappdata(fig,'SNR', SNR);
         setappdata(fig,'SNR_mean', SNR_mean);
-
-        sldr = findobj(fig,'Tag','sldr_snr_thr');
+        setappdata(fig,'quality_index', quality_index);
+    
+        sldr = findobj(fig,'Tag','sldr_quality_thr');
         if ~isempty(sldr)
-            sldr.Min   = snr_min;
-            sldr.Max   = snr_max;
-            sldr.Value = snr_thr0;
+            sldr.Min   = quality_min;
+            sldr.Max   = quality_max;
+            sldr.Value = quality_thr0;
         end
-        sLbl = findobj(fig,'Tag','lbl_snr_thr');
+        sLbl = findobj(fig,'Tag','lbl_quality_thr');
         if ~isempty(sLbl)
-            sLbl.String = sprintf('SNR threshold = %.2f', snr_thr0);
+            sLbl.String = sprintf('Quality threshold = %.2f', quality_thr0);
         end
     end
 
@@ -601,7 +711,7 @@ end
 
 %% ===================== SAVE CALLBACK =======================
 function save_callback(fig, synchronous_frames)
-    [Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames);
+    [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames);
 
     % reshape avant stockage
     if iscell(Acttmp2) && size(Acttmp2,2) > 1
@@ -609,6 +719,7 @@ function save_callback(fig, synchronous_frames)
     end
 
     setappdata(fig,'last_save_outputs', struct( ...
+        'invalid_cells', invalid_cells, 'valid_cells', valid_cells, 'DF_sg', DF_sg, 'baseline_F', baseline_F, ...
         'Raster', Raster, 'Acttmp2', {Acttmp2}, 'MAct', MAct, ...
         'thresholds', thresholds, 'opts', opts));
 

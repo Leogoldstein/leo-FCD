@@ -1,5 +1,5 @@
-function [matched_gcamp_idx, matched_cellpose_idx_all] = show_masks_and_overlaps( ...
-    gcamp_props, gcamp_props_false, cellpose_props, meanImg, aligned_image, ...
+function [matched_gcamp_idx, matched_cellpose_idx_all, is_cell_blue] = show_masks_and_overlaps( ...
+    iscell_gcamp, gcamp_props, gcamp_props_false, cellpose_props, meanImg, aligned_image, ... 
     outline_gcampx, outline_gcampy, outline_gcampx_false, outline_gcampy_false, ...
     outline_x_cellpose, outline_y_cellpose, R, m, gcamp_output_folders)
 
@@ -117,11 +117,28 @@ try
     hold off;
     drawnow;
 
-    % ---- Sauvegarde ----
+    % ---- Sauvegarde figure ----
     fig_name = sprintf('GCaMP_vs_Cellpose_group%d', m);
     save_path = fullfile(gcamp_output_folders{m}, [fig_name, '.png']);
     saveas(gcf, save_path);
     uiwait(gcf);
+
+     % ---- Créer is_cell_blue à partir de iscell_gcamp ----
+    is_cell_blue = nan(size(cellpose_props, 1), 1);  % Initialise avec NaN pour les non-appariés
+
+    % Remplir selon les correspondances (vraies ou fausses)
+    for i = 1:length(matched_cellpose_idx_all)
+        gcamp_idx = matched_all_gcamp_idx(i);
+        cellpose_idx = matched_cellpose_idx_all(i);
+
+        if gcamp_idx <= numel(iscell_gcamp)
+            % Vraie cellule GCaMP
+            is_cell_blue(cellpose_idx) = iscell_gcamp(gcamp_idx);
+        else
+            % Faux positif GCaMP
+            is_cell_blue(cellpose_idx) = NaN; % ou 0 si tu préfères
+        end
+    end
 
 catch ME
     fprintf('Erreur dans le groupe %d: %s\n', m, ME.message);

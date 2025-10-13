@@ -102,8 +102,8 @@ function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_bl
                 setappdata(gcamp_fig, 'outline_cellposey', data.outlines_y_cellpose{m});
         
             case '3' % Les deux
-                setappdata(gcamp_fig, 'outline_gcampx', data.outlines_gcampx{m});
-                setappdata(gcamp_fig, 'outline_gcampy', data.outlines_gcampy{m});
+                setappdata(gcamp_fig, 'outline_gcampx', data.outlines_gcampx_not_blue{m});
+                setappdata(gcamp_fig, 'outline_gcampy', data.outlines_gcampy_not_blue{m});
                 setappdata(gcamp_fig, 'outline_cellposex', data.outlines_x_cellpose{m});
                 setappdata(gcamp_fig, 'outline_cellposey', data.outlines_y_cellpose{m});
         end
@@ -318,32 +318,33 @@ function update_gcamp_figure(fig_handle)
     outline_cellposey = getappdata(fig_handle, 'outline_cellposey');
     neurons_in_batch = getappdata(fig_handle, 'neurons_in_batch');
     valid_neuron_indices = getappdata(fig_handle, 'valid_neuron_indices');
-    blue_indices = getappdata(fig_handle, 'blue_indices');
+    blue_indices_combined = getappdata(fig_handle, 'blue_indices');
     selected_total = getappdata(fig_handle, 'selected_neurons_total');
     if isempty(selected_total), selected_total = []; end
 
-    % --- Récupérer le mode de vérification ---
-    if isappdata(fig_handle, 'checking_choice2')
-        checking_choice2 = getappdata(fig_handle, 'checking_choice2');
+    % Si les indices verts/bleus n’existent pas encore → les créer
+    if ~isappdata(fig_handle, 'gcamp_indices_combined')
+        total_neurons = max(valid_neuron_indices);
+        gcamp_indices_combined = setdiff(1:total_neurons, blue_indices_combined);
+        setappdata(fig_handle, 'gcamp_indices_combined', gcamp_indices_combined);
     else
-        checking_choice2 = '3'; % par défaut (les deux)
+        gcamp_indices_combined = getappdata(fig_handle, 'gcamp_indices_combined');
     end
 
-    % --- 2. Axe dédié ---
+    % --- 2. Axe de tracé ---
     if ~isappdata(fig_handle, 'ax_gcamp')
         ax_gcamp = axes('Parent', fig_handle);
         setappdata(fig_handle, 'ax_gcamp', ax_gcamp);
     else
         ax_gcamp = getappdata(fig_handle, 'ax_gcamp');
     end
-
     cla(ax_gcamp);
     hold(ax_gcamp, 'on');
     imagesc(ax_gcamp, meanImg);
     colormap(ax_gcamp, gray);
     axis(ax_gcamp, 'image');
     set(ax_gcamp, 'YDir', 'reverse');
-    title(ax_gcamp, 'Neuron Outlines');
+    title(ax_gcamp, 'Neuron Outlines (aligned)');
 
     % --- 3. Vérifier le flag de masquage ---
     show_traces = true;
@@ -351,116 +352,59 @@ function update_gcamp_figure(fig_handle)
         show_traces = getappdata(fig_handle, 'show_selected_traces');
     end
 
-    % --- 4. Couleurs GCaMP ---
-    if ~isappdata(fig_handle, 'gcamp_colors')
-        rng(42); % reproductible
-        gcamp_colors = rand(length(outline_gcampx), 3);
-        setappdata(fig_handle, 'gcamp_colors', gcamp_colors);
-    else
-        gcamp_colors = getappdata(fig_handle, 'gcamp_colors');
-    end
-
-    % --- 5. Conversion indices batch → indices originaux ---
+    % --- 4. Conversion indices batch → indices globaux ---
     if isempty(valid_neuron_indices)
         neurons_in_batch_original = neurons_in_batch;
     else
         neurons_in_batch_original = valid_neuron_indices(neurons_in_batch);
     end
 
-    % --- 6. Si batch vide, afficher tous les outlines pour vérification ---
+    % --- 5. Si batch vide ---
     if isempty(neurons_in_batch_original)
-        warning('⚠️ Aucun neurone dans le batch courant — affichage complet.');
-        if ~isempty(outline_gcampx)
-            for k = 1:length(outline_gcampx)
-                plot(ax_gcamp, outline_gcampx{k}, outline_gcampy{k}, '-', 'Color', [0.6 0.6 0.6]);
-            end
-        end
-        if ~isempty(outline_cellposex)
-            for k = 1:length(outline_cellposex)
-                plot(ax_gcamp, outline_cellposex{k}, outline_cellposey{k}, '-', 'Color', [0.2 0.2 1]);
-            end
-        end
+        text(0.5, 0.5, 'No neurons in current batch', 'Parent', ax_gcamp, ...
+             'HorizontalAlignment', 'center', 'Color', 'w', 'FontSize', 14);
         hold(ax_gcamp, 'off');
         return;
     end
 
-    % --- 7. Tracé selon le mode choisi ---
-    switch checking_choice2
-        case '1'  % --- GCaMP uniquement ---
-            if isempty(outline_gcampx)
-                warning('Aucun outline GCaMP disponible.');
-            else
-                for n = 1:length(neurons_in_batch_original)
-                    idx = neurons_in_batch_original(n);
-                    if idx <= length(outline_gcampx)
-                        if ~show_traces && ismember(idx, selected_total), continue; end
-                        if ismember(idx, selected_total)
-                            color = 'r'; lw = 2;
-                        else
-                            color = gcamp_colors(idx, :); lw = 1;
-                        end
-                        plot(ax_gcamp, outline_gcampx{idx}, outline_gcampy{idx}, '-', ...
-                            'Color', color, 'LineWidth', lw, ...
-                            'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'gcamp'));
-                    end
+    % --- 6. Boucle de tracé avec correspondance d’indices ---
+    for n = 1:length(neurons_in_batch_original)
+        global_idx = neurons_in_batch_original(n);
+
+        % --- Déterminer si c’est un neurone bleu ou vert ---
+        if ismember(global_idx, blue_indices_combined)
+            % Cellule bleue → index local dans Cellpose
+            local_idx = find(blue_indices_combined == global_idx);
+            if local_idx <= length(outline_cellposex)
+                if ~show_traces && ismember(global_idx, selected_total), continue; end
+                if ismember(global_idx, selected_total)
+                    color = [1 0 0]; lw = 2;
+                else
+                    color = [0 0 1]; lw = 1;
                 end
+                plot(ax_gcamp, outline_cellposex{local_idx}, outline_cellposey{local_idx}, '-', ...
+                    'Color', color, 'LineWidth', lw, ...
+                    'ButtonDownFcn', @(src, event) neuron_clicked(src, event, global_idx, fig_handle, 'cellpose'));
             end
 
-        case '2'  % --- Cellpose uniquement ---
-            if isempty(outline_cellposex)
-                warning('Aucun outline Cellpose disponible.');
-            else
-                for n = 1:length(neurons_in_batch_original)
-                    idx = neurons_in_batch_original(n);
-                    if idx <= length(outline_cellposex)
-                        if ~show_traces && ismember(idx, selected_total), continue; end
-                        if ismember(idx, selected_total)
-                            color = [1 0 0]; lw = 2;
-                        else
-                            color = [0 0 1]; lw = 1;
-                        end
-                        plot(ax_gcamp, outline_cellposex{idx}, outline_cellposey{idx}, '-', ...
-                            'Color', color, 'LineWidth', lw, ...
-                            'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'cellpose'));
-                    end
+        else
+            % Cellule verte → index local dans GCaMP
+            local_idx = find(gcamp_indices_combined == global_idx);
+            if local_idx <= length(outline_gcampx)
+                if ~show_traces && ismember(global_idx, selected_total), continue; end
+                if ismember(global_idx, selected_total)
+                    color = [1 0 0]; lw = 2;
+                else
+                    color = [0 1 0]; lw = 1;
                 end
+                plot(ax_gcamp, outline_gcampx{local_idx}, outline_gcampy{local_idx}, '-', ...
+                    'Color', color, 'LineWidth', lw, ...
+                    'ButtonDownFcn', @(src, event) neuron_clicked(src, event, global_idx, fig_handle, 'gcamp'));
             end
-
-        case '3'  % --- Les deux ---
-            % Cellpose (bleu)
-            for n = 1:min(length(neurons_in_batch_original), length(outline_cellposex))
-                idx = neurons_in_batch_original(n);
-                if idx <= length(outline_cellposex)
-                    if ~show_traces && ismember(idx, selected_total), continue; end
-                    if ismember(idx, selected_total)
-                        color = [1 0 0]; lw = 2;
-                    else
-                        color = [0 0 1]; lw = 1;
-                    end
-                    plot(ax_gcamp, outline_cellposex{idx}, outline_cellposey{idx}, '-', ...
-                        'Color', color, 'LineWidth', lw, ...
-                        'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'cellpose'));
-                end
-            end
-
-            % GCaMP (vert)
-            for n = 1:min(length(neurons_in_batch_original), length(outline_gcampx))
-                idx = neurons_in_batch_original(n);
-                if idx <= length(outline_gcampx)
-                    if ~show_traces && ismember(idx, selected_total), continue; end
-                    if ismember(idx, selected_total)
-                        color = [1 0 0]; lw = 2;
-                    else
-                        color = [0 1 0]; lw = 1;
-                    end
-                    plot(ax_gcamp, outline_gcampx{idx}, outline_gcampy{idx}, '-', ...
-                        'Color', color, 'LineWidth', lw, ...
-                        'ButtonDownFcn', @(src, event) neuron_clicked(src, event, idx, fig_handle, 'gcamp'));
-                end
-            end
+        end
     end
 
-    % --- 8. Finalisation ---
+    % --- 7. Finalisation ---
     hold(ax_gcamp, 'off');
 end
 
@@ -502,16 +446,16 @@ function update_traces_subplot(main_fig_handle)
         if ismember(cellIndex, blue_indices)
             if ismember(cellIndex, selected_total)
                 color = [1, 0, 0]; % rouge
-                lineWidth = 1.5;
+                lineWidth = 0.5;
             else
-                color = [0, 1, 1]; % cyan normal
+                color = [0, 0, 0]; % noir normal
                 lineWidth = 0.5;
             end
             tag = 'cellpose';
         else
             if ismember(cellIndex, selected_total)
                 color = [1, 0, 0]; % rouge
-                lineWidth = 1.5;
+                lineWidth = 0.5;
             else
                 color = [0, 0, 0]; % noir normal
                 lineWidth = 0.5;
@@ -738,53 +682,54 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
         return;
     end
 
-    % --- 2. Récupérer DF et indices valides ---
+    % --- 2. Récupérer DF et fréquence d’échantillonnage ---
     DF = data.DF_gcamp{idx};
-    F = data.F_gcamp{idx};
-    valid_neurons = any(~isnan(DF), 2);
-    valid_neuron_indices = find(valid_neurons);
+    sampling_rate = data.sampling_rate{idx};
+    selected_gcamp_neurons_original = selected_neurons_ordered;
 
-    % Indices originaux
-    selected_gcamp_neurons_original = valid_neuron_indices(selected_neurons_ordered);
-
-    % --- 3. Préparer figure unique ---
-    fig = figure('Name', sprintf('Inspection – %s (%s)', current_animal_group, current_ages_group{idx}));
+    % --- 3. Préparer la figure ---
+    fig = figure('Name', sprintf('Inspection – %s (%s)', ...
+        current_animal_group, current_ages_group{idx}));
     screen_size = get(0, 'ScreenSize');
-    set(fig, 'Position', [50, 50, screen_size(3)*0.8, screen_size(4)*0.8]);
+    set(fig, 'Position', [50, 50, screen_size(3)*0.8, screen_size(4)*0.6]);
 
-    tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    % --- 4. Calcul du temps en secondes ---
+    Nz = size(DF, 2);
+    t_sec = (0:Nz-1) / sampling_rate;
 
-    % --- 4. Tracer F ---
-    ax1 = nexttile;
-    hold(ax1, 'on');
+    % --- 5. Tracer les traces ΔF/F ---
+    ax = axes(fig);
+    hold(ax, 'on');
+
+    n_traces = length(selected_gcamp_neurons_original);
     offset = 0;
-    for k = 1:length(selected_gcamp_neurons_original)
-        cellIdx = selected_gcamp_neurons_original(k);
-        trace = F(cellIdx, :);
-        plot(ax1, trace + offset, 'LineWidth', 1);
-        text(size(F,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax1);
-        offset = offset + max(trace)*1.2;
-    end
-    hold(ax1, 'off');
-    xlabel(ax1, 'Frame');
-    ylabel(ax1, 'F (a.u.)');
-    title(ax1, 'Traces F des neurones sélectionnés');
-    grid(ax1, 'on');
 
-    % --- 5. Tracer ΔF/F ---
-    ax2 = nexttile;
-    hold(ax2, 'on');
-    offset = 0;
-    for k = 1:length(selected_gcamp_neurons_original)
-        cellIdx = selected_gcamp_neurons_original(k);
+    if n_traces == 1
+        % Cas 1 : une seule trace → pas de décalage vertical
+        cellIdx = selected_gcamp_neurons_original(1);
         trace = DF(cellIdx, :);
-        plot(ax2, trace + offset, 'LineWidth', 1);
-        text(size(DF,2)+20, offset, sprintf('Cell %d', cellIdx), 'Parent', ax2);
-        offset = offset + max(trace)*1.5;
+        plot(ax, t_sec, trace, 'k', 'LineWidth', 1.2);
+        title(ax, sprintf('Trace ΔF/F – Cell %d (%s, %s)', ...
+            cellIdx, current_animal_group, current_ages_group{idx}));
+        ylabel(ax, '\DeltaF/F');
+    else
+        % Cas 2 : plusieurs traces → empilement
+        for k = 1:n_traces
+            cellIdx = selected_gcamp_neurons_original(k);
+            trace = DF(cellIdx, :);
+            plot(ax, t_sec, trace + offset, 'k', 'LineWidth', 1);
+            text(t_sec(end) + (t_sec(end)*0.02), offset, sprintf('Cell %d', cellIdx), ...
+                 'Parent', ax, 'Color', 'k', 'FontSize', 8);
+            offset = offset + max(trace)*1.5;
+        end
+        ylabel(ax, '\DeltaF/F (offset)');
+        title(ax, sprintf('Traces ΔF/F – %s (%s)', ...
+            current_animal_group, current_ages_group{idx}));
     end
-    hold(ax2, 'off');
-    xlabel(ax2, 'Frame');
-    ylabel(ax2, '\DeltaF/F');
-    title(ax2, 'Traces ΔF/F des neurones sélectionnés');
-    grid(ax2, 'on');
+
+    hold(ax, 'off');
+    xlabel(ax, 'Time (s)');
+    grid(ax, 'on');
+    xlim(ax, [0 max(t_sec)]);
 end
+

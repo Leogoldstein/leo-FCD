@@ -196,11 +196,11 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         if isfield(selected_groups, 'animal_group')
             new_names = string({selected_groups.animal_group});
         end
-        all_kept_names = unique([new_names, kept_groups]); % garde aussi ceux conservés
-
+        all_kept_names = unique([new_names, kept_groups]);
+    
         keep_mask = ismember(old_names, all_kept_names);
         removed_groups = old_names(~keep_mask);
-
+    
         if ~isempty(removed_groups)
             fprintf('\nGroupes non sélectionnés détectés : %s\n', strjoin(removed_groups, ', '));
             disp('1 : Supprimer les groupes non sélectionnés');
@@ -213,14 +213,41 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 fprintf('Aucun groupe supprimé — tous les groupes existants sont conservés.\n');
             end
         end
-
-        % Fusion propre anciens + nouveaux
+    end
+    
+    %===================%
+    %  Harmonisation universelle des champs
+    %===================%
+    if isempty(selected_groups_old) && isempty(selected_groups)
+        selected_groups = struct([]);
+    elseif isempty(selected_groups_old)
+        selected_groups = selected_groups(:);
+    elseif isempty(selected_groups)
+        selected_groups = selected_groups_old(:);
+    else
+        % Normalisation complète des champs
+        fields_old = fieldnames(selected_groups_old);
+        fields_new = fieldnames(selected_groups);
+        all_fields = unique([fields_old; fields_new]);
+    
+        for f = 1:numel(all_fields)
+            fn = all_fields{f};
+            if ~isfield(selected_groups_old, fn)
+                [selected_groups_old.(fn)] = deal([]);
+            end
+            if ~isfield(selected_groups, fn)
+                [selected_groups.(fn)] = deal([]);
+            end
+        end
+    
+        % Fusion finale
         selected_groups = [selected_groups_old(:); selected_groups(:)];
     end
-
+    
     %===================%
-    %   Sauvegarde finale
+    %   Nettoyage et sauvegarde finale
     %===================%
-    selected_groups = selected_groups(~cellfun(@isempty, {selected_groups.animal_group}));
-    fprintf('\n Mise à jour terminée : %d groupes actifs dans le workspace.\n', numel(selected_groups));
+    if ~isempty(selected_groups) && isfield(selected_groups, 'animal_group')
+        selected_groups = selected_groups(~cellfun(@isempty, {selected_groups.animal_group}));
+    end
 end

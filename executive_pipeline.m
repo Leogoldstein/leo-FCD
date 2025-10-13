@@ -1,3 +1,4 @@
+clear
 %% Preprocessing
 % % Définir le chemin vers Python dans l'environnement Suite2p
 pyExec = "C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe";
@@ -13,7 +14,7 @@ else
     fprintf("Python déjà chargé depuis : %s\n", pe.Executable);
 end
 
-% Chemin où se trouve le fichier python_function.py
+% Chemin où se trouve le fichier python_function.py1
 new_path = 'D:/local-repo/Python';
 
 %Vérifiez si le chemin est déjà dans le sys.path Python, sinon l'ajouter
@@ -33,12 +34,10 @@ end
 %     end
 % end
 %%
-%processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
-processing_choice1 = '1';
+processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
 if strcmp(processing_choice1, '2')
     % If the answer is 'no', prompt for the second choice
-    %processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
-    processing_choice2 = '2';
+    processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
 else
     processing_choice2 = [];
 end        
@@ -47,8 +46,7 @@ end
 checking_choice1 = '2';
 if strcmp(checking_choice1, '1')
     % If the answer is '1', prompt for the second choice
-    %checking_choice2 = input('Do you want to check:\n1 = gcamp\n2 = blue with gcamp\n3 = both\nChoice (1/2/3): ', 's');
-    checking_choice2 = '1';
+    checking_choice2 = input('Do you want to check:\n1 = gcamp\n2 = blue with gcamp\n3 = both\nChoice (1/2/3): ', 's');
 else
     checking_choice2 = [];
 end 
@@ -57,15 +55,18 @@ end
 include_blue_cells = '2';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, processing_choice1, processing_choice2, checking_choice2, include_blue_cells);
-%%
+
 % Processing and analysis
 PathSave = 'D:\Imaging\Outputs\';
 all_results = [];  % tableau de structures vide
 
-% Perform analyses 
+%% Perform analyses 
 % (in the loop = one recording per animal at a time, out of the loop =
 % all the recordings of an animal at a time)
-for k = 1:length(selected_groups)
+% selected_indices = select_animal_groups(selected_groups);
+% for k = 1:length(selected_indices)
+
+for k = 1:length(selected_groups)    
     current_animal_group = selected_groups(k).animal_group;
     current_animal_type = selected_groups(k).animal_type;
     current_ani_path_group = selected_groups(k).path;
@@ -93,9 +94,12 @@ for k = 1:length(selected_groups)
     current_env_group = selected_groups(k).env; 
     gcamp_output_folders = selected_groups(k).gcamp_output_folders;
     data = selected_groups(k).data; 
-
-    %plot_threshold_frequency_all_neurons(data.thresholds_gcamp, data.Acttmp2_gcamp, data.F_gcamp, data.sampling_rate, current_animal_group, current_ages_group)
-
+    numFolders = length(date_group_paths);
+    
+    % Explore traces
+    % for m = 1:numFolders
+    %     [~, baseline_blue, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(data.F_blue{m}, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
+    % end
     % Correlation analysis
     data = load_or_process_corr_data(gcamp_output_folders, data);
     selected_groups(k).data = data;
@@ -108,8 +112,8 @@ for k = 1:length(selected_groups)
 
     %Global analysis of activity
     pathexcel = [PathSave 'analysis.xlsx'];
-    compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, current_animal_type, daytime)
-
+    results_analysis = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, current_animal_type, daytime);
+    %plot_gcamp_blue_comparison(results_analysis)
      % Cluster analysis
      % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_env_group, data);
      % selected_groups(k).data = data;
@@ -136,4 +140,4 @@ close all
 create_ppt_from_figs(selected_groups, daytime)
 
 %%
-close all
+which isempty
