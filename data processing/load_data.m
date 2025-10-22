@@ -116,7 +116,7 @@ function out = subset_pylist(pylist, idx)
     
     out = cell(1, numel(idx));   % Prépare un cell array vide
     for k = 1:numel(idx)
-        % ⚠ Python est 0-based, MATLAB est 1-based
+        % Python est 0-based, MATLAB est 1-based
         py_idx = py.int(idx(k)-1);      
         dict = pylist{py_idx};   % Récupère le py.dict correspondant
 

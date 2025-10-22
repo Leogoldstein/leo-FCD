@@ -52,7 +52,7 @@ else
 end 
 
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
-include_blue_cells = '2';
+include_blue_cells = '1';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, processing_choice1, processing_choice2, checking_choice2, include_blue_cells);
 
@@ -113,7 +113,7 @@ for k = 1:length(selected_groups)
     %Global analysis of activity
     pathexcel = [PathSave 'analysis.xlsx'];
     results_analysis = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, current_animal_type, daytime);
-    %plot_gcamp_blue_comparison(results_analysis)
+    plot_gcamp_blue_comparison(results_analysis, data)
      % Cluster analysis
      % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_env_group, data);
      % selected_groups(k).data = data;

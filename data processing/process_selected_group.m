@@ -228,7 +228,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
             [~, F_gcamp, F_deconv_gcamp, ~, stat, iscell, stat_false, iscell_false] = load_data(current_gcamp_folders_group{m});
-            [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, valid_gcamp_cells, DF_gcamp, Raster_gcamp, Acttmp2_gcamp, MAct_gcamp, thresholds_gcamp] = peak_detection_tuner(F_gcamp, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', true);
+            [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, valid_gcamp_cells, DF_gcamp, Raster_gcamp, Acttmp2_gcamp, MAct_gcamp, thresholds_gcamp] = peak_detection_tuner(F_gcamp, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
                     
             save(filePath, 'F_gcamp', 'F_deconv_gcamp', 'iscell', 'valid_gcamp_cells', 'DF_gcamp', 'thresholds_gcamp', 'Acttmp2_gcamp', 'MAct_gcamp', 'Raster_gcamp');
 

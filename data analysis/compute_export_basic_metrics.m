@@ -1,7 +1,7 @@
 function results_analysis = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, animal_type, daytime)
 
     % ---------------------------------------------------------------------
-    % Initialisation de la structure de sortie (ajout Daytime + nouveautés)
+    % Initialisation de la structure de sortie
     results_analysis = struct( ...
         'current_animal_group', [], ...
         'TseriesFolder', [], ...
@@ -50,7 +50,7 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             [DF_gcamp, Raster_gcamp] = align_data(DF_gcamp, Raster_gcamp);
             [num_cells, Nframes] = size(Raster_gcamp);
 
-            % --- Fréquence ---
+            % --- Fréquence GCaMP ---
             freq = compute_frequency(Acttmp2_gcamp, Nframes, sampling_rate);
             mean_freq = mean(freq, 'omitnan');
             std_freq  = std(freq, 'omitnan');
@@ -59,6 +59,8 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             num_cells_blue = NaN;
             mean_freq_blue = NaN;
             std_freq_blue  = NaN;
+            freq_blue = [];
+
             if isfield(data, 'Raster_blue') && ~isempty(data.Raster_blue{m})
                 DF_blue      = data.DF_blue{m};
                 Raster_blue  = data.Raster_blue{m};
@@ -69,6 +71,11 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                 freq_blue = compute_frequency(Acttmp2_blue, Nframes_blue, sampling_rate);
                 mean_freq_blue = mean(freq_blue, 'omitnan');
                 std_freq_blue  = std(freq_blue, 'omitnan');
+            end
+
+            % --- Figure corrélation fréquences GCaMP vs Blue ---
+            if ~isempty(freq_blue)
+                plot_frequency_scatter(freq, freq_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
             end
 
             % --- Corrélations ---
@@ -85,9 +92,7 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             [num_sces, sce_frequency_hz, avg_pourcent_cells_sces, avg_duration_ms] = ...
                 compute_sces_metrics(data, m, sampling_rate);
 
-            %%% ============================================================
-            %%% NEW 1 : Amplitude moyenne normalisée des pics (ΔF/F₀)
-            %%% ============================================================
+            % --- Amplitude moyenne normalisée des pics (ΔF/F₀) ---
             mean_peak_amplitude_norm = compute_normalized_amplitude( ...
                 DF_gcamp, Acttmp2_gcamp, data, m, 'gcamp');
 
@@ -97,18 +102,14 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                     data.DF_blue{m}, data.Acttmp2_blue{m}, data, m, 'blue');
             end
 
-            %%% ============================================================
-            %%% NEW 2 : Fraction d’événements en bursts (P_burst)
-            %%% ============================================================
+            % --- Fraction d’événements en bursts ---
             P_burst = compute_fraction_bursts(Raster_gcamp);
             P_burst_blue = NaN;
             if isfield(data,'Raster_blue') && ~isempty(data.Raster_blue{m})
                 P_burst_blue = compute_fraction_bursts(data.Raster_blue{m});
             end
 
-            %%% ============================================================
-            %%% Enregistrement
-            %%% ============================================================
+            % --- Enregistrement des résultats ---
             results_analysis(m).current_animal_group     = current_animal_group;
             results_analysis(m).TseriesFolder            = current_gcamp_folders_names_group{m};
             results_analysis(m).Age                      = current_ages_group{m};
@@ -131,7 +132,6 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             results_analysis(m).SCEsFrequencyHz          = sce_frequency_hz;
             results_analysis(m).PercentageActiveCellsSCEs= avg_pourcent_cells_sces;
             results_analysis(m).MeanSCEsduration_ms      = avg_duration_ms;
-            %%% NEW METRICS
             results_analysis(m).MeanPeakAmplitudeNorm    = mean_peak_amplitude_norm;
             results_analysis(m).MeanPeakAmplitudeNormBlue= mean_peak_amplitude_norm_blue;
             results_analysis(m).FractionEventsBursts     = P_burst;
@@ -185,6 +185,7 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
     writecell(existing_data, pathexcel, 'Sheet', animal_type, 'WriteMode', 'overwrite');
 end
 
+
 % =====================================================================
 % === SOUS-FONCTIONS ==================================================
 % =====================================================================
@@ -195,6 +196,7 @@ function [DF, Raster] = align_data(DF, Raster)
     DF = DF(1:min_cells,1:min_frames);
     Raster = Raster(1:min_cells,1:min_frames);
 end
+
 
 function freq = compute_frequency(Acttmp2, Nframes, sampling_rate)
     if iscell(Acttmp2)
@@ -211,6 +213,69 @@ function freq = compute_frequency(Acttmp2, Nframes, sampling_rate)
         freq = nan;
     end
 end
+
+
+function plot_frequency_scatter(freq_gcamp, freq_blue, folder_name, output_path)
+    % ---------------------------------------------------------------------
+    % Trace la distribution des fréquences GCaMP (non-electroporées, vert)
+    % et Blue (électroporées, bleu) côte à côte
+    % ---------------------------------------------------------------------
+    try
+        % Nettoyage basique
+        freq_gcamp = freq_gcamp(~isnan(freq_gcamp));
+        freq_blue  = freq_blue(~isnan(freq_blue));
+
+        % Vérif présence données
+        if isempty(freq_gcamp) && isempty(freq_blue)
+            warning('Aucune donnée valide pour le tracé de %s.', folder_name);
+            return;
+        end
+
+        % Création figure
+        fig = figure('Name', sprintf('Frequencies - %s', folder_name), 'Color', 'w');
+        hold on;
+
+        % Points GCaMP (non-electroporés)
+        scatter(ones(size(freq_gcamp)), freq_gcamp, 40, ...
+            'MarkerFaceColor', [0 0.7 0], 'MarkerEdgeColor', 'none', 'MarkerFaceAlpha', 0.8);
+
+        % Points Blue (électroporés)
+        scatter(2*ones(size(freq_blue)), freq_blue, 40, ...
+            'MarkerFaceColor', [0 0 1], 'MarkerEdgeColor', 'none', 'MarkerFaceAlpha', 0.8);
+
+        % Axes et labels
+        xlim([0.5 2.5]);
+        set(gca, 'XTick', [1 2], ...
+                 'XTickLabel', {'Non-electroporated cells (GCaMP)', 'Electroporated cells (Blue)'}, ...
+                 'FontSize', 10);
+        ylabel('Frequency (transients/min)', 'FontSize', 11);
+        title(sprintf('Activity distribution per population - %s', folder_name), ...
+            'Interpreter', 'none', 'FontWeight', 'bold');
+        grid on;
+        box on;
+
+        % Barres de moyenne ± écart-type
+        mean_g = mean(freq_gcamp, 'omitnan');
+        std_g  = std(freq_gcamp, 'omitnan');
+        mean_b = mean(freq_blue, 'omitnan');
+        std_b  = std(freq_blue, 'omitnan');
+
+        errorbar(1, mean_g, std_g, 'k', 'LineWidth', 1.2, 'CapSize', 10);
+        errorbar(2, mean_b, std_b, 'k', 'LineWidth', 1.2, 'CapSize', 10);
+
+        % % Enregistrement
+        % fig_dir = fullfile(output_path, 'Figures');
+        % if ~exist(fig_dir, 'dir')
+        %     mkdir(fig_dir);
+        % end
+        % saveas(fig, fullfile(fig_dir, 'freq_distribution_GCaMP_vs_Blue.png'));
+        % close(fig);
+
+    catch ME
+        fprintf('Erreur création figure fréquence : %s\n', ME.message);
+    end
+end
+
 
 function mean_peak_amplitude = compute_normalized_amplitude(DF, Acttmp2, data, m, channel)
     % Calcule la moyenne d'amplitude des pics (ΔF/F), sans normalisation par baseline.
