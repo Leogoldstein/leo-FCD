@@ -116,16 +116,16 @@ function folder_names = get_folder_list(type, lastFolderName)
                     };
                 case 'blue'
                     folder_names = {
-                        'mTor20\ani4\2025-01-30';
-                        'mTor20\ani4\2025-01-31';
-                        'mTor20\ani5\2025-01-30';
-                        'mTor19\ani6\2025-01-31';
-                        'mTor19\ani6\2025-02-01';
-                        'mTor19\ani7\2025-01-31';
-                        %'mTor17\ani1\2024-12-21';
-                        %'mTor17\ani3\2024-12-21';
-                        %'mTor17\ani3\2024-12-22';
-                        %'mTor17\ani3\2024-12-23';
+                        %'mTor20\ani4\2025-01-30';14 cellules gcamp conservées sur 99
+                        %'mTor20\ani4\2025-01-31'; 0 cellules conservée sur 88
+                        'mTor20\ani5\2025-01-30'; % 177 sur 178 (7 bleues)
+                        'mTor19\ani6\2025-01-31'; % 34 sur 110 (2 bleues)
+                        % 'mTor19\ani6\2025-02-01'; 11 cellules conservées sur 28
+                        % 'mTor19\ani7\2025-01-31'; 2 cellules conservées sur 14
+                        %'mTor17\ani1\2024-12-21'; % 24 cellules conservées sur 191 (1 bleue)
+                        % 'mTor17\ani3\2024-12-21'; 8 cellules conservées sur 97
+                        %'mTor17\ani3\2024-12-22'; 0 cellules sur 90
+                        'mTor17\ani3\2024-12-23'; % 39 cellules sur 203 (14 bleues)
                     };
             end
         otherwise

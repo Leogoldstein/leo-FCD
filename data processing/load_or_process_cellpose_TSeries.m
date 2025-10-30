@@ -7,6 +7,8 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
     
     % ==== Cas principal : chercher dans folders_groups ====
     current_blue_folders_group = folders_groups{3}{:,1};
+    % Revenir deux dossiers en arrière
+    current_blue_folders_group = fileparts(fileparts(current_blue_folders_group));
     disp(current_blue_folders_group);
 
     if isempty(current_blue_folders_group)
@@ -24,6 +26,16 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = load_or_pro
                 aligned_image_path = strrep(npy_file_path, '_seg.npy', '.tif');
                 if isfile(aligned_image_path)
                     aligned_image = normalize_image(imread(aligned_image_path));
+                   
+                    % Retirer "aligned_" du début du chemin si présent
+                    [path, name, ext] = fileparts(aligned_image_path);
+                    name = regexprep(name, '^aligned_', ''); % supprime le préfixe
+                    tif_file_path = fullfile(path, [name ext]);
+                    if isfile(tif_file_path)
+                        image_tiff = normalize_image(imread(tif_file_path));
+    
+                        display_animation(image_tiff, aligned_image);
+                    end
                 end
             end
         

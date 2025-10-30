@@ -52,7 +52,7 @@ else
 end 
 
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
-include_blue_cells = '1';
+include_blue_cells = '2';
 
 [selected_groups, daytime] = process_selected_group(selected_groups, processing_choice1, processing_choice2, checking_choice2, include_blue_cells);
 
@@ -66,7 +66,7 @@ all_results = [];  % tableau de structures vide
 % selected_indices = select_animal_groups(selected_groups);
 % for k = 1:length(selected_indices)
 
-for k = 1:length(selected_groups)    
+ for k = 1:length(selected_groups)    
     current_animal_group = selected_groups(k).animal_group;
     current_animal_type = selected_groups(k).animal_type;
     current_ani_path_group = selected_groups(k).path;
@@ -95,11 +95,17 @@ for k = 1:length(selected_groups)
     gcamp_output_folders = selected_groups(k).gcamp_output_folders;
     data = selected_groups(k).data; 
     numFolders = length(date_group_paths);
-    
-    % Explore traces
+   
+    % Explore traces gcamp 
+    for m = 1:numFolders
+             [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, valid_gcamp_cells, DF_gcamp, Raster_gcamp, Acttmp2_gcamp, MAct_gcamp, thresholds_gcamp] = peak_detection_tuner(data.F_gcamp{m}, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
+    end
+
+    % Explore traces bleues
     % for m = 1:numFolders
-    %     [~, baseline_blue, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(data.F_blue{m}, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
+    %      [~, baseline_blue, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, StartEnd, MAct_blue, thresholds_blue] = peak_detection_tuner(data.F_blue{m}, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
     % end
+
     % Correlation analysis
     data = load_or_process_corr_data(gcamp_output_folders, data);
     selected_groups(k).data = data;
@@ -113,19 +119,23 @@ for k = 1:length(selected_groups)
     %Global analysis of activity
     pathexcel = [PathSave 'analysis.xlsx'];
     results_analysis = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, current_animal_type, daytime);
-    plot_gcamp_blue_comparison(results_analysis, data)
-     % Cluster analysis
-     % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_env_group, data);
-     % selected_groups(k).data = data;
-     % plot_assemblies(data, current_gcamp_folders_group, gcamp_output_folders);
-     % plot_clusters_metrics(gcamp_output_folders, data, current_animal_group, current_dates_group);
-
+ % Cluster analysis
+ % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_env_group, data);
+ % selected_groups(k).data = data;
+ % plot_assemblies(data, current_gcamp_folders_group, gcamp_output_folders);
+ % plot_clusters_metrics(gcamp_output_folders, data, current_animal_group, current_dates_group);
+    
+    selected_groups(k).results_analysis = results_analysis;
 end
 %%
 corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysis required
 
 %%
 [grouped_data_by_age, barplots] = barplots_by_type(selected_groups); % SCEs analysis required
+
+%%
+
+figs = plot_by_type_no_age(selected_groups);
 %%
 pooled_level = 2; % 1 = pas de pooling
 comparison_barplots = compare_groups_barplots(grouped_data_by_age, pooled_level); % several animal type required (jm, FCD, WT)

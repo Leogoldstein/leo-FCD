@@ -107,7 +107,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
             if ~isempty(checking_choice2)
 
                 %plot_random_F_and_DF(data, current_animal_group, current_ages_group);
-                [~, selected_gcamp_neurons_original, selected_blue_neurons_original] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2);
+                [~, selected_gcamp_neurons_original, selected_blue_neurons_original, suite2p] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2);
 
                 checked_indices = find(~cellfun(@isempty, selected_gcamp_neurons_original) | ~cellfun(@isempty, selected_blue_neurons_original)); % Indices des dossiers avec des neurones sélectionnés
 
@@ -178,16 +178,16 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
     fields = {'sampling_rate', 'synchronous_frames', ...
               'F_gcamp', 'baseline_gcamp', 'DF_gcamp', 'iscell', 'valid_gcamp_cells', ...
               'isort1_gcamp', 'isort2_gcamp', 'Sm_gcamp', ...
-              'thresholds_gcamp', 'Acttmp2_gcamp', 'Raster_gcamp', 'MAct_gcamp', ...
+              'thresholds_gcamp', 'Acttmp2_gcamp', 'Raster_gcamp', 'StartEnd_gcamp', 'MAct_gcamp', ...
               'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask', 'gcamp_props', 'imageHeight', 'imageWidth', ...
               'outlines_gcampx_false', 'outlines_gcampy_false', 'gcamp_mask_false', 'gcamp_props_false', ...
               'matched_gcamp_idx', 'matched_cellpose_idx', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', ...
               'F_blue', 'baseline_blue', 'valid_blue_cells', 'DF_blue', ...
               'F_gcamp_not_blue', 'DF_gcamp_not_blue', 'outlines_gcampx_not_blue', 'outlines_gcampy_not_blue', ...
-              'thresholds_blue', 'Acttmp2_blue', 'MAct_blue', 'Raster_blue', ...         
+              'thresholds_blue', 'Acttmp2_blue', 'StartEnd_blue', 'MAct_blue', 'Raster_blue', ...         
               'F_combined', 'DF_combined', 'blue_indices_combined', ...
               'isort1_combined', ...
-              'thresholds_combined', 'Acttmp2_combined', 'MAct_combined', 'Raster_combined'};
+              'thresholds_combined', 'Acttmp2_combined', 'StartEnd_combined', 'MAct_combined', 'Raster_combined'};
 
     % Initialisation
     data = init_data_struct(numFolders, fields);
@@ -204,10 +204,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         if suite2p
             removeFieldsByName(filePath, {'F_gcamp:gcamp_props'});
         end
-        
-        %removeFieldsByName(filePath, {'F_gcamp:MAct_gcamp'});
-
-
+      
         % Charger les données existantes si elles existent
         if exist(filePath, 'file') == 2
             loaded = load(filePath);
@@ -224,13 +221,13 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         if isempty(data.synchronous_frames{m})
             data.synchronous_frames{m} = round(0.2 * data.sampling_rate{m});
         end
-        
+
         % Traitement GCaMP
         if isempty(data.DF_gcamp{m})
             [~, F_gcamp, F_deconv_gcamp, ~, stat, iscell, stat_false, iscell_false] = load_data(current_gcamp_folders_group{m});
-            [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, valid_gcamp_cells, DF_gcamp, Raster_gcamp, Acttmp2_gcamp, MAct_gcamp, thresholds_gcamp] = peak_detection_tuner(F_gcamp, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', false);
+            [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, valid_gcamp_cells, DF_gcamp, Raster_gcamp, Acttmp2_gcamp, StartEnd_gcamp, MAct_gcamp, thresholds_gcamp] = peak_detection_tuner(F_gcamp, data.sampling_rate{m}, data.synchronous_frames{m}, current_animal_group, current_ages_group{m}, 'nogui', true);
                     
-            save(filePath, 'F_gcamp', 'F_deconv_gcamp', 'iscell', 'valid_gcamp_cells', 'DF_gcamp', 'thresholds_gcamp', 'Acttmp2_gcamp', 'MAct_gcamp', 'Raster_gcamp');
+            save(filePath, 'F_gcamp', 'F_deconv_gcamp', 'iscell', 'valid_gcamp_cells', 'DF_gcamp', 'thresholds_gcamp', 'Acttmp2_gcamp', 'StartEnd_gcamp', 'MAct_gcamp', 'Raster_gcamp');
 
             data.F_gcamp{m} = F_gcamp;
             data.iscell{m} = iscell;
@@ -240,6 +237,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             data.thresholds_gcamp{m} = thresholds_gcamp;
             data.Acttmp2_gcamp{m} = Acttmp2_gcamp;
             data.Raster_gcamp{m} = Raster_gcamp;
+            data.StartEnd_gcamp{m} = StartEnd_gcamp;
             data.MAct_gcamp{m} = MAct_gcamp;
 
             [NCell, outlines_gcampx, outlines_gcampy, ~, ~, ~] = load_calcium_mask(iscell, stat, valid_gcamp_cells);
@@ -270,6 +268,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             data.iscell{m}(bad_gcamp_inds) = [];
             data.thresholds_gcamp{m}(bad_gcamp_inds) = [];
             data.Acttmp2_gcamp{m}(bad_gcamp_inds) = [];
+            data.StartEnd_gcamp{m}(bad_gcamp_inds) = [];
             data.Raster_gcamp{m}(bad_gcamp_inds) = [];
             data.outlines_gcampx{m}(bad_gcamp_inds) = [];
             data.outlines_gcampy{m}(bad_gcamp_inds) = [];
@@ -281,6 +280,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             iscell = data.iscell{m};
             Raster_gcamp = data.Raster_gcamp{m};
             Acttmp2_gcamp = data.Acttmp2_gcamp{m};
+            StartEnd_gcamp = data.StartEnd_gcamp{m};
             thresholds_gcamp = data.thresholds_gcamp{m};
             outlines_gcampx = data.outlines_gcampx{m};
             outlines_gcampy = data.outlines_gcampy{m};
@@ -297,7 +297,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
             removeFieldsByName(filePath, {'F_gcamp:gcamp_props'});
 
             save(filePath, 'F_gcamp', 'iscell', 'DF_gcamp',  ...
-                'Raster_gcamp', 'Acttmp2_gcamp', 'thresholds_gcamp', 'MAct_gcamp', ...
+                'Raster_gcamp', 'Acttmp2_gcamp', 'thresholds_gcamp', 'StartEnd_gcamp', 'MAct_gcamp', ...
                 'outlines_gcampx', 'outlines_gcampy', 'gcamp_mask','gcamp_props', '-append');
         end
 
@@ -364,15 +364,15 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                 % --- Extraction des traces GCaMP (non bleues) ---
                 F_gcamp_not_blue = data.F_gcamp{m};
                 DF_gcamp_not_blue = data.DF_gcamp{m};
-                used_gcamp_indices = unique(matched_gcamp_idx);
-                F_gcamp_not_blue(used_gcamp_indices, :) = [];
-                DF_gcamp_not_blue(used_gcamp_indices, :) = [];
-
                 outlines_gcampx_not_blue = data.outlines_gcampx{m};
                 outlines_gcampy_not_blue = data.outlines_gcampy{m};
-                outlines_gcampx_not_blue(used_gcamp_indices) = [];
-                outlines_gcampy_not_blue(used_gcamp_indices) = [];
-
+                used_gcamp_indices = unique(matched_gcamp_idx);
+                if ~isempty(used_gcamp_indices)
+                    F_gcamp_not_blue(used_gcamp_indices, :) = [];
+                    DF_gcamp_not_blue(used_gcamp_indices, :) = [];
+                    outlines_gcampx_not_blue(used_gcamp_indices) = [];
+                    outlines_gcampy_not_blue(used_gcamp_indices) = [];
+                end
                 % --- Extraction des traces Cellpose bleues ---
                 currentTSeriesPath = current_gcamp_TSeries_path{m};
                 mode = 'all'; % ou 'matched' si tu veux seulement les appariées
@@ -408,9 +408,9 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
 
             if isempty(data.DF_blue{m})
     
-                [~, baseline_blue, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(data.F_blue{m}, data.sampling_rate{m}, data.synchronous_frames{m}, 'nogui', true);
+                [~, baseline_blue, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, StartEnd_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(data.F_blue{m}, data.sampling_rate{m}, data.synchronous_frames{m}, 'nogui', true);
     
-                save(filePath, 'valid_blue_cells', 'DF_blue', 'Raster_blue', 'Acttmp2_blue', 'thresholds_blue', '-append');
+                save(filePath, 'valid_blue_cells', 'DF_blue', 'Raster_blue', 'Acttmp2_blue', 'StartEnd_blue', 'thresholds_blue', '-append');
                 
                 data.valid_blue_cells{m} = valid_blue_cells;
                 data.baseline_blue{m} = baseline_blue;
@@ -418,6 +418,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                 data.thresholds_blue{m} = thresholds_blue;
                 data.Acttmp2_blue{m} = Acttmp2_blue;
                 data.Raster_blue{m} = Raster_blue;
+                data.StartEnd_blue{m} = StartEnd_blue;
                 data.MAct_blue{m} = MAct_blue;
     
             elseif ~isempty(bad_blue_ind_list{m})
@@ -466,7 +467,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
     
                     save(filePath, 'matched_gcamp_idx', 'matched_cellpose_idx', 'num_cells_mask', 'mask_cellpose', 'props_cellpose', 'outlines_x_cellpose', 'outlines_y_cellpose', 'F_blue', 'F_gcamp_not_blue', 'DF_blue', 'DF_gcamp_not_blue', '-append');
     
-                    [~, ~, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(F_blue, data.sampling_rate{m}, data.synchronous_frames{m}, 'nogui', true);
+                    [~, ~, noise_est_blue, SNR_blue, valid_blue_cells, DF_blue, Raster_blue, Acttmp2_blue, StartEnd_blue, MAct_blue, thresholds_blue] = peak_detection_tuner(F_blue, data.sampling_rate{m}, data.synchronous_frames{m}, 'nogui', true);
     
                     % Ajuster la longueur pour cohérence
                     min_cols = min(size(DF_gcamp_not_blue, 2), size(DF_blue, 2));
@@ -483,6 +484,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                     data.thresholds_blue{m} = thresholds_blue;
                     data.Acttmp2_blue{m} = Acttmp2_blue;
                     data.Raster_blue{m} = Raster_blue;
+                    data.StartEnd_blue{m} = StartEnd_blue;
                     data.MAct_blue{m} = MAct_blue;
             end
 
@@ -497,10 +499,11 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
     
                 [isort1_combined, ~, ~] = raster_processing(DF_combined, current_gcamp_folders_group{m});
     
-                % === Fusion Raster ===
+                % === Fusion ===
                 Raster_combined = [data.Raster_gcamp{m}; data.Raster_blue{m}];
                 thresholds_combined = [data.thresholds_gcamp{m}(:); data.thresholds_blue{m}(:)];
                 Acttmp2_combined = [data.Acttmp2_gcamp{m}(:);  data.Acttmp2_blue{m}(:)];
+                StartEnd_combined = [data.StartEnd_gcamp{m}(:);  data.StartEnd_blue{m}(:)];
     
                 % recalculer car il faut repartir du Raster global
                 synchronous_frames = data.synchronous_frames{m};
@@ -520,6 +523,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
                 data.thresholds_combined{m} = thresholds_combined;
                 data.Acttmp2_combined{m} = Acttmp2_combined;
                 data.Raster_combined{m} = Raster_combined;
+                data.StartEnd_combined{m} = StartEnd_combined;
                 data.MAct_combined{m} = MAct_combined;
             end
         end

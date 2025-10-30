@@ -1,4 +1,4 @@
-function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, MAct, thresholds] = ...
+ function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -46,7 +46,7 @@ function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, M
         setappdata(fig,'baseline_F',baseline_F);
         setappdata(fig,'quality_index', quality_index);
 
-        [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, ~] = save_peak_matrix(fig, synchronous_frames);
+        [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, StartEnd, MAct, thresholds, ~] = save_peak_matrix(fig, synchronous_frames);
 
         if ishghandle(fig), delete(fig); end
         return;
@@ -131,6 +131,7 @@ function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, M
         baseline_F = [];
         Raster     = [];
         Acttmp2    = [];
+        StartEnd   = [];
         MAct       = [];
         thresholds = [];
     elseif ishghandle(fig) && isappdata(fig,'last_save_outputs')
@@ -140,11 +141,13 @@ function [DF, baseline_F, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, M
         baseline_F = out.baseline_F;
         Raster     = out.Raster;
         Acttmp2    = out.Acttmp2;
+        StartEnd   = out.StartEnd;
         MAct       = out.MAct;
         thresholds = out.thresholds;
     else
         Raster     = false(size(DF));
         Acttmp2    = repmat({[]}, size(DF,1),1);
+        StartEnd   = repmat({[]}, size(DF,1),1);
         MAct       = [];
         thresholds = nan(size(DF,1),1);
     end
@@ -284,23 +287,37 @@ function auto_detect_and_add(fig)
     end
 
     % Déterminer onset/offset
-    intervals = zeros(numel(locs),2);
+    intervals = zeros(numel(locs), 2);
+    local_win = 120;           % fenêtre locale en FRAMES
+    baseline_margin = 0.5;    % tolérance en multiple d’écart-type (plus petit = plus bas)
+    
     for i = 1:numel(locs)
         pk = locs(i);
     
-        % Étendre vers la gauche jusqu’à baseline
+        % Fenêtre locale pour baseline
+        left_win  = max(1, pk - local_win);
+        right_win = min(Nx, pk + local_win);
+    
+        local_segment = x(left_win:pk);
+        baseline_local = prctile(local_segment, 10);  % baseline = bas de la distribution
+        noise_local = std(local_segment, 'omitnan');
+    
+        % Seuil local
+        thr_local = baseline_local + baseline_margin * noise_local;
+    
+        % --- Étendre vers la gauche (jusqu’à ce que le signal redescende au niveau baseline) ---
         a = pk;
-        while a > 1 && x(a) > thr_lo
+        while a > 1 && x(a) > thr_local
             a = a - 1;
         end
     
-        % Étendre vers la droite jusqu’à baseline
+        % --- Étendre vers la droite ---
         b = pk;
-        while b < Nx && x(b) > thr_lo
+        while b < Nx && x(b) > thr_local
             b = b + 1;
         end
     
-        % Assurer largeur minimale
+        % Largeur minimale
         if (b - a + 1) < minW
             d = ceil((minW - (b - a + 1))/2);
             a = max(1, a - d);
@@ -309,6 +326,8 @@ function auto_detect_and_add(fig)
     
         intervals(i,:) = [a b];
     end
+
+
 
     % Fusion réfractaire
     intervals = sortrows(intervals,1);
@@ -361,16 +380,42 @@ function refresh_data(fig)
     plot(ax,t,x,'k-'); hold(ax,'on');
     xlabel(ax,'Frames'); ylabel(ax,'ΔF/F (SavGol)');
 
-    % --- Pics détectés ---
-    if isappdata(fig,'auto_peaks')
+    % --- Pics détectés + intervalles ---
+    if isappdata(fig,'auto_peaks') && isappdata(fig,'auto_intervals')
         auto_peaks = getappdata(fig,'auto_peaks');
-        if ~isempty(auto_peaks)
-            % garde uniquement ceux dans [1,T]
-            auto_peaks = auto_peaks(auto_peaks>=1 & auto_peaks<=T);
-            if ~isempty(auto_peaks)
-                plot(ax, auto_peaks, x(auto_peaks), ...
-                    'r*','MarkerSize',8,'LineWidth',1.2);
+        intervals  = getappdata(fig,'auto_intervals');
+    
+        auto_peaks = auto_peaks(auto_peaks>=1 & auto_peaks<=T);
+        intervals  = intervals(all(intervals>0,2) & all(intervals<=T,2), :);
+    
+        % --- Tracer intervalles ---
+        if ~isempty(intervals)
+            for i = 1:size(intervals,1)
+                a = intervals(i,1);  % onset
+                b = intervals(i,2);  % offset
+                
+                % ONSET = triangle vert vers haut
+                plot(ax, a, x(a), 'g^', ...
+                    'MarkerFaceColor',[0.2 0.8 0.2], ...
+                    'MarkerEdgeColor',[0 0.6 0], ...
+                    'MarkerSize',6, 'LineWidth',1);
+    
+                % OFFSET = triangle rouge vers bas
+                plot(ax, b, x(b), 'rv', ...
+                    'MarkerFaceColor',[1 0.5 0.5], ...
+                    'MarkerEdgeColor','r', ...
+                    'MarkerSize',6, 'LineWidth',1);
+    
+                % ligne légère entre onset & offset (facultatif)
+                plot(ax, [a b], [x(a) x(b)], '-', ...
+                    'Color',[1 0.6 0.6 0.35], 'LineWidth',0.8);
             end
+        end
+    
+        % --- Pic central ---
+        if ~isempty(auto_peaks)
+            plot(ax, auto_peaks, x(auto_peaks), 'r*', ...
+                'MarkerSize',8, 'LineWidth',1.2);
         end
     end
 
@@ -412,7 +457,7 @@ function refresh_data(fig)
 end
 
 %% ===================== SAVE PEAK MATRIX =======================
-function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames)
+function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, StartEnd, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames)
     DF_sg   = getappdata(fig,'DF_sg');
     opts    = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
@@ -431,6 +476,7 @@ function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, 
     Raster     = false(nCells, Nz);
     Acttmp2    = cell(nCells,1);
     thresholds = nan(nCells,1);
+    StartEnd = cell(nCells,1);
     minithreshold = 0.1;
     n_kept = 0;
 
@@ -471,32 +517,38 @@ function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, 
         if isempty(locs), Acttmp2{cid} = []; continue; end
 
         % onset/offset
-        intervals = zeros(numel(locs),2);
+        intervals = zeros(numel(locs), 2);
+        local_win = 120;
+        baseline_margin = 0.5;
+        
         for i = 1:numel(locs)
             pk = locs(i);
         
-            % Étendre vers la gauche jusqu’à thr_lo
+            left_win  = max(1, pk - local_win);
+            local_segment = x(left_win:pk);
+        
+            baseline_local = prctile(local_segment, 10);
+            noise_local = std(local_segment,'omitnan');
+            thr_local = baseline_local + baseline_margin * noise_local;
+        
             a = pk;
-            while a > 1 && x(a) > thr_lo
+            while a > 1 && x(a) > thr_local
                 a = a - 1;
             end
         
-            % Étendre vers la droite jusqu’à thr_lo
             b = pk;
-            while b < Nx && x(b) > thr_lo
+            while b < Nx && x(b) > thr_local
                 b = b + 1;
             end
         
-            % Assurer largeur minimale
             if (b - a + 1) < minW
                 d = ceil((minW - (b - a + 1))/2);
-                a = max(1, a - d);
+                a = max(1, a- d);
                 b = min(Nx, b + d);
             end
         
             intervals(i,:) = [a b];
         end
-
 
         % fusion réfractaire
         intervals = sortrows(intervals,1);
@@ -528,6 +580,7 @@ function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, 
         Acttmp2{cid} = locs_merged;
         Raster(cid, locs_merged) = 1;
         thresholds(cid) = thr_lo;
+        StartEnd{cid} = merged;   % store onsets/offsets
     end
 
     % --- Afficher le nombre de cellules restantes ---
@@ -559,6 +612,7 @@ function [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, 
     baseline_F = baseline_F(valid_cells, :);
     thresholds = thresholds(valid_cells, :);
     Acttmp2 = Acttmp2(valid_cells);
+    StartEnd = StartEnd(valid_cells);
     Raster = Raster(valid_cells, :);
 end
 
@@ -711,20 +765,25 @@ end
 
 %% ===================== SAVE CALLBACK =======================
 function save_callback(fig, synchronous_frames)
-    [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames);
+    [invalid_cells, valid_cells, DF_sg, baseline_F, Raster, Acttmp2, StartEnd, MAct, thresholds, opts] = save_peak_matrix(fig, synchronous_frames);
 
     % reshape avant stockage
     if iscell(Acttmp2) && size(Acttmp2,2) > 1
         Acttmp2 = reshape(Acttmp2, [], 1);
     end
 
+    if iscell(StartEnd) && size(StartEnd,2) > 1
+        StartEnd = reshape(StartEnd, [], 1);
+    end
+
     setappdata(fig,'last_save_outputs', struct( ...
         'invalid_cells', invalid_cells, 'valid_cells', valid_cells, 'DF_sg', DF_sg, 'baseline_F', baseline_F, ...
-        'Raster', Raster, 'Acttmp2', {Acttmp2}, 'MAct', MAct, ...
+        'Raster', Raster, 'Acttmp2', {Acttmp2}, 'StartEnd', {StartEnd}, 'MAct', MAct, ...
         'thresholds', thresholds, 'opts', opts));
 
     % assignin('base','Raster',      Raster);
     % assignin('base','Acttmp2',     Acttmp2);
+    %assignin('base','StartEnd',     StartEnd);
     % assignin('base','MAct',        MAct);
     % assignin('base','thresholds',  thresholds);
     % assignin('base','opts_used',   opts);

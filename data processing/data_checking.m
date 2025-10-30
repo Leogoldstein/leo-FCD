@@ -1,8 +1,8 @@
 function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_blue_neurons_original, suite2p] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2)
     
     % Initialisation du tableau de résultats (sélections par dossier)
-    selected_neurons_ordered = cell(size(gcamp_output_folders));
-    selected_gcamp_neurons_original = cell(size(gcamp_output_folders));
+    selected_neurons_ordered = cell(size(gcamp_output_folders)); % indices locaux filtrés (après suppression des neurones NaN, tri avec isort1, batch)
+    selected_gcamp_neurons_original = cell(size(gcamp_output_folders)); % indices originaux dans DF
     suite2p = false;
     
     for m = 1:length(gcamp_output_folders)
@@ -82,6 +82,7 @@ function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_bl
 
         % --- Figure GCaMP / Blue ---
         gcamp_fig = figure('Name', 'Neuron Visualization');
+        setappdata(gcamp_fig, 'DF', DF);
         setappdata(gcamp_fig, 'checking_choice2', checking_choice2);
         setappdata(gcamp_fig, 'meanImg', meanImgs_gcamp{m});
         setappdata(gcamp_fig, 'selected_neurons_total', []);
@@ -683,9 +684,10 @@ function inspect_traces_callback(gcamp_fig, data, idx, current_animal_group, cur
     end
 
     % --- 2. Récupérer DF et fréquence d’échantillonnage ---
-    DF = data.DF_gcamp{idx};
+    DF = getappdata(gcamp_fig, 'DF');
     sampling_rate = data.sampling_rate{idx};
-    selected_gcamp_neurons_original = selected_neurons_ordered;
+    valid_neuron_indices = getappdata(gcamp_fig, 'valid_neuron_indices');
+    selected_gcamp_neurons_original = valid_neuron_indices(selected_neurons_ordered);
 
     % --- 3. Préparer la figure ---
     fig = figure('Name', sprintf('Inspection – %s (%s)', ...

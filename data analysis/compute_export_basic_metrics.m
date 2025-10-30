@@ -25,8 +25,8 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
         'SCEsFrequencyHz', [], ...
         'PercentageActiveCellsSCEs', [], ...
         'MeanSCEsduration_ms', [], ...
-        'MeanPeakAmplitudeNorm', [], ...
-        'MeanPeakAmplitudeNormBlue', [], ...
+        'MeanTranscientAmplitudeNorm', [], ...
+        'MeanTranscientAmplitudeNormBlue', [], ...
         'FractionEventsBursts', [], ...
         'FractionEventsBurstsBlue', [] ...
     );
@@ -55,6 +55,8 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             mean_freq = mean(freq, 'omitnan');
             std_freq  = std(freq, 'omitnan');
 
+            amp_gcamp = compute_normalized_amplitude_per_cell(DF_gcamp, Acttmp2_gcamp);
+
             % --- Données BLUE ---
             num_cells_blue = NaN;
             mean_freq_blue = NaN;
@@ -71,11 +73,22 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                 freq_blue = compute_frequency(Acttmp2_blue, Nframes_blue, sampling_rate);
                 mean_freq_blue = mean(freq_blue, 'omitnan');
                 std_freq_blue  = std(freq_blue, 'omitnan');
+                
+                amp_blue  = compute_normalized_amplitude_per_cell(DF_blue, Acttmp2_blue);
             end
 
-            % --- Figure corrélation fréquences GCaMP vs Blue ---
-            if ~isempty(freq_blue)
-                plot_frequency_scatter(freq, freq_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
+            plot_frequency_scatter(freq, freq_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
+            plot_amplitude_scatter(amp_gcamp, amp_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
+
+            % --- Mean transient duration per cell --- %
+            dur_cell_non = extract_mean_duration_per_cell(data.StartEnd_gcamp{m}, sampling_rate);
+            dur_cell_ele = [];
+            if isfield(data,'StartEnd_blue') && ~isempty(data.StartEnd_blue{m})
+                dur_cell_ele = extract_mean_duration_per_cell(data.StartEnd_blue{m}, sampling_rate);
+            end
+            
+            if ~isempty(dur_cell_non) || ~isempty(dur_cell_ele)
+                plot_duration_per_cell_boxplot(dur_cell_non, dur_cell_ele, current_gcamp_folders_names_group{m});
             end
 
             % --- Corrélations ---
@@ -93,13 +106,11 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                 compute_sces_metrics(data, m, sampling_rate);
 
             % --- Amplitude moyenne normalisée des pics (ΔF/F₀) ---
-            mean_peak_amplitude_norm = compute_normalized_amplitude( ...
-                DF_gcamp, Acttmp2_gcamp, data, m, 'gcamp');
+            mean_peak_amplitude_norm = mean(amp_gcamp, 'omitnan');
 
             mean_peak_amplitude_norm_blue = NaN;
             if isfield(data,'DF_blue') && ~isempty(data.DF_blue{m})
-                mean_peak_amplitude_norm_blue = compute_normalized_amplitude( ...
-                    data.DF_blue{m}, data.Acttmp2_blue{m}, data, m, 'blue');
+                mean_peak_amplitude_norm_blue = mean(amp_blue, 'omitnan');
             end
 
             % --- Fraction d’événements en bursts ---
@@ -132,8 +143,8 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             results_analysis(m).SCEsFrequencyHz          = sce_frequency_hz;
             results_analysis(m).PercentageActiveCellsSCEs= avg_pourcent_cells_sces;
             results_analysis(m).MeanSCEsduration_ms      = avg_duration_ms;
-            results_analysis(m).MeanPeakAmplitudeNorm    = mean_peak_amplitude_norm;
-            results_analysis(m).MeanPeakAmplitudeNormBlue= mean_peak_amplitude_norm_blue;
+            results_analysis(m).MeanTranscientAmplitudeNorm    = mean_peak_amplitude_norm;
+            results_analysis(m).MeanTranscientAmplitudeNormBlue= mean_peak_amplitude_norm_blue;
             results_analysis(m).FractionEventsBursts     = P_burst;
             results_analysis(m).FractionEventsBurstsBlue = P_burst_blue;
 
@@ -215,110 +226,164 @@ function freq = compute_frequency(Acttmp2, Nframes, sampling_rate)
 end
 
 
-function plot_frequency_scatter(freq_gcamp, freq_blue, folder_name, output_path)
-    % ---------------------------------------------------------------------
-    % Trace la distribution des fréquences GCaMP (non-electroporées, vert)
-    % et Blue (électroporées, bleu) côte à côte
-    % ---------------------------------------------------------------------
-    try
-        % Nettoyage basique
-        freq_gcamp = freq_gcamp(~isnan(freq_gcamp));
-        freq_blue  = freq_blue(~isnan(freq_blue));
+function plot_frequency_scatter(freq_non, freq_ele, folder_name, output_path)
 
-        % Vérif présence données
-        if isempty(freq_gcamp) && isempty(freq_blue)
-            warning('Aucune donnée valide pour le tracé de %s.', folder_name);
-            return;
-        end
+freq_non = freq_non(~isnan(freq_non));
+freq_ele = freq_ele(~isnan(freq_ele));
 
-        % Création figure
-        fig = figure('Name', sprintf('Frequencies - %s', folder_name), 'Color', 'w');
-        hold on;
+if isempty(freq_non) && isempty(freq_ele)
+    return;
+end
 
-        % Points GCaMP (non-electroporés)
-        scatter(ones(size(freq_gcamp)), freq_gcamp, 40, ...
-            'MarkerFaceColor', [0 0.7 0], 'MarkerEdgeColor', 'none', 'MarkerFaceAlpha', 0.8);
+% Positions centrées
+pos_non = -0.2;
+pos_ele =  0.2;
 
-        % Points Blue (électroporés)
-        scatter(2*ones(size(freq_blue)), freq_blue, 40, ...
-            'MarkerFaceColor', [0 0 1], 'MarkerEdgeColor', 'none', 'MarkerFaceAlpha', 0.8);
+data = [freq_non; freq_ele];
+group = [ones(size(freq_non)); 2*ones(size(freq_ele))];
 
-        % Axes et labels
-        xlim([0.5 2.5]);
-        set(gca, 'XTick', [1 2], ...
-                 'XTickLabel', {'Non-electroporated cells (GCaMP)', 'Electroporated cells (Blue)'}, ...
-                 'FontSize', 10);
-        ylabel('Frequency (transients/min)', 'FontSize', 11);
-        title(sprintf('Activity distribution per population - %s', folder_name), ...
-            'Interpreter', 'none', 'FontWeight', 'bold');
-        grid on;
-        box on;
+fig = figure('Name', ['Frequency - ' folder_name], 'Color','w'); hold on;
 
-        % Barres de moyenne ± écart-type
-        mean_g = mean(freq_gcamp, 'omitnan');
-        std_g  = std(freq_gcamp, 'omitnan');
-        mean_b = mean(freq_blue, 'omitnan');
-        std_b  = std(freq_blue, 'omitnan');
+% Boxplots centrés
+boxplot(data, group, 'Positions', [pos_non pos_ele], ...
+        'Labels', {'Non-electroporated','Electroporated'}, ...
+        'Colors', 'k')
 
-        errorbar(1, mean_g, std_g, 'k', 'LineWidth', 1.2, 'CapSize', 10);
-        errorbar(2, mean_b, std_b, 'k', 'LineWidth', 1.2, 'CapSize', 10);
+% Jitter points
+scatter(pos_non + randn(size(freq_non))*0.02, freq_non, 25, [0 0.7 0], 'filled')
+scatter(pos_ele + randn(size(freq_ele))*0.02, freq_ele, 25, [0 0 1], 'filled')
 
-        % % Enregistrement
-        % fig_dir = fullfile(output_path, 'Figures');
-        % if ~exist(fig_dir, 'dir')
-        %     mkdir(fig_dir);
-        % end
-        % saveas(fig, fullfile(fig_dir, 'freq_distribution_GCaMP_vs_Blue.png'));
-        % close(fig);
+ylabel('Frequency (events/min)')
+title(['Activity distribution - ' folder_name], 'Interpreter','none')
+xlim([-0.5 0.5])
+grid on; box on;
+hold off;
 
-    catch ME
-        fprintf('Erreur création figure fréquence : %s\n', ME.message);
-    end
 end
 
 
-function mean_peak_amplitude = compute_normalized_amplitude(DF, Acttmp2, data, m, channel)
-    % Calcule la moyenne d'amplitude des pics (ΔF/F), sans normalisation par baseline.
-    %
-    % Entrées :
-    %   DF : matrice ΔF/F (neurones x frames)
-    %   Acttmp2 : indices de pics (cell array ou matrice logique)
-    %   data, m, channel : conservés pour compatibilité
-    %
-    % Sortie :
-    %   mean_peak_amplitude : moyenne des amplitudes pendant les frames d'activité
+function amp = compute_normalized_amplitude_per_cell(DF, Acttmp2)
+% Compute peak ΔF/F amplitude per cell
+% Works for logical matrices or cell arrays of event indices
 
-    if isempty(DF) || isempty(Acttmp2)
-        mean_peak_amplitude = NaN;
-        return;
-    end
+if isempty(DF) || isempty(Acttmp2)
+    amp = NaN(size(DF,1),1);
+    return;
+end
 
-    % Convertir les indices de pics si nécessaire
+[nCells, nFrames] = size(DF);
+amp = nan(nCells,1);
+
+for c = 1:nCells
+
+    % --- Récupérer les frames de pics ---
     if iscell(Acttmp2)
-        peak_frames = unique(cell2mat(Acttmp2(:)'));
-    elseif isnumeric(Acttmp2) && any(Acttmp2(:))
-        % Cas binaire ou logique
-        if size(Acttmp2,2) == size(DF,2)
-            peak_frames = find(any(Acttmp2,1));
-        else
-            peak_frames = Acttmp2(:)';
-        end
+        frames = Acttmp2{c};
+    elseif isnumeric(Acttmp2) && size(Acttmp2,2) == nFrames
+        frames = find(Acttmp2(c,:) > 0);
     else
-        mean_peak_amplitude = NaN;
-        return;
+        frames = [];
     end
 
-    % Vérifier la validité
-    if isempty(peak_frames) || max(peak_frames) > size(DF,2)
-        mean_peak_amplitude = NaN;
-        return;
+    % --- Si pas de pics -> NaN ---
+    if isempty(frames)
+        amp(c) = NaN;
+        continue;
     end
 
-    % Moyenne de DF pendant les frames de pics
-    mean_peak_F = mean(DF(:, peak_frames), 2, 'omitnan');
+    % --- Moyenne des amplitudes ΔF/F pendant les pics ---
+    amp(c) = mean(DF(c,frames), 'omitnan');
+end
 
-    % Moyenne globale sur tous les neurones
-    mean_peak_amplitude = mean(mean_peak_F, 'omitnan');
+end
+
+function plot_amplitude_scatter(amp_non, amp_ele, folder_name, output_path)
+
+amp_non = amp_non(~isnan(amp_non));
+amp_ele = amp_ele(~isnan(amp_ele));
+
+if isempty(amp_non) && isempty(amp_ele)
+    return;
+end
+
+pos_non = -0.2;
+pos_ele =  0.2;
+
+data = [amp_non; amp_ele];
+group = [ones(size(amp_non)); 2*ones(size(amp_ele))];
+
+fig = figure('Name', ['Amplitude - ' folder_name], 'Color','w'); hold on;
+
+boxplot(data, group, 'Positions', [pos_non pos_ele], ...
+        'Labels', {'Non-electroporated','Electroporated'}, ...
+        'Colors', 'k')
+
+scatter(pos_non + randn(size(amp_non))*0.02, amp_non, 25, [0 0.7 0], 'filled')
+scatter(pos_ele + randn(size(amp_ele))*0.02, amp_ele, 25, [0  0  1], 'filled')
+
+ylabel('Transicents ΔF/F amplitude')
+title(['Transcient amplitudes - ' folder_name], 'Interpreter','none')
+xlim([-0.5 0.5])
+grid on; box on;
+hold off;
+
+end
+
+function mean_durations = extract_mean_duration_per_cell(StartEnd, sampling_rate)
+% StartEnd : cell array, each entry is [n_events × 2]
+% Output: mean duration per cell, in ms
+
+if isempty(StartEnd)
+    mean_durations = [];
+    return;
+end
+
+mean_durations = nan(numel(StartEnd),1);
+
+for c = 1:numel(StartEnd)
+    if ~isempty(StartEnd{c})
+        intervals = StartEnd{c};
+        % Frame → s
+        ev_dur = (intervals(:,2) - intervals(:,1)) / sampling_rate;
+        mean_durations(c) = mean(ev_dur,'omitnan');
+    end
+end
+
+% Retire les NaN si aucune détection
+mean_durations = mean_durations(~isnan(mean_durations));
+end
+
+function plot_duration_per_cell_boxplot(dur_non, dur_ele, folder_name)
+
+dur_non = dur_non(~isnan(dur_non));
+dur_ele = dur_ele(~isnan(dur_ele));
+
+if isempty(dur_non) && isempty(dur_ele)
+    return;
+end
+
+pos_non = -0.2;
+pos_ele =  0.2;
+
+data  = [dur_non; dur_ele];
+group = [ones(size(dur_non)); 2*ones(size(dur_ele))];
+
+fig = figure('Name', ['Mean duration per cell - ' folder_name], 'Color','w'); hold on;
+
+% Boxplots
+boxplot(data, group, 'Positions', [pos_non pos_ele], ...
+    'Labels', {'Non-electroporated','Electroporated'}, ...
+    'Colors', 'k');
+
+% Jitter scatter
+scatter(pos_non + randn(size(dur_non))*0.02, dur_non, 30, [0 0.7 0], 'filled')
+scatter(pos_ele + randn(size(dur_ele))*0.02, dur_ele, 30, [0 0 1], 'filled')
+
+ylabel('Mean transient duration per cell (sec)')
+title(['Mean transient duration per cell - ' folder_name], 'Interpreter','none')
+xlim([-0.5 0.5])
+grid on; box on;
+hold off;
 end
 
 
@@ -339,6 +404,7 @@ function P_burst = compute_fraction_bursts(Raster)
         P_burst = NaN;
     end
 end
+
 
 function [num_sces, sce_frequency_hz, avg_pourcent_cells_sces, avg_duration_ms] = compute_sces_metrics(data, m, sampling_rate)
     num_sces = NaN; sce_frequency_hz = NaN; avg_pourcent_cells_sces = NaN; avg_duration_ms = NaN;
