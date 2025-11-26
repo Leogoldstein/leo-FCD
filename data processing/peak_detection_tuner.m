@@ -33,8 +33,7 @@
     end
 
     % --- Prétraitement ---
-    [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
-        quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts);
+    [DF, DF_sg, baseline_F, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts);
 
     % === MODE BATCH (pas de GUI) ===
     if nogui
@@ -110,7 +109,6 @@
     setappdata(fig,'noise_est',noise_est);
     setappdata(fig,'SNR',SNR);
     setappdata(fig,'opts',opts);
-    setappdata(fig,'SNR_mean',SNR_mean);
     setappdata(fig,'ax1',ax1);
     setappdata(fig,'quality_index', quality_index);
     setappdata(fig,'quality_min', quality_min);
@@ -159,8 +157,7 @@ end
 
 
 %% ===================== DF PROCESSING (unique) =======================
-function [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
-          quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts)
+function [DF, DF_sg, baseline_F, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts)
 
     % Calcule DF, baseline, SavGol (DF_sg), bruit (rolling) et SNR.
     %
@@ -221,38 +218,21 @@ function [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr
         end
     end
 
-    % --- Step 3: SNR ---
-    noise_est(noise_est < snr_min_cap) = snr_min_cap;
-    SNR = DF_sg ./ noise_est;
+    % ---- Linear Quality Index (true SNR) ----
+    signal_std = std(DF_sg, [], 2);      % strength of smoothed ΔF/F
+    noise_mean = mean(noise_est, 2);     % average noise level
+    
+    % Avoid division by extremely small noise values
+    noise_mean(noise_mean < snr_min_cap) = snr_min_cap;
 
-    % --- Stats SNR pour GUI ---
-    SNR_mean = mean(SNR,2,'omitnan');
-    snr_min  = min(SNR_mean);
-    snr_max  = max(SNR_mean);
-    snr_thr0 = (snr_min + snr_max)/2;
+    SNR = signal_std ./ noise_mean;
 
-    % ---- Indices qualité ----
-    contrast_metric = std(DF_sg, [], 2) ./ mean(noise_est, 2);
-    baseline_q5 = prctile(baseline_F, 5);
-    low_baseline_flag = baseline_F < baseline_q5;
-    
-    baseline_width = zeros(size(DF_sg,1),1);
-    for n = 1:size(DF_sg,1)
-        th = prctile(DF_sg(n,:),10);
-        baseline_width(n) = std(DF_sg(n, DF_sg(n,:) < th), [], 'omitnan');
-    end
-    
-    noise_ratio = mean(noise_est, 2) ./ std(DF_sg, [], 2);
-    quality_index = contrast_metric ./ (1 + noise_ratio);
-    
-    % bornes qualité
-    quality_min  = min(quality_index);
-    quality_max  = max(quality_index);
+    quality_index = SNR.^2 ./ (SNR.^2 + 1);
+
+    % bornes qualité 
+    quality_min = min(quality_index);
+    quality_max = max(quality_index);
     quality_thr0 = (quality_min + quality_max) / 2;
-    
-    % pour inspection future
-    SNR_info = table(baseline_F, contrast_metric, baseline_width, noise_ratio, quality_index, ...
-        'VariableNames', {'F0','Contrast','BaselineWidth','NoiseRatio','Quality'});
 
 end
 
@@ -736,15 +716,13 @@ function update_param(fig, field, value)
     % Si savgol_win change: recalcul DF_sg, noise, SNR + MAJ slider SNR
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
-        [DF, DF_sg, baseline_F, noise_est, SNR, SNR_mean, snr_min, snr_max, snr_thr0, ...
-            quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
+        [DF, DF_sg, baseline_F, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
     
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
         setappdata(fig,'baseline_F', baseline_F);
         setappdata(fig,'noise_est', noise_est);
         setappdata(fig,'SNR', SNR);
-        setappdata(fig,'SNR_mean', SNR_mean);
         setappdata(fig,'quality_index', quality_index);
     
         sldr = findobj(fig,'Tag','sldr_quality_thr');

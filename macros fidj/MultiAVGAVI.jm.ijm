@@ -1,5 +1,5 @@
 // D'abord faire la correction de mouvements avec suite2p
-
+// Mettre camera dans TSeries !!!
 
 
 // Fonction pour gérer les images dans "SingleImage"
@@ -21,6 +21,170 @@ function handleSingleImages(subDir, saveSingleImDir) {
         }
     }
 }
+
+// Fonction pour gérer les TSeries et l'AVI enregistré
+function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
+
+    var tseriesFoldersList = getFileList(subDir);
+    var tseriesFolders = newArray();
+    var tseriesFolderFound = false;
+
+    // Chercher les dossiers TSeries
+    for (var l = 0; l < tseriesFoldersList.length; l++) {
+        if (startsWith(tseriesFoldersList[l], "TSeries") 
+            && indexOf(tseriesFoldersList[l], "blue") <= 0 
+            && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
+            
+            tseriesFolderFound = true;
+            // chemin complet du TSeries
+            tseriesFolders = Array.concat(
+                tseriesFolders,
+                subDir + File.separator + tseriesFoldersList[l] + File.separator
+            );
+        }
+    }
+
+    if (!tseriesFolderFound) {
+        print("No 'TSeries' folder found in '" + subDir + "'. Skipping this subDir.");
+        return;
+    }
+
+    // Itérer sur les dossiers 'TSeries'
+    for (var tseriesFolderIndex = 0; tseriesFolderIndex < tseriesFolders.length; tseriesFolderIndex++) {
+        var tseriesFolder = tseriesFolders[tseriesFolderIndex];
+        var tseriesFolderName = File.getName(tseriesFolder);
+
+        print("==========");
+        print("TSeries folder found: " + tseriesFolder);
+        
+        // Sauvegarder les résultats
+        var aviFileName       = "AVG_concat_groupZ.avi";  // Nom du fichier AVI à enregistrer
+        var ConcatTifFileName = "Concatenated.tif";
+        
+        var path = saveRegisVidDir + tseriesFolderName + File.separator;
+        createDirectory(path);
+
+        var fullPathTiff = path + ConcatTifFileName;
+        var fullPathAvi  = path + aviFileName;
+
+        // Si les fichiers existent déjà pour CE TSeries, on passe au suivant
+        if (File.exists(fullPathAvi) && File.exists(fullPathTiff)) {
+            print("Le fichier concatenated.tif existe déjà : " + fullPathTiff + "");
+            
+             // Gestion des images caméra
+		        var proceed     = false;
+		        if (File.isDirectory(path + "cam" + File.separator)) {
+		            var saveCamImDir = path + "cam" + File.separator;
+		            proceed = true;				    
+		        } else if (File.isDirectory(path + "camera" + File.separator)) {
+		            var saveCamImDir = path + "camera" + File.separator;
+		            proceed = true;
+		        } else {
+		            print("  No Camera images found in " + path + ".");
+		        }
+		
+		        if (proceed) {
+		            print("  Traitement des images caméra dans " + saveCamImDir);
+		            handleCamImages(saveCamImDir); // Mettre camera dans TSeries folder !!!
+		            combineCamAndTSeries(saveCamImDir, path, fullPathTiff);
+		        }
+        } else {
+	        // Vérifier si le sous-dossier 'suite2p' existe
+	        var suite2pFolder = tseriesFolder + File.separator + "suite2p" + File.separator;                            
+	        if (!File.isDirectory(suite2pFolder)) {
+	            print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
+	            continue; 
+	        }
+	
+	        // Lister les dossiers 'plane' dans suite2pFolder
+	        var planeFolders = getFileList(suite2pFolder);
+	        var validPlaneFolders = newArray();
+	
+	        for (var m = 0; m < planeFolders.length; m++) {
+	            if (startsWith(planeFolders[m], "plane") && File.isDirectory(suite2pFolder + File.separator + planeFolders[m])) {
+	                validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + File.separator + planeFolders[m] + File.separator);
+	            }
+	        }
+	
+	        if (validPlaneFolders.length == 0) {
+	            print("Skipping " + suite2pFolder + ": No 'plane' folders found.");
+	            continue;
+	        }
+	
+	        // Itérer sur les dossiers 'plane'
+	        for (var planeFolderIndex = 0; planeFolderIndex < validPlaneFolders.length; planeFolderIndex++) {
+	            var planeFolder = validPlaneFolders[planeFolderIndex];
+	
+	            // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
+	            var regTifFolder = planeFolder + File.separator + "reg_tif" + File.separator;
+	            if (File.isDirectory(regTifFolder)) {
+	            	//File.delete(regTifFolder + "AVG_concat.tif");
+	                var tifFiles = getFileList(regTifFolder);
+	                var arr_num = extract_digits(tifFiles);
+	                Array.sort(arr_num, tifFiles);
+	
+	                var filesToConcatenate = newArray();
+	                var hasTifFiles = false;
+	
+	                for (var n = 0; n < tifFiles.length; n++) {
+	                    var file = regTifFolder + File.separator + tifFiles[n];
+	                    open(file);
+	
+	                    // Ajouter des tranches vides pour faire en sorte que la taille de la pile soit un multiple de dix
+	                    addSlicesToMakeMultipleOfTen();
+	
+	                    filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
+	                    hasTifFiles = true;
+	                }
+	
+	                // Concaténer les piles
+	                if (hasTifFiles) {
+	                    concatenateTiffFiles(filesToConcatenate);
+						
+						saveAs("Tiff", fullPathTiff);
+						
+	                    // Appliquer une projection Z groupée
+	                    run("Grouped Z Project...", "projection=[Average Intensity] group=10");
+	                    run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
+	                    run("Animation Options...", "speed=30 first=1 last=" + nSlices);
+	
+	                    saveAs("AVI", fullPathAvi);
+	                    print("Saved AVI file: " + fullPathAvi);
+	
+	                    // Fermer toutes les images
+	                    run("Close All");
+	                    
+	                    // Gestion des images caméra
+				        var proceed     = false;
+						
+				        if (File.isDirectory(path + "cam" + File.separator)) {
+				            var saveCamImDir = path + "cam" + File.separator;
+				            proceed = true;				    
+				        } else if (File.isDirectory(path + "camera" + File.separator)) {
+				            var saveCamImDir = path + "camera" + File.separator;
+				            proceed = true;
+				        } else {
+				            print("  No Camera images found in " + path + ".");
+				        }
+				
+				        if (proceed) {
+				            print("  Traitement des images caméra dans " + saveCamImDir);
+				            handleCamImages(saveCamImDir); // Mettre camera dans TSeries folder !!!
+				            combineCamAndTSeries(saveCamImDir, path, fullPathTiff);
+				        }
+	        
+		         } else {
+                    print("Aucun fichier .tif trouvé dans " + regTifFolder);
+                }
+            	} else {
+                	print("Aucun dossier 'reg_tif' trouvé dans " + planeFolder);
+            	}	          
+	        }
+	    } // fin boucle TSeries
+    }
+}
+
+
 
 // Fonction pour gérer les images dans "camera"
 function handleCamImages(saveCamImDir) {
@@ -106,125 +270,69 @@ function handleCamImages(saveCamImDir) {
 	}
 }
 
-// Fonction pour gérer les TSeries et l'AVI enregistré
-function handleTSeriesAndAvi(subDir, saveRegisVidDir) {
+function combineCamAndTSeries(saveCamImDir, path, fullPathTiff) {
 
-    var tseriesFoldersList = getFileList(subDir);
-    var tseriesFolders = newArray();
-    var tseriesFolderFound = false;
+    var aviFileName = "combineCamAndTSeries.tif";
+    var CamTiffSavePath = path + aviFileName;
 
-    for (var l = 0; l < tseriesFoldersList.length; l++) {
-        if (startsWith(tseriesFoldersList[l], "TSeries") 
-		    && indexOf(tseriesFoldersList[l], "blue") <= 0 
-		    && File.isDirectory(subDir + File.separator + tseriesFoldersList[l])) {
-            tseriesFolderFound = true;
-            tseriesFolders = Array.concat(tseriesFolders, subDir + tseriesFoldersList[l]);
-        }
-    }
-
-    if (!tseriesFolderFound) {
-        print("No 'TSeries' folder found in '" + subDir + "'. Skipping this subDir.");
+    if (File.exists(CamTiffSavePath)) {
+        print("Le fichier Tiff combiné combiné existe déjà : " + CamTiffSavePath);
         return;
     }
 
-    // Itérer sur les dossiers 'TSeries'
-    for (var tseriesFolderIndex = 0; tseriesFolderIndex < tseriesFolders.length; tseriesFolderIndex++) {
-        var tseriesFolder = tseriesFolders[tseriesFolderIndex];
-        print("TSeries folder found: " + tseriesFolder);
-        
-        // Sauvegarder les résultats
-        var tseriesFolderName = File.getName(tseriesFolder);
-        var aviFileName = "AVG_concat_groupZ.avi";  // Nom du fichier AVI à enregistrer
-        var ConcatTifFileName = "Concatenated.tif";
-        
-        var path = saveRegisVidDir + tseriesFolderName + File.separator;
-        createDirectory(path);
+    // --- T-SERIES ---
+    open(fullPathTiff);
+    // titre de l'image ouverte
+    originalTitle = getTitle();
 
-        var fullPathTiff = path + ConcatTifFileName;
-        var fullPathAvi = path + aviFileName;
+    if (isOpen(originalTitle)) {
 
-		if (File.exists(fullPathAvi)) {
-			print("Le fichier AVI existe déjà : " + fullPathAvi);
-			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
-		 }
-		 if (File.exists(fullPathTiff)) {
-			print("Le fichier concatenated.tif existe déjà : " + fullPathTiff);
-			return; // Passer à l'itération suivante sans faire de calculs supplémentaires                           
-		 }
-		 
-        // Vérifier si le sous-dossier 'suite2p' existe
-        var suite2pFolder = tseriesFolder + File.separator + "suite2p" + File.separator;                            
-        if (!File.isDirectory(suite2pFolder)) {
-            print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
-            continue; 
+        // 1) Projection Z groupée → crée une nouvelle image AVG_...
+        run("Grouped Z Project...", "projection=[Average Intensity] group=10");
+
+        // titre de la projection (ImageJ crée souvent AVG_originalTitle)
+        projTitle = "AVG_" + originalTitle;
+        if (!isOpen(projTitle)) {
+            // si jamais le plugin donne un autre nom, utiliser la fenêtre active
+            projTitle = getTitle();
         }
 
-        // Lister les dossiers 'plane' dans suite2pFolder
-        var planeFolders = getFileList(suite2pFolder);
-        var validPlaneFolders = newArray();
+        // 2) On travaille explicitement sur la projection
+        selectWindow(projTitle);
+        run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
+        //run("Enhance Contrast...", "saturated=0.15");
+        run("8-bit");
 
-        for (var m = 0; m < planeFolders.length; m++) {
-            if (startsWith(planeFolders[m], "plane") && File.isDirectory(suite2pFolder + File.separator + planeFolders[m])) {
-                validPlaneFolders = Array.concat(validPlaneFolders, suite2pFolder + File.separator + planeFolders[m] + File.separator);
-            }
-        }
+        // --- CAM ---
+        var saveCamConcatImDir = saveCamImDir + "Concatenated" + File.separator;
+        var CamFile = saveCamConcatImDir + "cam_crop.tif";
 
-        if (validPlaneFolders.length == 0) {
-            print("Skipping " + suite2pFolder + ": No 'plane' folders found.");
-            continue;
-        }
+        open(CamFile);
 
-        // Itérer sur les dossiers 'plane'
-        for (var planeFolderIndex = 0; planeFolderIndex < validPlaneFolders.length; planeFolderIndex++) {
-            var planeFolder = validPlaneFolders[planeFolderIndex];
+        if (isOpen("cam_crop.tif")) {
+            selectWindow("cam_crop.tif");
+            n = nSlices;
+            // garder 2,12,22,... (increment=10)
+            run("Slice Keeper", "first=2 last=" + n + " increment=10");
 
-            // Vérifier si le dossier 'reg_tif' existe dans le dossier plane
-            var regTifFolder = planeFolder + File.separator + "reg_tif" + File.separator;
-            if (File.isDirectory(regTifFolder)) {
-            	//File.delete(regTifFolder + "AVG_concat.tif");
-                var tifFiles = getFileList(regTifFolder);
-                var arr_num = extract_digits(tifFiles);
-                Array.sort(arr_num, tifFiles);
+            // la nouvelle pile s’appelle typiquement "cam_crop.tif kept stack"
+            selectWindow("cam_crop.tif kept stack");
+            n = nSlices;
+            run("Size...", "width=1038 height=512 depth=" + n + " constrain average interpolation=Bilinear");
 
-                var filesToConcatenate = newArray();
-                var hasTifFiles = false;
+            // Combinaison des 2 stacks
+            // stack1 = projection, stack2 = cam_crop traité
+            selectWindow(projTitle);
+            run("Combine...", "stack1=[" + projTitle + "] stack2=[cam_crop.tif kept stack]");
 
-                for (var n = 0; n < tifFiles.length; n++) {
-                    var file = regTifFolder + File.separator + tifFiles[n];
-                    open(file);
-
-                    // Ajouter des tranches vides pour faire en sorte que la taille de la pile soit un multiple de dix
-                    addSlicesToMakeMultipleOfTen();
-
-                    filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
-                    hasTifFiles = true;
-                }
-
-                // Concaténer les piles
-                if (hasTifFiles) {
-                    concatenateTiffFiles(filesToConcatenate);
-					
-					saveAs("Tiff", fullPathTiff);
-					
-                    // Appliquer une projection Z groupée
-                    run("Grouped Z Project...", "projection=[Average Intensity] group=10");
-                    run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
-                    run("Animation Options...", "speed=30 first=1 last=" + nSlices);
-
-                    saveAs("AVI", fullPathAvi);
-                    print("Saved AVI file: " + fullPathAvi);
-
-                    // Fermer toutes les images
-                    run("Close All");
-                } else {
-                    print("Aucun fichier .tif trouvé dans " + regTifFolder);
-                }
-            } else {
-                print("Aucun dossier 'reg_tif' trouvé dans " + planeFolder);
-            }
+            // la pile combinée s’appelle en général "Combined Stacks"
+            selectWindow("Combined Stacks");
+            saveAs("Tiff", CamTiffSavePath);
+            run("Close All");
         }
     }
 }
+
 
 // Fonction pour concaténer plusieurs fichiers TIFF
 function concatenateTiffFiles(tiffFiles) {
@@ -343,56 +451,43 @@ for (var i = 0; i < list.length; i++) {
     
     // Pour chaque élément de subDirList
     for (var j = 0; j < subDirList.length; j++) {
-        var subDir = filename + subDirList[j];
+        var subDir = filename + subDirList[j];   // ex : ...\mTor13/ani2/
         
         // Si le nom commence par "mTor", traitement des sous-dossiers niveau 2
         if (matches(name, "^m[Tt]or.*")) {
-        	var ani = subDirList[j];
-			var ani = replace(ani, "/", "");
-			
-            var aniDir = rootDir + ani;
+
+            // ani = "ani2/" -> "ani2"
+            var ani = replace(subDirList[j], "/", "");
+            var aniDir = rootDir + ani + File.separator;    // ...\mTor13\ani2\
             createDirectory(aniDir);
 
             if (File.isDirectory(subDir)) {
-                var subSubDirList = getFileList(subDir);
-                
+                var subSubDirList = getFileList(subDir);     // ex : 2024-10-25/
+
                 if (subSubDirList.length > 0) {
                     for (var k = 0; k < subSubDirList.length; k++) {
+
+                        // ex : ...\mTor13/ani2/2024-10-25/
                         var subSubDir = subDir + subSubDirList[k];
-                        print("Sous-dossier trouvé : " + subSubDir); 
-						
-						var date = subSubDirList[k];
-						var date = replace(date, "/", "");
-						
-                        var saveDir = aniDir + File.separator + date + File.separator ;
+                        // normaliser les séparateurs
+                        subSubDir = replace(subSubDir, "/", File.separator);
+
+                        var date = replace(subSubDirList[k], "/", "");   // 2024-10-25
+                        
+                        var saveDir = aniDir + date + File.separator;    // ...\mTor13\ani2\2024-10-25\
                         createDirectory(saveDir);
                         
-                        var saveSingleImDir = saveDir + "Single images";
+                        var saveSingleImDir = saveDir + "Single images" + File.separator;
                         createDirectory(saveSingleImDir);
-                        
-                        var proceed = false;
-                        if (File.isDirectory(saveDir + "cam" + File.separator)) {
-						    var saveCamImDir = saveDir + "cam" + File.separator;
-						    var proceed = true;				    
-						} else if (File.isDirectory(saveDir + "camera" + File.separator)) {
-						    var saveCamImDir = saveDir + "camera" + File.separator;
-						    var proceed = true;
-						} else {
-						    print("No Camera images found in " + saveDir + ".");
-						}
-						
-						if (proceed){
-							createDirectory(saveCamImDir);
-							handleCamImages(saveCamImDir);
-                        }
-                        
-                        var saveRegisVidDir = saveDir;
+
+                        // ⚠️ TRÈS IMPORTANT : définir saveRegisVidDir ici
+                        var saveRegisVidDir = saveDir;   // ou saveDir + "Registered videos" + File.separator;
                         createDirectory(saveRegisVidDir);
-                    
+                        
                         // Traiter les dossiers "SingleImage" dans subSubDir
                         handleSingleImages(subSubDir, saveSingleImDir);
                         
-                        // Vérifier et créer l'AVI enregistré
+                        // Vérifier et créer l'AVI enregistré pour les TSeries dans subSubDir
                         handleTSeriesAndAvi(subSubDir, saveRegisVidDir);
                     }
                 }
@@ -401,32 +496,15 @@ for (var i = 0; i < list.length; i++) {
         
         // Si le nom commence par "ani", traitement des sous-dossiers niveau 1
         else if (name.startsWith("an")) {
-        	var date = subDirList[j];
-			var date = replace(date, "/", "");
-			
+            var date = replace(subDirList[j], "/", "");
+            
             var saveDir = rootDir + date + File.separator;
             createDirectory(saveDir);
         
-            var saveSingleImDir = saveDir + "Single images";
+            var saveSingleImDir = saveDir + "Single images" + File.separator;
             createDirectory(saveSingleImDir);
             
-            var proceed = false;
-            if (File.isDirectory(saveDir + "cam" + File.separator)) {
-				var saveCamImDir = saveDir + "cam" + File.separator;
-				var proceed = true;				    
-			 } else if (File.isDirectory(saveDir + "camera" + File.separator)) {
-				var saveCamImDir = saveDir + "camera" + File.separator ;
-				var proceed = true;
-			 } else {
-				print("No Camera images found in " + saveDir + ".");
-			 }
-						
-			 if (proceed){
-				createDirectory(saveCamImDir);
-				handleCamImages(saveCamImDir);
-           }					   								    
-        
-            var saveRegisVidDir = saveDir ;
+            var saveRegisVidDir = saveDir;
             createDirectory(saveRegisVidDir);
         
             // Traiter les dossiers "SingleImage" dans subDir
@@ -439,8 +517,3 @@ for (var i = 0; i < list.length; i++) {
 }
 
 setBatchMode(false);
-
-
-
-   
-    
