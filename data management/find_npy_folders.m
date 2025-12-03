@@ -1,8 +1,8 @@
-function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
+function [true_xml_paths, TSeriesPaths, xml_paths_all, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(selectedFolders)
     % Initialize cell arrays to store paths
     numFolders = length(selectedFolders);
-    true_env_paths = cell(numFolders, 1);
-    env_paths_all = cell(numFolders, 1);
+    true_xml_paths = cell(numFolders, 1);
+    xml_paths_all = cell(numFolders, 1);
     statPaths = cell(numFolders, 1);
     FPaths = cell(numFolders, 1);
     iscellPaths = cell(numFolders, 1);
@@ -70,16 +70,16 @@ function [true_env_paths, TSeriesPaths, env_paths_all, statPaths, FPaths, iscell
             end
         end
         
-        % Construct the path to the .env file
-        env_file = dir(fullfile(TSeriesPath, '*.env'));
-        if isscalar(env_file) % Check if exactly one .env file is found
-            env_path = fullfile(TSeriesPath, env_file.name); % Use the .env file found
-            env_paths_all{idx} = env_path; % Add to env_paths
+        % Construct the path to the .xml file
+        xml_file = dir(fullfile(TSeriesPath, '*.xml'));
+        if isscalar(xml_file) % Check if exactly one .xml file is found
+            xml_path = fullfile(TSeriesPath, xml_file.name); % Use the .xml file found
+            xml_paths_all{idx} = xml_path; % Add to xml_paths
         else
-           env_path = ''; % Set to empty if no .env file is found or multiple files exist
-           env_paths_all{idx} = ''; % Add an empty entry for consistency
+           xml_path = ''; % Set to empty if no .xml file is found or multiple files exist
+           xml_paths_all{idx} = ''; % Add an empty entry for consistency
         end
-        true_env_paths{idx} = env_path;
+        true_xml_paths{idx} = xml_path;
 
         % Construct file paths
         stat_path = fullfile(planeFolder, 'stat.npy');

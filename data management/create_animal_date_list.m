@@ -61,7 +61,15 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
     %disp(animal_date_list)
 
     % Identifier les types uniques
+    % Garder seulement les lignes dont la 1ère colonne n'est pas vide
+    non_empty_type = ~cellfun('isempty', animal_date_list(:, 1));
+    
+    % Filtrer animal_date_list pour ne garder que les lignes "valides"
+    animal_date_list = animal_date_list(non_empty_type, :);
+    
+    % Maintenant, toutes les entrées de la colonne 1 sont des char → unique fonctionne
     unique_types = unique(animal_date_list(:, 1));
+
     updated_animal_date_list = {}; % Initialisation
 
     % Itérer sur chaque type pour gérer les âges indépendamment
@@ -283,6 +291,3 @@ function updated_animal_date_list = create_animal_date_list(dataFolders, PathSav
     
     end
 end
-
-                    
-              

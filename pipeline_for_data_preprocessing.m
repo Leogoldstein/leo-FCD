@@ -48,9 +48,9 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
     if ismember(1, choices)
         disp('Processing JM data...');
         dataFolders = select_folders(jm_folder);
-        [true_env_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+        [true_xml_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
         TSeriesPaths_jm = TSeriesPaths_jm(~cellfun('isempty', TSeriesPaths_jm));
-        true_env_paths_jm = true_env_paths_jm(~cellfun('isempty', true_env_paths_jm));
+        true_xml_paths_jm = true_xml_paths_jm(~cellfun('isempty', true_xml_paths_jm));
         [~, ~, ~, ~, ~, gcampdataFolders] = preprocess_npy_files(FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
         gcampdataFolders_all = [gcampdataFolders_all; gcampdataFolders(:)];
         disp('Traitement JM terminé.');
@@ -60,9 +60,16 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         disp('Processing FCD data...');
         dataFolders = select_folders(fcd_folder);
         dataFolders = organize_data_by_animal(dataFolders, group_order{2});
-        [TseriesFolders_fcd, TSeriesPaths_fcd, ~, true_env_paths_fcd, lastFolderNames_fcd] = find_Fall_folders(dataFolders);
-        gcampdataFolders_all = [gcampdataFolders_all; TseriesFolders_fcd(:, 1)];
-        disp('Traitement FCD terminé.');
+        [TseriesFolders_fcd, TSeriesPaths_fcd, ~, true_xml_paths_fcd, lastFolderNames_fcd] = find_Fall_folders(dataFolders);
+        gcampdataFolders_all = {};
+        for i = 1:size(TseriesFolders_fcd, 1)
+            fallList = TseriesFolders_fcd{i, 1};   % ceci est soit {}, soit 1xN cell de chemins
+            
+            if ~isempty(fallList)
+                % fallList est une cell -> on ajoute ses éléments un par un
+                gcampdataFolders_all = [gcampdataFolders_all; fallList(:)];
+            end
+        end
     end
 
     if any(ismember([3 4], choices))
@@ -75,9 +82,16 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
             dataFolders = select_folders(sham_folder);
             dataFolders = organize_data_by_animal(dataFolders, group_order{4});
         end
-        [TseriesFolders_ctrl, TSeriesPaths_ctrl, ~, true_env_paths_ctrl, lastFolderNames_ctrl] = find_Fall_folders(dataFolders);
-        gcampdataFolders_all = [gcampdataFolders_all; TseriesFolders_ctrl(:, 1)];
-        disp('Traitement terminé.');
+        [TseriesFolders_ctrl, TSeriesPaths_ctrl, ~, true_xml_paths_ctrl, lastFolderNames_ctrl] = find_Fall_folders(dataFolders);
+        gcampdataFolders_all = {};
+        for i = 1:size(TseriesFolders_ctrl, 1)
+            fallList = TseriesFolders_ctrl{i, 1};   % ceci est soit {}, soit 1xN cell de chemins
+            
+            if ~isempty(fallList)
+                % fallList est une cell -> on ajoute ses éléments un par un
+                gcampdataFolders_all = [gcampdataFolders_all; fallList(:)];
+            end
+        end
     end
 
     %===================%
@@ -170,17 +184,17 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
                 case "jm"
                     selected_groups(idx).pathTSeries = TSeriesPaths_jm(date_indices, :);
                     selected_groups(idx).folders = gcampdataFolders_all(date_indices, :);
-                    selected_groups(idx).env = true_env_paths_jm(date_indices);
+                    selected_groups(idx).xml = true_xml_paths_jm(date_indices);
                     selected_groups(idx).folders_names = [];
                 case "FCD"
                     selected_groups(idx).pathTSeries = TSeriesPaths_fcd(date_indices, :);
                     selected_groups(idx).folders = TseriesFolders_fcd(date_indices, :);
-                    selected_groups(idx).env = true_env_paths_fcd(date_indices);
+                    selected_groups(idx).xml = true_xml_paths_fcd(date_indices);
                     selected_groups(idx).folders_names = string(lastFolderNames_fcd(date_indices, :));
                 otherwise
                     selected_groups(idx).pathTSeries = TSeriesPaths_ctrl(date_indices, :);
                     selected_groups(idx).folders = TseriesFolders_ctrl(date_indices, :);
-                    selected_groups(idx).env = true_env_paths_ctrl(date_indices);
+                    selected_groups(idx).xml = true_xml_paths_ctrl(date_indices);
                     selected_groups(idx).folders_names = string(lastFolderNames_ctrl(date_indices, :));
             end
             idx = idx + 1;

@@ -14,7 +14,7 @@ else
     fprintf("Python déjà chargé depuis : %s\n", pe.Executable);
 end
 
-% Chemin où se trouve le fichier python_function.py1
+% Chemin où se trouve le fichier python_function.py12
 new_path = 'D:/local-repo/Python';
 
 %Vérifiez si le chemin est déjà dans le sys.path Python, sinon l'ajouter
@@ -24,15 +24,6 @@ end
 
 [animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
 
-% for k = 1:length(selected_groups)
-% current_env_group = selected_groups(k).env;
-%     for idx = 1:length(current_env_group)
-%         [recording_time, sampling_rate, optical_zoom, position, time_minutes, pixel_size] = find_key_value(current_env_group{idx});
-%         %disp(optical_zoom)
-%         disp(position)
-%         %disp(pixel_size)
-%     end
-% end
 %%
 processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
 if strcmp(processing_choice1, '2')

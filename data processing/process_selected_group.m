@@ -61,7 +61,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
             [current_green_folders_group, current_green_folders_names_group]
         };
         assignin('base', 'folders_groups', folders_groups);
-        current_env_group = selected_groups(k).env;
+        current_xml_group = selected_groups(k).xml;
         
         currentDatetime = datetime('now');
         daytime = datestr(currentDatetime, 'yy_mm_dd_HH_MM');
@@ -93,9 +93,11 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
             fprintf('Contenu de %s supprimé (sauf %s).\n', parent_fig, folder_path);
         end
 
+        save_metadata_results(selected_groups, gcamp_output_folders);
+
         % Preprocess and process data
         if ~isfield(selected_groups(k), 'data') || isempty(selected_groups(k).data)
-            data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, current_animal_group, current_ages_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells);                    
+            data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_xml_group, folders_groups, current_blue_folders_group, current_animal_group, current_ages_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells);                    
     
             % Performing mean images
             meanImgs_gcamp = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
@@ -122,7 +124,7 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
 
                     bad_gcamp_ind_list = selected_gcamp_neurons_original(checked_indices);
                     bad_blue_ind_list = selected_blue_neurons_original(checked_indices);
-                    data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_env_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), current_animal_group, current_ages_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p);                    
+                    data = load_or_process_raster_data(gcamp_output_folders(checked_indices), current_gcamp_folders_group(checked_indices), current_xml_group(checked_indices), folders_groups, current_blue_folders_group(checked_indices), current_animal_group, current_ages_group(checked_indices), date_group_paths(checked_indices), current_gcamp_TSeries_path(checked_indices), include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p);                    
                 end
 
                 build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
@@ -139,6 +141,69 @@ function [selected_groups, daytime] = process_selected_group(selected_groups, pr
 end
 
 %% HELPER FUNCTIONS
+
+function save_metadata_results(selected_groups, gcamp_output_folders)
+% save_metadata_results - extrait les métadonnées de groupes XML 
+% et les enregistre dans un fichier CSV par groupe.
+%
+% INPUTS :
+%   selected_groups        : structure contenant les groupes et leurs fichiers XML
+%   gcamp_output_folders   : dossier de sortie pour chaque groupe
+%
+% La fonction utilise "find_key_value" (externe) pour extraire les infos.
+
+    for k = 1:length(selected_groups)
+
+        % Récupération du groupe XML
+        current_xml_group = selected_groups(k).xml;
+        results = table();  % tableau résultat pour ce groupe
+
+        for idx = 1:length(current_xml_group)
+
+            % Extraction des métadonnées XML
+            [recording_time, sampling_rate, optical_zoom, position, ...
+             time_minutes, pixel_size, num_planes] = ...
+                find_key_value(current_xml_group{idx});
+
+            % Convertir position Z (scalaire ou vecteur) en string
+            if num_planes == 1
+                pos_str = sprintf('%.4f', position);
+            else
+                pos_str = sprintf('%.4f ', position);
+                pos_str = strtrim(pos_str);
+            end
+
+            % Ajouter une ligne au tableau
+            newRow = {
+                current_xml_group{idx}, ...
+                recording_time, ...
+                sampling_rate, ...
+                optical_zoom, ...
+                pos_str, ...
+                time_minutes, ...
+                pixel_size, ...
+                num_planes
+            };
+
+            results = [results ; newRow];
+        end
+
+        % Définir les noms de colonnes
+        results.Properties.VariableNames = { ...
+            'Filename', 'RecordingTime', 'SamplingRate', 'OpticalZoom', ...
+            'PositionZ', 'TimeMinutes', 'PixelSize', 'NumPlanes' ...
+        };
+
+        % Path de sortie
+        output_path = fullfile(gcamp_output_folders{k}, 'metadata_results.csv');
+
+        % Sauvegarde CSV
+        writetable(results, output_path);
+
+        fprintf('Metadata saved for group %d → %s\n', k, output_path);
+
+    end
+end
 
 function data = init_data_struct(numFolders, fields)
     % Crée une structure avec les champs spécifiés et initialise chaque cellule à []
@@ -157,8 +222,7 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
     end
 end
 
-
-function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_env_group, folders_groups, current_blue_folders_group, current_animal_group, current_ages_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p)
+function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_folders_group, current_xml_group, folders_groups, current_blue_folders_group, current_animal_group, current_ages_group, date_group_paths, current_gcamp_TSeries_path, include_blue_cells, bad_gcamp_ind_list, bad_blue_ind_list, suite2p)
     
     if nargin < 11
         bad_gcamp_ind_list = cell(size(gcamp_output_folders));  % cellule vide
@@ -215,7 +279,7 @@ function data = load_or_process_raster_data(gcamp_output_folders, current_gcamp_
         
         % Sampling rate et synchronous_frames
         if isempty(data.sampling_rate{m})
-            [~, sampling_rate, ~, ~] = find_key_value(current_env_group{m});
+            [~, sampling_rate, ~, ~] = find_key_value(current_xml_group{m});
             data.sampling_rate{m} = sampling_rate;
         end
         if isempty(data.synchronous_frames{m})
@@ -674,3 +738,5 @@ function removeFieldsByName(filePath, fieldsToRemove)
     save(filePath, '-struct', 'loaded');
     fprintf('Mise à jour terminée.\n');
 end
+
+
