@@ -1,17 +1,17 @@
-function [F_blue, num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cellpose, outlines_y_cellpose] = ...
-    get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cellpose, mask_cellpose_all, ...
-                        props_cellpose_all, outlines_x_all, outlines_y_all, currentTSeriesPath, mode)
+function F_blue = get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cellpose, mask_cellpose_p, ...
+                        props_cellpose_p, outlines_x_p, outlines_y_p, gcamp_planes_for_session_m, mode)
+
 % get_blue_cells_rois : extrait les intensités de fluorescence des cellules Cellpose
-% et réactualise les structures associées selon le mode choisi.
+% à partir d'un stack TIF unique nommé "Concatenated.tif" (slices = frames)
 %
 % Entrées :
 %   - F_gcamp            : matrice fluorescence GCaMP (n_cells x n_frames)
 %   - matched_cellpose_idx : indices des cellules Cellpose appariées
 %   - ncells_cellpose    : nombre total de cellules Cellpose
-%   - mask_cellpose_all  : masque binaire (cell array, 1 par ROI)
-%   - props_cellpose_all : structure regionprops de Cellpose
-%   - outlines_x_all, outlines_y_all : coordonnées de contour de chaque ROI
-%   - currentTSeriesPath : chemin vers les fichiers TIF
+%   - mask_cellpose_p  : masque binaire (cell array, 1 par ROI)
+%   - props_cellpose_p : structure regionprops de Cellpose
+%   - outlines_x_p, outlines_y_p : coordonnées de contour de chaque ROI
+%   - gcamp_planes_for_session_m : chemin vers le dossier contenant "Concatenated.tif"
 %   - mode (optionnel)   : 'matched' (défaut) ou 'all'
 %
 % Sorties :
@@ -48,6 +48,17 @@ function [F_blue, num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cell
             selected_cells = matched_cellpose_idx;
             fprintf('Extraction de %d cellules Cellpose appariées.\n', numel(selected_cells));
 
+             % --- Mise à jour des structures Cellpose ---
+            num_cells_mask = numel(selected_cells);
+            mask_cellpose = mask_cellpose_p(selected_cells);
+            if nargin >= 5 && ~isempty(props_cellpose_p)
+                props_cellpose = props_cellpose_p(selected_cells);
+            else
+                props_cellpose = struct([]);
+            end
+            outlines_x_cellpose = outlines_x_p(selected_cells);
+            outlines_y_cellpose = outlines_y_p(selected_cells);
+
         case 'all'
             selected_cells = 1:ncells_cellpose;
             fprintf('Extraction de toutes les %d cellules Cellpose (appariées et non appariées).\n', ncells_cellpose);
@@ -56,26 +67,28 @@ function [F_blue, num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cell
             error('Mode invalide : utilisez "matched" ou "all".');
     end
 
-    % --- Mise à jour des structures Cellpose ---
-    num_cells_mask = numel(selected_cells);
-    mask_cellpose = mask_cellpose_all(selected_cells);
-    if nargin >= 5 && ~isempty(props_cellpose_all)
-        props_cellpose = props_cellpose_all(selected_cells);
-    else
-        props_cellpose = struct([]);
-    end
-    outlines_x_cellpose = outlines_x_all(selected_cells);
-    outlines_y_cellpose = outlines_y_all(selected_cells);
-
     % --- Préparation de la matrice de sortie ---
     [~, num_frames] = size(F_gcamp);
     F_blue = NaN(length(selected_cells), num_frames);
 
     % --- Lister les fichiers TIFF valides ---
-    tiffFilesStruct = dir(fullfile(currentTSeriesPath, '*.tif'));
-    fileNames = {tiffFilesStruct.name};
-    excludeMask = contains(fileNames, 'companion.ome') | contains(fileNames, 'Concatenated');
-    tiffFiles = fileNames(~excludeMask);
+    % Prendre le dossier parent
+    if iscell(gcamp_planes_for_session_m)
+        gcamp_planes_for_session_m = gcamp_planes_for_session_m{1};
+    end
+
+    gcamp_planes_for_session_m = fileparts(gcamp_planes_for_session_m);
+    
+    % Aller dans le sous-dossier "reg_tif"
+    gcamp_planes_for_session_m = fullfile(gcamp_planes_for_session_m, 'reg_tif');
+    
+    % Trouver tous les TIFF
+    tiffFilesStruct = dir(fullfile(gcamp_planes_for_session_m, '*.tif'));
+    
+    % Extraire les noms
+    tiffFiles = {tiffFilesStruct.name};
+    
+    % Trier par ordre alphabétique
     [~, idxOrder] = sort(tiffFiles);
     tiffFiles = tiffFiles(idxOrder);
 
@@ -83,7 +96,7 @@ function [F_blue, num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cell
 
     % --- Parcours des TIF ---
     for tIdx = 1:numel(tiffFiles)
-        filename = fullfile(currentTSeriesPath, tiffFiles{tIdx});
+        filename = fullfile(gcamp_planes_for_session_m, tiffFiles{tIdx});
         fprintf('Lecture : %s\n', filename);
 
         info = imfinfo(filename);
@@ -95,12 +108,12 @@ function [F_blue, num_cells_mask, mask_cellpose, props_cellpose, outlines_x_cell
             % --- Calcul de fluorescence pour chaque cellule sélectionnée ---
             for j = 1:length(selected_cells)
                 ncell = selected_cells(j);
-                if ncell > numel(mask_cellpose_all) || isempty(mask_cellpose_all{ncell})
+                if ncell > numel(mask_cellpose_p) || isempty(mask_cellpose_p{ncell})
                     F_blue(j, image_idx) = NaN;
                     continue;
                 end
 
-                [y, x] = find(mask_cellpose_all{ncell});
+                [y, x] = find(mask_cellpose_p{ncell});
                 if ~isempty(x)
                     F_blue(j, image_idx) = mean(pixel_val(y, x), 'all');
                 else

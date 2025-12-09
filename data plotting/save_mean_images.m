@@ -1,74 +1,100 @@
 function meanImgs = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group)
-    % save_mean_images generates and saves mean images based on input data.
-    % Also returns a cell array of mean images.
+    % SAVE_MEAN_IMAGES
+    % Génère et sauvegarde une meanImg par plan, et retourne une structure
+    % meanImgs{m}{p} où p = numéro du plan.
     
     numFolders = length(current_gcamp_folders_group);
-    meanImgs = cell(1, numFolders);  % Initialize output cell array
-    
+    meanImgs = cell(1, numFolders);  % meanImgs{m}{p}
+
     for m = 1:numFolders
-        png_filename = fullfile(gcamp_output_folders{m}, ...
-            sprintf('Mean_image_of_%s_%s.png', ...
-            strrep(current_animal_group, ' ', '_'), ...
-            strrep(current_ages_group{m}, ' ', '_')));
-    
-        disp(['Saving image to: ' png_filename]);
-        
-        % Check if the file already exists to avoid overwriting
-        try
-            % Get the current folder path
-            current_folder = current_gcamp_folders_group{m};
 
-            % Determine file extension and check for .npy files
-            [~, ~, ext] = fileparts(current_folder);
-            files = dir(fullfile(current_folder, '*.npy'));
+        % ---- Récupérer tous les Fall.mat = 1 par plan ----
+        fall_paths = current_gcamp_folders_group{m};  % cell array de Fall.mat
 
-            if ~isempty(files)
-                % Unpack .npy file paths
-                newOpsPath = fullfile(current_folder, 'ops.npy');
-                
-                % Call the Python function to load stats and ops
+        if ischar(fall_paths) || isstring(fall_paths)
+            fall_paths = {char(fall_paths)};
+        end
+
+        nPlanes = numel(fall_paths);
+        meanImgs{m} = cell(1, nPlanes);
+
+        fprintf("Computing meanImgs for %d planes in folder %d\n", nPlanes, m);
+
+        % --- charger chaque meanImg par plan ---
+        for p = 1:nPlanes
+
+            % Exemple : fall_path = ...\suite2p\plane2\Fall.mat
+            fall_path = fall_paths{p};
+            plane_dir = fileparts(fall_path);   % ...\suite2p\planeX
+
+            % Chercher ops.npy ou ops.mat dans ce plan
+            ops_npy = fullfile(plane_dir, 'ops.npy');
+            ops_mat = fullfile(plane_dir, 'ops.mat');
+
+            % --- Cas .npy ---
+            if exist(ops_npy, 'file')
                 try
                     mod = py.importlib.import_module('python_function');
-                    ops = mod.read_npy_file(newOpsPath);
-                    meanImg = double(ops{'meanImg'});  % Convert to MATLAB array
+                    ops = mod.read_npy_file(ops_npy);
+                    meanImg = double(ops{'meanImg'});
                 catch ME
-                    error('Failed to call Python function: %s', ME.message);
+                    warning("Error reading %s : %s", ops_npy, ME.message);
+                    continue;
                 end
 
-            elseif strcmp(ext, '.mat')
-                % Load .mat files
-                data = load(current_folder);
-                ops = data.ops;
-                meanImg = ops.meanImg;
+            % --- Cas .mat ---
+            elseif exist(ops_mat, 'file')
+                data_ops = load(ops_mat);
+                meanImg = data_ops.ops.meanImg;
+
             else
-                error('Unsupported file type: %s', ext);
+                warning("No ops.npy or ops.mat found in %s", plane_dir);
+                continue;
             end
- 
-            % Save the image to the output cell array
-            meanImgs{m} = meanImg;
 
-        catch ME
-            % Handle any errors related to the current folder and continue the loop
-            disp(ME.message);
-            continue; 
+            % Stocker dans la structure
+            meanImgs{m}{p} = meanImg;
+
+            % ---- Sauvegarde image PNG ----
+            png_filename = fullfile(gcamp_output_folders{m}, ...
+                sprintf('Mean_image_of_%s_%s_plane%d.png', ...
+                strrep(current_animal_group,' ','_'), ...
+                strrep(current_ages_group{m},' ','_'), p));
+
+            if ~isfile(png_filename)
+                figure('Visible','off');
+                imagesc(meanImg); colormap gray; axis off;
+                title(sprintf('Mean Image – %s – %s – plane %d', ...
+                    current_animal_group, current_dates_group{m}, p));
+                saveas(gcf, png_filename);
+                close(gcf);
+
+                fprintf('Saved %s\n', png_filename);
+            end
+
+        end % fin boucle plan
+
+
+        % --- OPTIONNEL : image moyenne sur tous les plans ---
+        try
+            mean_all = mean(cat(3, meanImgs{m}{:}), 3);
+
+            png_global = fullfile(gcamp_output_folders{m}, ...
+                sprintf('Mean_image_of_%s_%s.png', ...
+                strrep(current_animal_group,' ','_'), ...
+                strrep(current_ages_group{m},' ','_')));
+
+            if ~isfile(png_global)
+                figure('Visible','off');
+                imagesc(mean_all); colormap gray; axis off;
+                title(sprintf('Mean Image (all planes) – %s – %s', ...
+                    current_animal_group, current_dates_group{m}));
+                saveas(gcf, png_global);
+                close(gcf);
+            end
+        catch
+            warning("Unable to compute combined mean image for folder %d", m);
         end
 
-       
-        if ~isfile(png_filename)
-            % Display and save the mean image
-            figure('Units', 'pixels', 'Position', [100, 100, 1200, 900]); 
-            imagesc(meanImg);  
-            colormap('gray');
-            title(['Mean Image for ' current_animal_group ' on ' current_dates_group{m}]);
-
-            % Save the mean image
-            saveas(gcf, png_filename);
-            disp(['Mean image saved in: ' png_filename]);
-
-            % Close the figure after saving
-            close(gcf);
-        else
-            disp(['File already exists, skipping save: ' png_filename]);
-        end
-    end
+    end % fin boucle folder
 end

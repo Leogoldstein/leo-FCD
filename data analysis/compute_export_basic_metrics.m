@@ -1,4 +1,7 @@
-function results_analysis = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_env_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, animal_type, daytime)
+function [results_analysis, plots_data] = compute_export_basic_metrics( ...
+    current_animal_group, data, gcamp_output_folders, ...
+    current_env_group, current_gcamp_folders_names_group, ...
+    current_ages_group, pathexcel, animal_type, daytime)
 
     % ---------------------------------------------------------------------
     % Initialisation de la structure de sortie
@@ -31,6 +34,17 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
         'FractionEventsBurstsBlue', [] ...
     );
 
+    % Structure pour les données de plots (même nombre d’enregistrements)
+    nRec = numel(gcamp_output_folders);
+    plots_data = repmat(struct( ...
+        'folder_name', [], ...
+        'freq_gcamp', [], ...
+        'freq_blue', [], ...
+        'amp_gcamp', [], ...
+        'amp_blue', [], ...
+        'dur_non', [], ...
+        'dur_ele', []), nRec, 1);
+
     % ---------------------------------------------------------------------
     % Infos enregistrement
     [all_recording_time, all_optical_zoom, all_position, all_time_minutes] = ...
@@ -51,10 +65,11 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             [num_cells, Nframes] = size(Raster_gcamp);
 
             % --- Fréquence GCaMP ---
-            freq = compute_frequency(Acttmp2_gcamp, Nframes, sampling_rate);
-            mean_freq = mean(freq, 'omitnan');
-            std_freq  = std(freq, 'omitnan');
+            freq_gcamp = compute_frequency(Acttmp2_gcamp, Nframes, sampling_rate);
+            mean_freq = mean(freq_gcamp, 'omitnan');
+            std_freq  = std(freq_gcamp, 'omitnan');
 
+            % --- Amplitude GCaMP ---
             amp_gcamp = compute_normalized_amplitude_per_cell(DF_gcamp, Acttmp2_gcamp);
 
             % --- Données BLUE ---
@@ -62,6 +77,7 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
             mean_freq_blue = NaN;
             std_freq_blue  = NaN;
             freq_blue = [];
+            amp_blue  = [];
 
             if isfield(data, 'Raster_blue') && ~isempty(data.Raster_blue{m})
                 DF_blue      = data.DF_blue{m};
@@ -77,18 +93,11 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                 amp_blue  = compute_normalized_amplitude_per_cell(DF_blue, Acttmp2_blue);
             end
 
-            plot_frequency_scatter(freq, freq_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
-            plot_amplitude_scatter(amp_gcamp, amp_blue, current_gcamp_folders_names_group{m}, gcamp_output_folders{m});
-
-            % --- Mean transient duration per cell --- %
+            % --- Durée moyenne des transitoires par cellule ---
             dur_cell_non = extract_mean_duration_per_cell(data.StartEnd_gcamp{m}, sampling_rate);
             dur_cell_ele = [];
             if isfield(data,'StartEnd_blue') && ~isempty(data.StartEnd_blue{m})
                 dur_cell_ele = extract_mean_duration_per_cell(data.StartEnd_blue{m}, sampling_rate);
-            end
-            
-            if ~isempty(dur_cell_non) || ~isempty(dur_cell_ele)
-                plot_duration_per_cell_boxplot(dur_cell_non, dur_cell_ele, current_gcamp_folders_names_group{m});
             end
 
             % --- Corrélations ---
@@ -120,33 +129,46 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
                 P_burst_blue = compute_fraction_bursts(data.Raster_blue{m});
             end
 
-            % --- Enregistrement des résultats ---
-            results_analysis(m).current_animal_group     = current_animal_group;
-            results_analysis(m).TseriesFolder            = current_gcamp_folders_names_group{m};
-            results_analysis(m).Age                      = current_ages_group{m};
-            results_analysis(m).Daytime                  = daytime;
-            results_analysis(m).RecordingTime            = all_recording_time{m};
-            results_analysis(m).OpticalZoom              = all_optical_zoom{m};
-            results_analysis(m).Depth_um                 = all_position{m};
-            results_analysis(m).RecordingDuration_minutes= all_time_minutes{m};
-            results_analysis(m).NumFrames                = Nframes;
-            results_analysis(m).ActiveCellsNumber        = num_cells;
-            results_analysis(m).ActiveCellsNumberBlue    = num_cells_blue;
-            results_analysis(m).MeanFrequencyMinutes     = mean_freq;
-            results_analysis(m).MeanFrequencyMinutesBlue = mean_freq_blue;
-            results_analysis(m).StdFrequencyMinutes      = std_freq;
-            results_analysis(m).StdFrequencyMinutesBlue  = std_freq_blue;
-            results_analysis(m).MeanMaxPairwiseCorr      = mean_corr;
-            results_analysis(m).MeanMaxPairwiseCorrBlue  = mean_corr_blue;
-            results_analysis(m).SCEsThreshold            = data.sce_n_cells_threshold{m};
-            results_analysis(m).SCEsNumber               = num_sces;
-            results_analysis(m).SCEsFrequencyHz          = sce_frequency_hz;
-            results_analysis(m).PercentageActiveCellsSCEs= avg_pourcent_cells_sces;
-            results_analysis(m).MeanSCEsduration_ms      = avg_duration_ms;
-            results_analysis(m).MeanTranscientAmplitudeNorm    = mean_peak_amplitude_norm;
-            results_analysis(m).MeanTranscientAmplitudeNormBlue= mean_peak_amplitude_norm_blue;
-            results_analysis(m).FractionEventsBursts     = P_burst;
-            results_analysis(m).FractionEventsBurstsBlue = P_burst_blue;
+            % =======================
+            % Stockage résultats Excel
+            % =======================
+            results_analysis(m).current_animal_group      = current_animal_group;
+            results_analysis(m).TseriesFolder             = current_gcamp_folders_names_group{m};
+            results_analysis(m).Age                       = current_ages_group{m};
+            results_analysis(m).Daytime                   = daytime;
+            results_analysis(m).RecordingTime             = all_recording_time{m};
+            results_analysis(m).OpticalZoom               = all_optical_zoom{m};
+            results_analysis(m).Depth_um                  = all_position{m};
+            results_analysis(m).RecordingDuration_minutes = all_time_minutes{m};
+            results_analysis(m).NumFrames                 = Nframes;
+            results_analysis(m).ActiveCellsNumber         = num_cells;
+            results_analysis(m).ActiveCellsNumberBlue     = num_cells_blue;
+            results_analysis(m).MeanFrequencyMinutes      = mean_freq;
+            results_analysis(m).MeanFrequencyMinutesBlue  = mean_freq_blue;
+            results_analysis(m).StdFrequencyMinutes       = std_freq;
+            results_analysis(m).StdFrequencyMinutesBlue   = std_freq_blue;
+            results_analysis(m).MeanMaxPairwiseCorr       = mean_corr;
+            results_analysis(m).MeanMaxPairwiseCorrBlue   = mean_corr_blue;
+            results_analysis(m).SCEsThreshold             = data.sce_n_cells_threshold{m};
+            results_analysis(m).SCEsNumber                = num_sces;
+            results_analysis(m).SCEsFrequencyHz           = sce_frequency_hz;
+            results_analysis(m).PercentageActiveCellsSCEs = avg_pourcent_cells_sces;
+            results_analysis(m).MeanSCEsduration_ms       = avg_duration_ms;
+            results_analysis(m).MeanTranscientAmplitudeNorm     = mean_peak_amplitude_norm;
+            results_analysis(m).MeanTranscientAmplitudeNormBlue = mean_peak_amplitude_norm_blue;
+            results_analysis(m).FractionEventsBursts      = P_burst;
+            results_analysis(m).FractionEventsBurstsBlue  = P_burst_blue;
+
+            % =======================
+            % Stockage des données pour les plots
+            % =======================
+            plots_data(m).folder_name = current_gcamp_folders_names_group{m};
+            plots_data(m).freq_gcamp  = freq_gcamp;
+            plots_data(m).freq_blue   = freq_blue;
+            plots_data(m).amp_gcamp   = amp_gcamp;
+            plots_data(m).amp_blue    = amp_blue;
+            plots_data(m).dur_non     = dur_cell_non;
+            plots_data(m).dur_ele     = dur_cell_ele;
 
         catch ME
             fprintf('Error processing group %d: %s\n', m, ME.message);
@@ -154,7 +176,7 @@ function results_analysis = compute_export_basic_metrics(current_animal_group, d
     end
 
     % ---------------------------------------------------------------------
-    % Écriture Excel
+    % Écriture Excel (inchangé)
     all_headers = fieldnames(results_analysis)';  
     if isfile(pathexcel)
         [~, sheet_names] = xlsfinfo(pathexcel);
@@ -226,40 +248,6 @@ function freq = compute_frequency(Acttmp2, Nframes, sampling_rate)
 end
 
 
-function plot_frequency_scatter(freq_non, freq_ele, folder_name, output_path)
-
-freq_non = freq_non(~isnan(freq_non));
-freq_ele = freq_ele(~isnan(freq_ele));
-
-if isempty(freq_non) && isempty(freq_ele)
-    return;
-end
-
-% Positions centrées
-pos_non = -0.2;
-pos_ele =  0.2;
-
-data = [freq_non; freq_ele];
-group = [ones(size(freq_non)); 2*ones(size(freq_ele))];
-
-fig = figure('Name', ['Frequency - ' folder_name], 'Color','w'); hold on;
-
-% Boxplots centrés
-boxplot(data, group, 'Positions', [pos_non pos_ele], ...
-        'Labels', {'Non-electroporated','Electroporated'}, ...
-        'Colors', 'k')
-
-% Jitter points
-scatter(pos_non + randn(size(freq_non))*0.02, freq_non, 25, [0 0.7 0], 'filled')
-scatter(pos_ele + randn(size(freq_ele))*0.02, freq_ele, 25, [0 0 1], 'filled')
-
-ylabel('Frequency (events/min)')
-title(['Activity distribution - ' folder_name], 'Interpreter','none')
-xlim([-0.5 0.5])
-grid on; box on;
-hold off;
-
-end
 
 
 function amp = compute_normalized_amplitude_per_cell(DF, Acttmp2)
@@ -297,37 +285,6 @@ end
 
 end
 
-function plot_amplitude_scatter(amp_non, amp_ele, folder_name, output_path)
-
-amp_non = amp_non(~isnan(amp_non));
-amp_ele = amp_ele(~isnan(amp_ele));
-
-if isempty(amp_non) && isempty(amp_ele)
-    return;
-end
-
-pos_non = -0.2;
-pos_ele =  0.2;
-
-data = [amp_non; amp_ele];
-group = [ones(size(amp_non)); 2*ones(size(amp_ele))];
-
-fig = figure('Name', ['Amplitude - ' folder_name], 'Color','w'); hold on;
-
-boxplot(data, group, 'Positions', [pos_non pos_ele], ...
-        'Labels', {'Non-electroporated','Electroporated'}, ...
-        'Colors', 'k')
-
-scatter(pos_non + randn(size(amp_non))*0.02, amp_non, 25, [0 0.7 0], 'filled')
-scatter(pos_ele + randn(size(amp_ele))*0.02, amp_ele, 25, [0  0  1], 'filled')
-
-ylabel('Transicents ΔF/F amplitude')
-title(['Transcient amplitudes - ' folder_name], 'Interpreter','none')
-xlim([-0.5 0.5])
-grid on; box on;
-hold off;
-
-end
 
 function mean_durations = extract_mean_duration_per_cell(StartEnd, sampling_rate)
 % StartEnd : cell array, each entry is [n_events × 2]
@@ -351,39 +308,6 @@ end
 
 % Retire les NaN si aucune détection
 mean_durations = mean_durations(~isnan(mean_durations));
-end
-
-function plot_duration_per_cell_boxplot(dur_non, dur_ele, folder_name)
-
-dur_non = dur_non(~isnan(dur_non));
-dur_ele = dur_ele(~isnan(dur_ele));
-
-if isempty(dur_non) && isempty(dur_ele)
-    return;
-end
-
-pos_non = -0.2;
-pos_ele =  0.2;
-
-data  = [dur_non; dur_ele];
-group = [ones(size(dur_non)); 2*ones(size(dur_ele))];
-
-fig = figure('Name', ['Mean duration per cell - ' folder_name], 'Color','w'); hold on;
-
-% Boxplots
-boxplot(data, group, 'Positions', [pos_non pos_ele], ...
-    'Labels', {'Non-electroporated','Electroporated'}, ...
-    'Colors', 'k');
-
-% Jitter scatter
-scatter(pos_non + randn(size(dur_non))*0.02, dur_non, 30, [0 0.7 0], 'filled')
-scatter(pos_ele + randn(size(dur_ele))*0.02, dur_ele, 30, [0 0 1], 'filled')
-
-ylabel('Mean transient duration per cell (sec)')
-title(['Mean transient duration per cell - ' folder_name], 'Interpreter','none')
-xlim([-0.5 0.5])
-grid on; box on;
-hold off;
 end
 
 

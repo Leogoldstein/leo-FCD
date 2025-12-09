@@ -163,7 +163,7 @@ function [DF, DF_sg, baseline_F, noise_est, SNR, quality_index, quality_min, qua
     %
     % Seuls opts.window_size, opts.savgol_win, opts.savgol_poly sont utilisés ici.
 
-    percentile   = 5;
+    percentile   = 20;
     window_size  = opts.window_size;
     sg_win       = opts.savgol_win;     % sera forçé impair ci-dessous
     sg_poly      = opts.savgol_poly;

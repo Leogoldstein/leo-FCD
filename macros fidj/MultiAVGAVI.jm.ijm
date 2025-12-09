@@ -432,9 +432,6 @@ function processRegTifFolder(regTifFolder, savePlaneFolder, tseriesFolderName) {
             var file = regTifFolder + File.separator + tifFiles[n];
             open(file);
 
-            // Ajouter des tranches vides pour que la pile soit un multiple de 10
-            addSlicesToMakeMultipleOfTen();
-
             filesToConcatenate = Array.concat(filesToConcatenate, getTitle());
             hasTifFiles = true;
         }
@@ -457,6 +454,9 @@ function processRegTifFolder(regTifFolder, savePlaneFolder, tseriesFolderName) {
             saveAs("Tiff", ConcatenatedTiffPlane);
 
             if (!File.exists(GroupZTiffPlane)) {
+            	// Ajouter des tranches vides pour que la pile soit un multiple de 10
+            	addSlicesToMakeMultipleOfTen();
+            
                 run("Grouped Z Project...", "projection=[Average Intensity] group=10");
                 // run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
                 // run("Animation Options...", "speed=30 first=1 last=" + nSlices);

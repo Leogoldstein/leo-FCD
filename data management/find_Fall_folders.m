@@ -1,14 +1,17 @@
-function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolderNames] = find_Fall_folders(selectedFolders)
+function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolderNames, gcampdataFolders_all] = find_Fall_folders(selectedFolders)
+
     numFolders = length(selectedFolders);
     
     % TseriesFolders :
     %   - colonne 1 (Gcamp) : cell array de Fall.mat (un par plan si présent)
     %   - colonnes 2–4 : cell array de dossiers plane* pour Red, Blue, Green
-    TseriesFolders   = cell(numFolders, 4);  % Gcamp, Red, Blue, Green
+    TseriesFolders = cell(numFolders, 4);   % on gardera 4 colonnes : Gcamp, Red, Blue, Green
     TSeriesPaths     = cell(numFolders, 4);  % Chemins TSeries par canal
     true_xml_paths   = cell(numFolders, 1);  % Store the xmlironment paths
     lastFolderNames  = cell(numFolders, 4);  % Nom du dernier dossier (par canal)
     xml_paths_all    = {};                   % rempli par processEnvFile (écrasé à chaque idx comme dans ton code)
+    gcampdataFolders_all = {};   % liste globale des Fall.mat GCaMP
+
 
     for idx = 1:numFolders
         selectedFolder = selectedFolders{idx};
@@ -82,7 +85,7 @@ function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolde
         if ~isempty(TSeriesPaths{idx, 3})
             blueFolder  = fullfile(TSeriesPaths{idx, 3}, 'Blue');
             greenFolder = fullfile(TSeriesPaths{idx, 3}, 'Green');
-            
+
             % Blue (Ch3)
             if ~exist(blueFolder, 'dir')
                 mkdir(blueFolder);
@@ -92,7 +95,7 @@ function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolde
                              fullfile(blueFolder, tiffFiles(j).name));
                 end
             end
-            
+
             % Green (Ch2)
             if ~exist(greenFolder, 'dir')
                 tiffFiles = dir(fullfile(TSeriesPaths{idx, 3}, '*Ch2*.tif'));
@@ -106,7 +109,7 @@ function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolde
                     disp("Green folder hasn't been created for this TSeries Blue folder")
                 end
             end
-            
+
             % On remplace le chemin "Blue/Green combiné" par les sous-dossiers
             TSeriesPaths{idx, 3} = blueFolder;
             TSeriesPaths{idx, 4} = greenFolder;
@@ -120,47 +123,73 @@ function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolde
         end
         true_xml_paths{idx} = xml_path;
         
-        % --- Récupération des dossiers plane* via suite2p pour chaque canal ---
-        dataFolderss_channel = {{} {} {} {}};  % un cell array de plane* par canal
+        dataFolders_channel = cell(1, 4);  % 1 cellule par canal
+
         for j = 1:4
             currentPath = TSeriesPaths{idx, j};
+        
             if ~isempty(currentPath)
-                dataFolders = process_TSeries(currentPath);  % <-- retourne maintenant tous les plane*
+                dataFolders = process_TSeries(currentPath);  % -> {} ou 1×nbPlanes cell
+        
                 if ~isempty(dataFolders)
-                    dataFolderss_channel{j} = dataFolders;   % dataFolders est déjà une cell array
+                    % OK : on stocke directement la cell retournée
+                    dataFolders_channel{j} = dataFolders;
+                else
+                    % suite2p absent ou pas de plane* -> on met explicitement une cell vide
+                    dataFolders_channel{j} = {};
                 end
+            else
+                % pas de TSeries pour ce canal
+                dataFolders_channel{j} = {};
             end
         end
-        
-        % On stocke d’abord cette info brute
-        TseriesFolders(idx, :) = dataFolderss_channel;
-        
-        % --- Maintenant, pour Gcamp (canal 1), on cherche les Fall.mat dans chaque plan ---
-        if ~isempty(dataFolderss_channel{1})
-            planeFoldersGcamp = dataFolderss_channel{1};  % cell array de dossiers plane*
+                
+        % --- Chercher Fall.mat pour TOUS les canaux / plans ---
+        for j = 1:4
+            planeFolders = dataFolders_channel{j};  % cell array de dossiers plane* pour ce canal
             fallPaths = {};
+
+            for p = 1:numel(planeFolders)
             
-            for p = 1:numel(planeFoldersGcamp)
-                planePath = planeFoldersGcamp{p};
-                file_path = fullfile(planePath, 'Fall.mat');
-                if exist(file_path, 'file') == 2
-                    fallPaths{end+1} = file_path; %#ok<AGROW>
-                else
-                    disp(['Error: No Fall.mat found in folder: ', planePath]);
+                planePath = planeFolders{p};
+            
+                % --- 1) Cas classique : Fall.mat ---
+                fall_mat_path = fullfile(planePath, 'Fall.mat');
+            
+                if exist(fall_mat_path, 'file') == 2
+                    fallPaths{end+1} = fall_mat_path; %#ok<AGROW>
+                    continue
                 end
-            end
             
-            if ~isempty(fallPaths)
-                % On remplace la cellule Gcamp par la liste des Fall.mat
-                TseriesFolders{idx, 1} = fallPaths;
-            else
-                TseriesFolders{idx, 1} = {};  % Aucun Fall.mat trouvé
+                % --- 2) Sinon : chercher un dossier/structure suite2p avec ops ---
+                ops_npy_path = fullfile(planePath, 'ops.npy');
+            
+                if exist(ops_npy_path, 'file') == 2
+                    % Cas suite2p : on garde le dossier (il contient ops.npy)
+                    fallPaths{end+1} = planePath; %#ok<AGROW>
+                    fprintf('Info: using suite2p folder (ops.mat found): %s\n', planePath);
+                    continue
+                end
+            
+                % --- 3) Sinon : erreur ---
+                warning('No Fall.mat or ops.mat found in folder: %s', planePath);
+            
             end
-        else
-            TseriesFolders{idx, 1} = {};      % Aucun dossier Gcamp
+
+
+            
+            
+            % On stocke la liste des Fall.mat (un par plan) dans TseriesFolders{idx, j}
+            TseriesFolders{idx, j} = fallPaths(:).';   % flatten: 1×N cell, no nested cells
+            
+            % En plus, on remplit la liste globale à plat pour le canal GCaMP (colonne 1)
+            if j == 1 && ~isempty(fallPaths)
+                gcampdataFolders_all = [gcampdataFolders_all; fallPaths(:)];
+            end
         end
     end
 end
+
 
 % --------- Sous-fonctions --------- %
 
@@ -196,8 +225,10 @@ function dataFolders = process_TSeries(TSeriesPath)
     end
     
     % Retourner tous les dossiers plane*
-    dataFolders = cell(1, numel(planeFolders));
+    dataFolders = strings(1, numel(planeFolders));
+
     for k = 1:numel(planeFolders)
-        dataFolders{k} = fullfile(suite2pFolder, planeFolders(k).name);
+        dataFolders(k) = fullfile(suite2pFolder, planeFolders(k).name);
     end
+
 end

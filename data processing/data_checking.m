@@ -1,179 +1,224 @@
-function [selected_neurons_ordered, selected_gcamp_neurons_original, selected_blue_neurons_original, suite2p] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, current_animal_group, current_dates_group, current_ages_group, meanImgs_gcamp, checking_choice2)
+function [selected_neurons_ordered, selected_gcamp_neurons_original, ...
+          selected_blue_neurons_original, suite2p] = ...
+    data_checking(data, gcamp_output_folders, current_gcamp_folders_group, ...
+                  current_animal_group, current_dates_group, ...
+                  current_ages_group, meanImgs_gcamp, checking_choice2)
     
-    % Initialisation du tableau de résultats (sélections par dossier)
-    selected_neurons_ordered = cell(size(gcamp_output_folders)); % indices locaux filtrés (après suppression des neurones NaN, tri avec isort1, batch)
-    selected_gcamp_neurons_original = cell(size(gcamp_output_folders)); % indices originaux dans DF
+    % Initialisation des sorties (1 entrée par date / enregistrement)
+    nDates = length(gcamp_output_folders);
+    selected_neurons_ordered        = cell(nDates, 1); % indices globaux (DF_all) sélectionnés
+    selected_gcamp_neurons_original = cell(nDates, 1); % indices globaux GCaMP
+    selected_blue_neurons_original  = cell(nDates, 1); % indices globaux Blue
     suite2p = false;
     
-    for m = 1:length(gcamp_output_folders)
-        switch checking_choice2
-            case '1'
-                F = data.F_gcamp{m};
-                DF = data.DF_gcamp{m};
-                isort1 = data.isort1_gcamp{m};
-                MAct = data.MAct_gcamp{m};
-                blue_indices = [];
-                batch_size = 30;
+    % Compteur global pour indexer les figures / résultats (m,p)
+    global_idx = 0;
+    
+    for m = 1:nDates
 
-            case '2'
-                F = data.F_blue{m};
-                DF = data.DF_blue{m};
-                isort1 = [];
-                MAct = data.MAct_blue{m};
-                blue_indices = [];
-                batch_size = 5;
-                
-            case '3'
-                F = data.F_combined{m};
-                DF = data.DF_combined{m};
-                isort1 = data.isort1_combined{m};
-                MAct = data.MAct_combined{m};
-                blue_indices = data.blue_indices_combined{m};
-                batch_size = 30;
-        end
+        %---------------------------------------------------------
+        % Préparer les données plan par plan pour cette date m
+        % (F, DF, isort1, Raster, MAct, meanImg, outlines, blue_indices...)
+        %---------------------------------------------------------
+        planeData = prepare_plane_data_for_checking( ...
+                        m, data, meanImgs_gcamp, ...
+                        current_gcamp_folders_group, ...
+                        checking_choice2);
 
-        % --- Nettoyer NaN ---
-        valid_neurons = any(~isnan(DF), 2);
-        DF = DF(valid_neurons, :);
-        DF(isnan(DF)) = 0;
-        valid_neuron_indices = find(valid_neurons);
+        % Listes pour agréger les sélections de TOUS les plans de cette date
+        selected_global_all = [];   % indices globaux (dans DF_all) pour cette date m
+        selected_blue_all   = [];   % indices bleus globaux
         
-        % --- Gérer isort1 vide ---
-        if isempty(isort1)
-            % Pas d'ordre spécifique → garder l'ordre naturel
-            isort1 = 1:size(DF, 1);
-        else
-            % Filtrer et réindexer normalement
-            isort1 = isort1(ismember(isort1, valid_neuron_indices));
-            [~, isort1] = ismember(isort1, valid_neuron_indices);
-        end
+        % Boucle sur les plans disponibles
+        for p = 1:numel(planeData)
+            S = planeData{p};
+            if isempty(S)
+                continue; % aucun neurone valide dans ce plan
+            end
 
-        total_neurons = length(isort1);
-        num_batches = ceil(total_neurons / batch_size);
-        num_columns = size(DF, 2);
+            % Raccourcis locaux pour ce plan
+            F          = S.F;
+            DF         = S.DF;
+            isort1     = S.isort1;
+            MAct       = S.MAct;
+            blue_plane = S.blue_indices_plane;
+            batch_size = S.batch_size;
+            meanImg    = S.meanImg;
+            global_indices_for_plane = S.global_indices_for_plane; % indices dans DF_all
 
-        % --- Figure principale ---
-        main_fig = figure;
-        screen_size = get(0, 'ScreenSize');
-        set(main_fig, 'Position', screen_size);
+            %=============================%
+            %   Nettoyage des NaN / indices
+            %=============================%
+            valid_neurons_local = any(~isnan(DF), 2);
+            DF = DF(valid_neurons_local, :);
+            DF(isnan(DF)) = 0;
+            valid_local_indices = find(valid_neurons_local);   % indices dans S.DF
 
-        ax1 = subplot('Position', [0.1, 0.75, 0.85, 0.15]);
-        ax1_right = axes('Position', ax1.Position, 'YAxisLocation', 'right', ...
-            'Color', 'none', 'XTick', [], 'Box', 'off');
-        ax1_right.YDir = 'normal';
-        ax1_right.XLim = ax1.XLim;
-        ax2 = subplot('Position', [0.1, 0.25, 0.85, 0.45]);
-        ax3 = subplot('Position', [0.1, 0.05, 0.85, 0.15]);
+            % mapping vers indices globaux DF_all pour ce plan
+            global_indices_valid = global_indices_for_plane(valid_local_indices);
 
-        NCell = size(F, 1);
-        prop_MAct = MAct / NCell;
-        plot(ax3, prop_MAct, 'LineWidth', 2);
-        xlabel(ax3, 'Frame');
-        ylabel(ax3, 'Proportion of Active Cells');
-        title(ax3, 'Activity Over Consecutive Frames');
-        try xlim(ax3, [1 num_columns]); catch; end
-        grid(ax3, 'on');
+            %--- Gérer isort1 vide / filtrer ---
+            if isempty(isort1)
+                isort1_plane = 1:size(DF, 1);
+            else
+                % isort1 est défini sur S.DF avant filtrage NaN -> le restreindre
+                isort1 = isort1(ismember(isort1, valid_local_indices));
+                [~, isort1_plane] = ismember(isort1, valid_local_indices);
+            end
 
-        % --- Slider ---
-        slider_handle = uicontrol('Style', 'slider', ...
-            'Min', 1, 'Max', num_batches, 'Value', 1, ...
-            'SliderStep', [1/(max(num_batches-1,1)), 1/(max(num_batches-1,1))], ...
-            'Units', 'normalized', 'Position', [0.1 0.21 0.85 0.02]);
+            total_neurons = length(isort1_plane);
+            if total_neurons == 0
+                continue;
+            end
+            num_batches  = ceil(total_neurons / batch_size);
+            num_columns  = size(DF, 2);
 
-        % --- Figure GCaMP / Blue ---
-        gcamp_fig = figure('Name', 'Neuron Visualization');
-        setappdata(gcamp_fig, 'DF', DF);
-        setappdata(gcamp_fig, 'checking_choice2', checking_choice2);
-        setappdata(gcamp_fig, 'meanImg', meanImgs_gcamp{m});
-        setappdata(gcamp_fig, 'selected_neurons_total', []);
-        setappdata(gcamp_fig, 'neurons_in_batch', []);
-        setappdata(gcamp_fig, 'output_index', m);
-        setappdata(gcamp_fig, 'parent_figure', main_fig);
-        setappdata(gcamp_fig, 'blue_indices', blue_indices);
-        setappdata(gcamp_fig, 'current_gcamp_folder', current_gcamp_folders_group{m});
-        
-        % Charger uniquement les outlines nécessaires selon le choix
-        switch checking_choice2
-            case '1' % GCaMP uniquement
-                setappdata(gcamp_fig, 'outline_gcampx', data.outlines_gcampx{m});
-                setappdata(gcamp_fig, 'outline_gcampy', data.outlines_gcampy{m});
-        
-            case '2' % Blue avec GCaMP (cellpose uniquement)
-                setappdata(gcamp_fig, 'outline_cellposex', data.outlines_x_cellpose{m});
-                setappdata(gcamp_fig, 'outline_cellposey', data.outlines_y_cellpose{m});
-        
-            case '3' % Les deux
-                setappdata(gcamp_fig, 'outline_gcampx', data.outlines_gcampx_not_blue{m});
-                setappdata(gcamp_fig, 'outline_gcampy', data.outlines_gcampy_not_blue{m});
-                setappdata(gcamp_fig, 'outline_cellposex', data.outlines_x_cellpose{m});
-                setappdata(gcamp_fig, 'outline_cellposey', data.outlines_y_cellpose{m});
-        end
+            %=============================%
+            %   Figure principale (raster)
+            %=============================%
+            main_fig = figure;
+            screen_size = get(0, 'ScreenSize');
+            set(main_fig, 'Position', screen_size);
 
-        % --- Boutons ---
-        uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
-            'String', 'Inspecter les traces sélectionnées', ...
-            'Units', 'normalized', 'Position', [0.70, 0.01, 0.13, 0.05], ...
-            'Callback', @(~,~) inspect_traces_callback(gcamp_fig, data, m, ...
-                current_animal_group, current_ages_group));
+            ax1 = subplot('Position', [0.1, 0.75, 0.85, 0.15]);
+            ax1_right = axes('Position', ax1.Position, 'YAxisLocation', 'right', ...
+                'Color', 'none', 'XTick', [], 'Box', 'off');
+            ax1_right.YDir = 'normal';
+            ax1_right.XLim = ax1.XLim;
+            ax2 = subplot('Position', [0.1, 0.25, 0.85, 0.45]);
+            ax3 = subplot('Position', [0.1, 0.05, 0.85, 0.15]);
 
+            NCell = size(F, 1);
+            prop_MAct = MAct / max(NCell,1);
+            plot(ax3, prop_MAct, 'LineWidth', 2);
+            xlabel(ax3, 'Frame');
+            ylabel(ax3, 'Proportion of Active Cells');
+            title(ax3, sprintf('Activity Over Consecutive Frames – Plan %d', p));
+            try xlim(ax3, [1 num_columns]); catch; end
+            grid(ax3, 'on');
 
-        uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
-            'String', 'Suivant', 'Units', 'normalized', ...
-            'Position', [0.8 0.95 0.15 0.04], ...
-            'Callback', @(~,~) validate_selection(gcamp_fig, ...
-                getappdata(gcamp_fig,'output_index'), ...
-                getappdata(gcamp_fig,'current_gcamp_folder')));
+            %=============================%
+            %   Slider pour parcourir les batches
+            %=============================%
+            slider_handle = uicontrol('Style', 'slider', ...
+                'Min', 1, 'Max', num_batches, 'Value', 1, ...
+                'SliderStep', [1/(max(num_batches-1,1)), 1/(max(num_batches-1,1))], ...
+                'Units', 'normalized', 'Position', [0.1 0.21 0.85 0.02]);
 
-        uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
-            'String', 'Masquer traces', 'Units', 'normalized', ...
-            'Position', [0.55, 0.01, 0.13, 0.05], ...
-            'Callback', @(src,~) toggle_traces_display(gcamp_fig, src));
+            %=============================%
+            %   Figure ROI / outlines
+            %=============================%
+            gcamp_fig = figure('Name', sprintf('Neuron Visualization – Plan %d', p));
+            global_idx = global_idx + 1; % identifiant unique (m,p)
 
-        % --- Callback slider ---
-        slider_handle.Callback = @(src, ~) update_batch_display(slider_handle, F, DF, isort1, batch_size, ...
-            num_columns, ax1, ax1_right, ax2, meanImgs_gcamp, MAct, blue_indices, ...
-            NCell, m, data, gcamp_fig, valid_neuron_indices);
+            % Appdata de base
+            setappdata(gcamp_fig, 'DF', DF);
+            setappdata(gcamp_fig, 'checking_choice2', checking_choice2);
+            setappdata(gcamp_fig, 'meanImg', meanImg);
+            setappdata(gcamp_fig, 'selected_neurons_total', []);
+            setappdata(gcamp_fig, 'neurons_in_batch', []);
+            setappdata(gcamp_fig, 'output_index', global_idx);
+            setappdata(gcamp_fig, 'parent_figure', main_fig);
+            setappdata(gcamp_fig, 'blue_indices', blue_plane);
+            setappdata(gcamp_fig, 'current_gcamp_folder', S.fall_path);
 
-        linkaxes([ax1, ax2, ax3], 'x');
-        sgtitle(main_fig, ...
-                sprintf('%s – %s - %s', current_animal_group, current_dates_group{m}, current_ages_group{m}), ...
+            % Outlines déjà découpées par plan dans S → plus besoin de switch ici
+            setappdata(gcamp_fig, 'outline_gcampx',    S.outline_gcampx);
+            setappdata(gcamp_fig, 'outline_gcampy',    S.outline_gcampy);
+            setappdata(gcamp_fig, 'outline_cellposex', S.outline_cellposex);
+            setappdata(gcamp_fig, 'outline_cellposey', S.outline_cellposey);
+
+            %=============================%
+            %   Boutons
+            %=============================%
+            uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
+                'String', 'Inspecter les traces sélectionnées', ...
+                'Units', 'normalized', 'Position', [0.70, 0.01, 0.13, 0.05], ...
+                'Callback', @(~,~) inspect_traces_callback(gcamp_fig, data, m, ...
+                    current_animal_group, current_ages_group));
+
+            uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
+                'String', 'Suivant', 'Units', 'normalized', ...
+                'Position', [0.8 0.95 0.15 0.04], ...
+                'Callback', @(~,~) validate_selection(gcamp_fig, ...
+                    getappdata(gcamp_fig,'output_index'), ...
+                    getappdata(gcamp_fig,'current_gcamp_folder')));
+
+            uicontrol('Parent', gcamp_fig, 'Style', 'pushbutton', ...
+                'String', 'Masquer traces', 'Units', 'normalized', ...
+                'Position', [0.55, 0.01, 0.13, 0.05], ...
+                'Callback', @(src,~) toggle_traces_display(gcamp_fig, src));
+
+            %=============================%
+            %   Callback slider (on garde la même fonction)
+            %   → DF / isort1 / meanImgs_gcamp / outlines sont déjà en appdata
+            %=============================%
+            slider_handle.Callback = @(src, ~) update_batch_display( ...
+                slider_handle, F, DF, isort1_plane, batch_size, ...
+                num_columns, ax1, ax1_right, ax2, meanImgs_gcamp, ...
+                MAct, blue_plane, NCell, m, data, gcamp_fig, valid_local_indices);
+
+            linkaxes([ax1, ax2, ax3], 'x');
+            sgtitle(main_fig, ...
+                sprintf('%s – %s – %s – Plan %d', ...
+                    current_animal_group, current_dates_group{m}, ...
+                    current_ages_group{m}, p), ...
                 'FontWeight', 'bold');
 
-       % --- Affichage initial ---
-        update_batch_display(slider_handle, F, DF, isort1, batch_size, num_columns, ...
-             ax1, ax1_right, ax2, meanImgs_gcamp, MAct, blue_indices, NCell, m, data, gcamp_fig, valid_neuron_indices);
+            %--- Affichage initial ---
+            update_batch_display(slider_handle, F, DF, isort1_plane, batch_size, ...
+                num_columns, ax1, ax1_right, ax2, meanImgs_gcamp, ...
+                MAct, blue_plane, NCell, m, data, gcamp_fig, valid_local_indices);
 
-        % --- Récupérer résultats ---
-        uiwait(gcamp_fig);
-        
-        % --- Récupérer résultats ---
-        key = sprintf('selected_result_%d', m);
-        if isappdata(0, key)
-            selected_neurons_ordered{m} = getappdata(0, key);
-            rmappdata(0, key);  % nettoyage
-        else
-            selected_neurons_ordered{m} = [];
-        end
-        
-        % Conversion en indices originaux
-        if ~isempty(selected_neurons_ordered{m})
-            selected_gcamp_neurons_original{m} = valid_neuron_indices(selected_neurons_ordered{m});
-        else
-            selected_gcamp_neurons_original{m} = [];
-        end
-        
-        % --- Sélection des neurones bleus ---
-        if ~isempty(selected_gcamp_neurons_original{m}) && ~isempty(blue_indices)
-            selected_blue_neurons_original{m} = intersect(selected_gcamp_neurons_original{m}, blue_indices);
-        else
-            selected_blue_neurons_original{m} = [];
-        end
-        
-        % --- Exclure les neurones bleus des neurones GCaMP classiques ---
-        if ~isempty(selected_gcamp_neurons_original{m}) && ~isempty(selected_blue_neurons_original{m})
-            selected_gcamp_neurons_original{m} = setdiff(selected_gcamp_neurons_original{m}, selected_blue_neurons_original{m});
-        end
-    end
+            %=============================%
+            %   Attendre la sélection utilisateur
+            %=============================%
+            uiwait(gcamp_fig);
+
+            key = sprintf('selected_result_%d', global_idx);
+            if isappdata(0, key)
+                selected_local = getappdata(0, key);
+                rmappdata(0, key);  % nettoyage
+            else
+                selected_local = [];
+            end
+
+            % Mapping : indices locaux (dans DF après nettoyage) → indices globaux DF_all
+            if ~isempty(selected_local)
+                selected_global = global_indices_valid(selected_local);
+            else
+                selected_global = [];
+            end
+
+            % Sélection bleue pour ce plan (en indices globaux DF_all)
+            if ~isempty(selected_global) && ~isempty(blue_plane)
+                selected_blue = intersect(selected_global, blue_plane);
+            else
+                selected_blue = [];
+            end
+
+            % Agrégation (pour cette date m)
+            selected_global_all = [selected_global_all, selected_global(:).']; %#ok<AGROW>
+            selected_blue_all   = [selected_blue_all,   selected_blue(:).'];   %#ok<AGROW>
+
+        end % boucle plans
+
+        %=============================%
+        %   Finalisation par date m
+        %=============================%
+
+        % Uniques + tri
+        selected_global_all = unique(selected_global_all);
+        selected_blue_all   = unique(selected_blue_all);
+
+        % GCaMP = global - blue
+        selected_gcamp = setdiff(selected_global_all, selected_blue_all);
+
+        selected_neurons_ordered{m}        = selected_global_all;
+        selected_gcamp_neurons_original{m} = selected_gcamp;
+        selected_blue_neurons_original{m}  = selected_blue_all;
+
+    end % boucle m
 end
 
 

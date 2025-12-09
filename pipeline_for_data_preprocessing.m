@@ -60,16 +60,7 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
         disp('Processing FCD data...');
         dataFolders = select_folders(fcd_folder);
         dataFolders = organize_data_by_animal(dataFolders, group_order{2});
-        [TseriesFolders_fcd, TSeriesPaths_fcd, ~, true_xml_paths_fcd, lastFolderNames_fcd] = find_Fall_folders(dataFolders);
-        gcampdataFolders_all = {};
-        for i = 1:size(TseriesFolders_fcd, 1)
-            fallList = TseriesFolders_fcd{i, 1};   % ceci est soit {}, soit 1xN cell de chemins
-            
-            if ~isempty(fallList)
-                % fallList est une cell -> on ajoute ses éléments un par un
-                gcampdataFolders_all = [gcampdataFolders_all; fallList(:)];
-            end
-        end
+        [TseriesFolders_fcd, TSeriesPaths_fcd, ~, true_xml_paths_fcd, lastFolderNames_fcd, gcampdataFolders_all] = find_Fall_folders(dataFolders);     
     end
 
     if any(ismember([3 4], choices))
@@ -82,22 +73,12 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
             dataFolders = select_folders(sham_folder);
             dataFolders = organize_data_by_animal(dataFolders, group_order{4});
         end
-        [TseriesFolders_ctrl, TSeriesPaths_ctrl, ~, true_xml_paths_ctrl, lastFolderNames_ctrl] = find_Fall_folders(dataFolders);
-        gcampdataFolders_all = {};
-        for i = 1:size(TseriesFolders_ctrl, 1)
-            fallList = TseriesFolders_ctrl{i, 1};   % ceci est soit {}, soit 1xN cell de chemins
-            
-            if ~isempty(fallList)
-                % fallList est une cell -> on ajoute ses éléments un par un
-                gcampdataFolders_all = [gcampdataFolders_all; fallList(:)];
-            end
-        end
+        [TseriesFolders_ctrl, TSeriesPaths_ctrl, ~, true_xml_paths_ctrl, lastFolderNames_ctrl, gcampdataFolders_all] = find_Fall_folders(dataFolders);
     end
 
     %===================%
     %   Création de la liste
     %===================%
-    gcampdataFolders_all = gcampdataFolders_all(~cellfun('isempty', gcampdataFolders_all));
     animal_date_list = create_animal_date_list(gcampdataFolders_all, PathSave);
 
     %===================%
@@ -164,7 +145,7 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
 
                 if ~replace_all
                     fprintf('Groupe "%s" déjà existant conservé (aucune modification)\n', current_animal_group);
-                    kept_groups(end+1) = current_animal_group; % Sauvegarde pour le garder
+                    kept_groups(end+1) = current_animal_group; % Sauvegarde pour le garderselected_groups(idx).
                     continue;
                 else
                     fprintf('Remplacement automatique du groupe "%s"\n', current_animal_group);
@@ -183,19 +164,19 @@ function [animal_date_list, selected_groups] = pipeline_for_data_preprocessing()
             switch group_type
                 case "jm"
                     selected_groups(idx).pathTSeries = TSeriesPaths_jm(date_indices, :);
-                    selected_groups(idx).folders = gcampdataFolders_all(date_indices, :);
+                    selected_groups(idx).Fallmat_folders = gcampdataFolders_all(date_indices, :);
                     selected_groups(idx).xml = true_xml_paths_jm(date_indices);
-                    selected_groups(idx).folders_names = [];
+                    selected_groups(idx).TSeries_folders_names = [];
                 case "FCD"
                     selected_groups(idx).pathTSeries = TSeriesPaths_fcd(date_indices, :);
-                    selected_groups(idx).folders = TseriesFolders_fcd(date_indices, :);
+                    selected_groups(idx).Fallmat_folders = TseriesFolders_fcd(date_indices, :);
                     selected_groups(idx).xml = true_xml_paths_fcd(date_indices);
-                    selected_groups(idx).folders_names = string(lastFolderNames_fcd(date_indices, :));
+                    selected_groups(idx).TSeries_folders_names = string(lastFolderNames_fcd(date_indices, :));
                 otherwise
                     selected_groups(idx).pathTSeries = TSeriesPaths_ctrl(date_indices, :);
-                    selected_groups(idx).folders = TseriesFolders_ctrl(date_indices, :);
+                    selected_groups(idx).Fallmat_folders = TseriesFolders_ctrl(date_indices, :);
                     selected_groups(idx).xml = true_xml_paths_ctrl(date_indices);
-                    selected_groups(idx).folders_names = string(lastFolderNames_ctrl(date_indices, :));
+                    selected_groups(idx).TSeries_folders_names = string(lastFolderNames_ctrl(date_indices, :));
             end
             idx = idx + 1;
         end
