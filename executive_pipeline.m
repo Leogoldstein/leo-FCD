@@ -3,9 +3,6 @@
 clear
 setup_python_env()
 
-[animal_date_list, selected_groups] = pipeline_for_data_preprocessing();
-
-%%
 processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
 if strcmp(processing_choice1, '2')
     % If the answer is 'no', prompt for the second choice
@@ -13,6 +10,10 @@ if strcmp(processing_choice1, '2')
 else
     processing_choice2 = [];
 end        
+
+[animal_date_list, selected_groups, metadata_results] = pipeline_for_data_preprocessing(processing_choice1, processing_choice2);
+
+%%
 
 %checking_choice1 = input('Do you want to check your data? (1/2): ', 's');
 checking_choice1 = '2';
@@ -26,11 +27,12 @@ end
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '1';
 
-[selected_groups, daytime] = process_selected_group(selected_groups, processing_choice1, processing_choice2, checking_choice2, include_blue_cells);
+[selected_groups, daytime, results_analysis, plots_data] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells);
 
 % Processing and analysis
 PathSave = 'D:\Imaging\Outputs\';
 all_results = [];  % tableau de structures vide
+
 
 %% Perform analyses 
 % (in the loop = one recording per animal at a time, out of the loop =
@@ -115,10 +117,6 @@ for k = 1:length(selected_groups)
     data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, data);
     selected_groups(k).data = data;
 
-    %Global analysis of activity
-    pathexcel = [PathSave 'analysis.xlsx'];
-    [results_analysis, plots_data] = compute_export_basic_metrics(current_animal_group, data, gcamp_output_folders, current_xml_group, current_gcamp_folders_names_group, current_ages_group, pathexcel, current_animal_type, daytime);
-    
     for m = 1:numFolders
         plot_frequency_scatter( ...
             plots_data(m).freq_gcamp, ...

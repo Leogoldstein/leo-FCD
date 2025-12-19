@@ -333,13 +333,10 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
     %  CAS 2 : blue group existant (Suite2p / plane*)
     % ==========================================================
     else
-        % On remonte à la racine commune (ex: .../TSeries.../suite2p)
-        current_blue_root = fileparts(fileparts(current_blue_folders_group_plane));
-        disp(current_blue_root);
-
         try
-            cellpose_files     = dir(fullfile(current_blue_root, '*_seg.npy'));
-            aligned_image_path = fullfile(current_blue_root, 'aligned_image.tif');
+            cellpose_files     = dir(fullfile(current_blue_folders_group_plane, '*_seg.npy'));
+            aligned_image_path = fullfile(current_blue_folders_group_plane, ...
+                            sprintf('aligned_plane%d_AVG.tif', p-1));
 
             if ~isempty(cellpose_files)
                 % seg.npy déjà présent
@@ -393,9 +390,6 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
                 if isempty(blue_img) || isempty(ref_img)
                     warning('Impossible de déterminer Blue ou GCaMP pour le recalage (suite2p bleu).');
                 else
-                    % Chemin sauvegarde alignée
-                    aligned_image_path = fullfile(current_blue_root, 'aligned_image.tif');
-
                     % === Recalage via fonction dédiée (zones sombres) ===
                     aligned_image = register_blue_with_dark_zones( ...
                         blue_img, ref_img, aligned_image_path, ...

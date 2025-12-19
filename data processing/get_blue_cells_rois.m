@@ -88,12 +88,20 @@ function F_blue = get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cell
     % Extraire les noms
     tiffFiles = {tiffFilesStruct.name};
     
-    % Trier par ordre alphabétique
-    [~, idxOrder] = sort(tiffFiles);
+    % Extraire le numéro après "file"
+    numbers = zeros(length(tiffFiles),1);
+
+    for i = 1:length(tiffFiles)
+        name = tiffFiles{i};
+        tokens = regexp(name, 'file(\d+)_chan', 'tokens'); % capture le nombre
+        numbers(i) = str2double(tokens{1}{1});
+    end
+    
+    % Trier selon le numéro
+    [~, idxOrder] = sort(numbers);
     tiffFiles = tiffFiles(idxOrder);
 
     image_idx = 1;
-
     % --- Parcours des TIF ---
     for tIdx = 1:numel(tiffFiles)
         filename = fullfile(gcamp_planes_for_session_m, tiffFiles{tIdx});
