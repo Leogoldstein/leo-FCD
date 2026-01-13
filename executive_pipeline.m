@@ -16,7 +16,7 @@ end
 %%
 
 %checking_choice1 = input('Do you want to check your data? (1/2): ', 's');
-checking_choice1 = '2';
+checking_choice1 = '1';
 if strcmp(checking_choice1, '1')
     % If the answer is '1', prompt for the second choice
     checking_choice2 = input('Do you want to check:\n1 = gcamp\n2 = blue with gcamp\n3 = both\nChoice (1/2/3): ', 's');

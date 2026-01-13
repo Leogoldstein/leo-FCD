@@ -160,40 +160,17 @@ end
 function [DF, DF_sg, baseline_F, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts)
 
     % Calcule DF, baseline, SavGol (DF_sg), bruit (rolling) et SNR.
-    %
-    % Seuls opts.window_size, opts.savgol_win, opts.savgol_poly sont utilisés ici.
-
-    percentile   = 20;
-    window_size  = opts.window_size;
     sg_win       = opts.savgol_win;     % sera forçé impair ci-dessous
     sg_poly      = opts.savgol_poly;
     noise_window = 20;                  % frames
     noise_method = 'mean';
     snr_min_cap  = 0.1;
 
-    [NCell, Nz] = size(F);
-
     % --- Step 1: ΔF/F & baseline ---
-    DF = nan(NCell, Nz);
-    baseline_F = nan(NCell, 1);
-    for n = 1:NCell
-        trace = F(n,:);
-        F0 = nan(Nz,1);
-
-        num_blocks = ceil(Nz / window_size);
-        for i = 1:num_blocks
-            a = (i-1)*window_size + 1;
-            b = min(i*window_size, Nz);
-            F0(a:b) = prctile(trace(a:b), percentile);
-        end
-        F0 = movmedian(F0, window_size, 'omitnan');
-        F0 = smoothdata(F0, 1, 'gaussian', window_size/2);
-
-        baseline_F(n) = mean(F0, 'omitnan');
-        DF(n,:) = (trace - F0') ./ F0';
-    end
-
+    [baseline_F, DF] = baseline_calculation (F); %baseline_calculation (F,bad_frames);
+   
     % --- Step 2: SavGol + bruit ---
+    [NCell, Nz] = size(DF);
     DF_sg     = nan(NCell, Nz);
     noise_est = nan(NCell, Nz);
 
