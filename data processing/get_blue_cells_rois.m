@@ -134,7 +134,6 @@ function F_blue = get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cell
     end
 
     % --- (Optionnel) affichage rapide ---
-    %{
     if ~isempty(F_blue)
         figure('Name', sprintf('F\\_blue (%s)', mode));
         hold on;
@@ -147,5 +146,4 @@ function F_blue = get_blue_cells_rois(F_gcamp, matched_cellpose_idx, ncells_cell
         title(sprintf('F\\_blue (%s Cellpose ROIs)', mode));
         legend show;
     end
-    %}
 end

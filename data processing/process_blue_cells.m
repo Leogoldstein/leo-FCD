@@ -5,42 +5,6 @@ function [data, fields] = process_blue_cells( ...
                 current_blue_TSeries_path, ...
                 meanImgs_gcamp, ...
                 data, fields)
-% PROCESS_BLUE_CELLS (version "par plan")
-%
-% Hypothèses :
-%   process_gcamp_cells a déjà rempli, pour chaque groupe m et plan p :
-%     - data.F_gcamp_by_plane{m}{p}
-%     - data.gcamp_props_by_plane{m}{p}
-%     - data.outlines_gcampx_by_plane{m}{p}
-%     - data.outlines_gcampy_by_plane{m}{p}
-%     - data.iscell_gcamp_by_plane{m}{p}
-%     - data.gcamp_props_false_by_plane{m}{p}
-%     - data.outlines_gcampx_false_by_plane{m}{p}
-%     - data.outlines_gcampy_false_by_plane{m}{p}
-%
-% Champs BLEU créés par groupe m et par plan p :
-%   matched_gcamp_idx_by_plane{m}{p}
-%   matched_cellpose_idx_by_plane{m}{p}
-%   is_cell_blue_by_plane{m}{p}
-%
-%   num_cells_mask_by_plane{m}{p}
-%   mask_cellpose_by_plane{m}{p}
-%   props_cellpose_by_plane{m}{p}
-%   outlines_x_cellpose_by_plane{m}{p}
-%   outlines_y_cellpose_by_plane{m}{p}
-%
-%   F_blue_by_plane{m}{p}
-%   blue_match_mask_by_plane{m}{p}
-%
-%   baseline_blue_by_plane{m}{p}
-%   valid_blue_cells_by_plane{m}{p}
-%   DF_blue_by_plane{m}{p}
-%   Raster_blue_by_plane{m}{p}
-%   Acttmp2_blue_by_plane{m}{p}
-%   StartEnd_blue_by_plane{m}{p}
-%   MAct_blue_by_plane{m}{p}
-%   thresholds_blue_by_plane{m}{p}
-
 
     %======================================================
     % 0) Champs BLEU et initialisation

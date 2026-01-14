@@ -146,43 +146,52 @@ function [TseriesFolders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolde
                 
         % --- Chercher Fall.mat pour TOUS les canaux / plans ---
         for j = 1:4
-            planeFolders = dataFolders_channel{j};  % cell array de dossiers plane* pour ce canal
+            planeFolders = dataFolders_channel{j};  % cell/strings array de dossiers plane* pour ce canal
             fallPaths = {};
-
+        
+            % Si TSeries existe mais pas de plane folders -> message plus informatif
+            if ~isempty(TSeriesPaths{idx,j}) && (isempty(planeFolders) || numel(planeFolders) == 0)
+                warning('TSeries existe mais aucun dossier suite2p/plane* pour %s (%s).', ...
+                    labels{j}, to_char_path(TSeriesPaths{idx,j}));
+                TseriesFolders{idx, j} = {};
+                continue;
+            end
+        
             for p = 1:numel(planeFolders)
-            
+        
                 planePath = planeFolders{p};
-            
+                if isstring(planePath), planePath = char(planePath); end
+        
                 % --- 1) Cas classique : Fall.mat ---
                 fall_mat_path = fullfile(planePath, 'Fall.mat');
-            
                 if exist(fall_mat_path, 'file') == 2
                     fallPaths{end+1} = fall_mat_path; %#ok<AGROW>
                     continue
                 end
-            
-                % --- 2) Sinon : chercher un dossier/structure suite2p avec ops ---
+        
+                % --- 2) Sinon : suite2p outputs -> ops.npy ---
                 ops_npy_path = fullfile(planePath, 'ops.npy');
-            
                 if exist(ops_npy_path, 'file') == 2
-                    % Cas suite2p : on garde le dossier (il contient ops.npy)
                     fallPaths{end+1} = planePath; %#ok<AGROW>
-                    fprintf('Info: using suite2p folder (ops.mat found): %s\n', planePath);
+                    fprintf('Info: using suite2p folder (ops.npy found): %s\n', planePath);
                     continue
                 end
-            
-                % --- 3) Sinon : erreur ---
-                warning('No Fall.mat or ops.mat found in folder: %s', planePath);
-            
+        
+                % --- 3) Sinon : warn plan ---
+                warning('No Fall.mat or ops.npy found in folder: %s', planePath);
+        
             end
-
-
-            
-            
-            % On stocke la liste des Fall.mat (un par plan) dans TseriesFolders{idx, j}
-            TseriesFolders{idx, j} = fallPaths(:).';   % flatten: 1×N cell, no nested cells
-            
-            % En plus, on remplit la liste globale à plat pour le canal GCaMP (colonne 1)
+        
+            % Stockage
+            TseriesFolders{idx, j} = fallPaths(:).';   % 1×N cell
+        
+            % >>> MESSAGE demandé : TSeries existe mais aucune sortie Fall/ops trouvée
+            if ~isempty(TSeriesPaths{idx,j}) && isempty(fallPaths)
+                warning('TSeries existe mais aucun Fall.mat/ops.npy trouvé pour %s : %s', ...
+                    labels{j}, to_char_path(TSeriesPaths{idx,j}));
+            end
+        
+            % Liste globale GCaMP
             if j == 1 && ~isempty(fallPaths)
                 gcampdataFolders_all = [gcampdataFolders_all; fallPaths(:)];
             end
@@ -231,4 +240,19 @@ function dataFolders = process_TSeries(TSeriesPath)
         dataFolders(k) = fullfile(suite2pFolder, planeFolders(k).name);
     end
 
+end
+
+function s = to_char_path(x)
+% Convertit x (char/string/cell) en char pour affichage warnings
+    if isempty(x)
+        s = '';
+        return;
+    end
+    if iscell(x)
+        x = x{1};
+    end
+    if isstring(x)
+        x = x(1);
+    end
+    s = char(x);
 end

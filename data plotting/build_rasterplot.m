@@ -18,37 +18,26 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             use_combined = has_combined_by_plane || has_combined_global;
 
             %----------------------------------------------------------
-            % 2) Récupération DF, isort1, MAct (+ bleu si combined)
+            % 2) Récupération DF, isort1 (+ bleu si combined)
             %----------------------------------------------------------
             DF = [];
             DF_blue = [];
             isort1 = [];
-            MAct = [];
-            MActblue = [];
             sampling_rate = data.sampling_rate{m};
 
             if use_combined
                 % ================= COMBINED GCaMP + BLUE =================
-
-                % 2.a) DF combiné
                 if has_combined_by_plane
                     DF = concat_planes(data, m, 'DF_combined_by_plane');
-                    % isort1 global reconstruit à partir des isort par plan
+
                     if isfield(data, 'isort1_combined_by_plane') && ...
                        numel(data.isort1_combined_by_plane) >= m && ...
                        ~isempty(data.isort1_combined_by_plane{m})
                         isort1 = build_isort_from_planes(data, m, ...
                                     'isort1_combined_by_plane', 'DF_combined_by_plane');
                     end
-                    % MAct combiné (toutes cellules)
-                    if isfield(data, 'MAct_combined_by_plane') && ...
-                       numel(data.MAct_combined_by_plane) >= m && ...
-                       ~isempty(data.MAct_combined_by_plane{m})
-                        MAct = concat_planes(data, m, 'MAct_combined_by_plane');
-                    end
                 end
 
-                % Fallback sur ancienne version globale si besoin
                 if isempty(DF)
                     DF = data.DF_combined{m};
                 end
@@ -56,35 +45,15 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                         numel(data.isort1_combined) >= m
                     isort1 = data.isort1_combined{m};
                 end
-                if isempty(MAct)
-                    % ancien style : MAct_not_blue ou MAct_combined
-                    if isfield(data, 'MAct_gcamp_not_blue') && ...
-                       numel(data.MAct_gcamp_not_blue) >= m && ...
-                       ~isempty(data.MAct_gcamp_not_blue{m})
-                        MAct = data.MAct_gcamp_not_blue{m};
-                    elseif isfield(data, 'MAct_combined') && ...
-                           numel(data.MAct_combined) >= m
-                        MAct = data.MAct_combined{m};
-                    end
-                end
 
-                % 2.b) Bleu : DF_blue + MActblue
+                % Bleu
                 has_blue_by_plane = isfield(data, 'DF_blue_by_plane') && ...
                                     numel(data.DF_blue_by_plane) >= m && ...
                                     ~isempty(data.DF_blue_by_plane{m});
-
                 if has_blue_by_plane
                     DF_blue = concat_planes(data, m, 'DF_blue_by_plane');
-                    if isfield(data, 'MAct_blue_by_plane') && ...
-                       numel(data.MAct_blue_by_plane) >= m && ...
-                       ~isempty(data.MAct_blue_by_plane{m})
-                        MActblue = concat_planes(data, m, 'MAct_blue_by_plane');
-                    end
                 elseif isfield(data, 'DF_blue') && numel(data.DF_blue) >= m
                     DF_blue = data.DF_blue{m};
-                    if isfield(data, 'MAct_blue') && numel(data.MAct_blue) >= m
-                        MActblue = data.MAct_blue{m};
-                    end
                 end
 
                 fig_save_path = fullfile(gcamp_output_folders{m}, sprintf('%s_%s_rastermap_mtor.png', ...
@@ -92,7 +61,6 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
 
             else
                 % ================= GCaMP ONLY =================
-
                 has_gcamp_by_plane = isfield(data, 'DF_gcamp_by_plane') && ...
                                      numel(data.DF_gcamp_by_plane) >= m && ...
                                      ~isempty(data.DF_gcamp_by_plane{m});
@@ -106,20 +74,10 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                         isort1 = build_isort_from_planes(data, m, ...
                                     'isort1_gcamp_by_plane', 'DF_gcamp_by_plane');
                     end
-
-                    if isfield(data, 'MAct_gcamp_by_plane') && ...
-                       numel(data.MAct_gcamp_by_plane) >= m && ...
-                       ~isempty(data.MAct_gcamp_by_plane{m})
-                        MAct = concat_planes(data, m, 'MAct_gcamp_by_plane');
-                    end
                 else
-                    % fallback ancien pipeline global
                     DF = data.DF_gcamp{m};
                     if isfield(data, 'isort1_gcamp') && numel(data.isort1_gcamp) >= m
                         isort1 = data.isort1_gcamp{m};
-                    end
-                    if isfield(data, 'MAct_gcamp') && numel(data.MAct_gcamp) >= m
-                        MAct = data.MAct_gcamp{m};
                     end
                 end
 
@@ -133,7 +91,7 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                 continue;
             end
 
-            % Si isort1 vide ou incohérent → identité
+            % isort1 : identité si vide ou incohérent
             [NCell, Nz] = size(DF);
             if isempty(isort1) || numel(isort1) ~= NCell
                 isort1 = (1:NCell)';
@@ -146,29 +104,53 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             end
 
             %----------------------------------------------------------
-            % 3) Préparation MAct et MActblue
+            % 3) MAct et MActblue : SOMME par plan (pas concat)
             %----------------------------------------------------------
-            % Adapter la longueur de MAct à Nz
+            MAct = [];
+            MActblue = [];
+
+            if use_combined
+                if isfield(data, 'MAct_combined_by_plane') && ...
+                   numel(data.MAct_combined_by_plane) >= m && ...
+                   ~isempty(data.MAct_combined_by_plane{m})
+                    MAct = merge_MAct_planes(data, m, 'MAct_combined_by_plane', Nz);
+                elseif isfield(data, 'MAct_combined') && numel(data.MAct_combined) >= m
+                    MAct = resize_MAct(data.MAct_combined{m}, Nz);
+                elseif isfield(data, 'MAct_gcamp_not_blue') && numel(data.MAct_gcamp_not_blue) >= m
+                    MAct = resize_MAct(data.MAct_gcamp_not_blue{m}, Nz);
+                end
+
+                % Bleu
+                if ~isempty(DF_blue)
+                    Nz_blue = size(DF_blue,2);
+                    if isfield(data, 'MAct_blue_by_plane') && ...
+                       numel(data.MAct_blue_by_plane) >= m && ...
+                       ~isempty(data.MAct_blue_by_plane{m})
+                        MActblue = merge_MAct_planes(data, m, 'MAct_blue_by_plane', Nz_blue);
+                    elseif isfield(data, 'MAct_blue') && numel(data.MAct_blue) >= m
+                        MActblue = resize_MAct(data.MAct_blue{m}, Nz_blue);
+                    end
+                end
+            else
+                if isfield(data, 'MAct_gcamp_by_plane') && ...
+                   numel(data.MAct_gcamp_by_plane) >= m && ...
+                   ~isempty(data.MAct_gcamp_by_plane{m})
+                    MAct = merge_MAct_planes(data, m, 'MAct_gcamp_by_plane', Nz);
+                elseif isfield(data, 'MAct_gcamp') && numel(data.MAct_gcamp) >= m
+                    MAct = resize_MAct(data.MAct_gcamp{m}, Nz);
+                end
+            end
+
             if isempty(MAct)
                 MAct = zeros(1, Nz);
-            else
-                if numel(MAct) > Nz
-                    MAct = MAct(1:Nz);
-                elseif numel(MAct) < Nz
-                    MAct = [MAct, zeros(1, Nz - numel(MAct))];
-                end
             end
             prop_MAct = MAct / NCell;
 
-            % Bleu
-            if ~isempty(MActblue)
-                [NCell_blue, Nz_blue] = size(DF_blue);
-                if numel(MActblue) > Nz_blue
-                    MActblue = MActblue(1:Nz_blue);
-                elseif numel(MActblue) < Nz_blue
-                    MActblue = [MActblue, zeros(1, Nz_blue - numel(MActblue))];
-                end
+            if ~isempty(MActblue) && ~isempty(DF_blue)
+                NCell_blue = size(DF_blue,1);
                 prop_MActblue = MActblue / NCell_blue;
+            else
+                prop_MActblue = [];
             end
 
             %----------------------------------------------------------
@@ -178,50 +160,46 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                                 numel(motion_energy_group) >= m && ...
                                 ~isempty(motion_energy_group{m});
 
-            subplot_count = 2 + ~isempty(MActblue) + has_motion_energy;
-            subplot_idx = 2;
+            subplot_count = 2 + ~isempty(prop_MActblue) + has_motion_energy;
 
             % Création figure
-            figure;
-            screen_size = get(0, 'ScreenSize');
-            set(gcf, 'Position', screen_size);
+            fig = figure;
+            set(fig, 'Position', get(0, 'ScreenSize'));
 
-            t_idx = 1:Nz;
+            % Temps en secondes
+            total_time = Nz / sampling_rate;
+            t_sec = (0:Nz-1) / sampling_rate;
 
-            % Subplot 1 : Raster plot
+            % Subplot 1 : Raster plot (en secondes)
             subplot(subplot_count, 1, 1);
-            imagesc(DF(isort1, :));
+            imagesc(t_sec, 1:NCell, DF(isort1, :));
             [minValue, maxValue] = calculate_scaling(DF);
             clim([minValue, maxValue]);
             axis tight;
-
-            ax1 = gca;
-            ax1.XTick = round(linspace(1, Nz, 6));
-            ax1.XTickLabel = arrayfun(@(x) sprintf('%d', x), ax1.XTick, 'UniformOutput', false);
             ylabel('Neurons');
-            xlabel('Time (frame index)');
+            xlabel('Time (s)');
             title('Raster Plot');
-            xlim([1 Nz]);
+            xlim([0 total_time]);
 
             % Subplot 2 : proportion active cells (all)
             subplot(subplot_count, 1, 2);
-            plot(t_idx, prop_MAct, 'LineWidth', 2, 'Color', 'g');
+            plot(t_sec, prop_MAct, 'LineWidth', 2, 'Color', 'g');
             ylabel('Prop. Active Cells');
             title('Proportion of Active Cells (All)');
             grid on;
-            xlim([1, Nz]);
+            xlim([0 total_time]);
 
             % Subplot cellules bleues
             subplot_idx = 3;
-            if ~isempty(MActblue)
+            if ~isempty(prop_MActblue)
                 subplot(subplot_count, 1, subplot_idx);
-                plot(t_idx, prop_MActblue, 'LineWidth', 2, 'Color', 'b');
+                plot(t_sec, prop_MActblue, 'LineWidth', 2, 'Color', 'b');
                 ylim([0 1]);
-                xlabel('Time (frame index)');
+                xlabel('Time (s)');
                 ylabel('Prop. Blue Active Cells');
                 title('Proportion of Active Blue Cells');
                 grid on;
-                xlim([1, Nz]);
+                xlim([0 total_time]);
                 subplot_idx = subplot_idx + 1;
             end
 
@@ -231,15 +209,12 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                 hold on;
 
                 energy = motion_energy_group{m};
-                if isempty(energy)
-                    % rien à tracer
-                else
-                    % X étiré de 1 à Nz
-                    x_stretched = linspace(1, Nz, numel(energy));
+                if ~isempty(energy)
+                    x_stretched = linspace(0, total_time, numel(energy));
                     plot(x_stretched, energy, 'DisplayName', sprintf('Session %d', m));
-                    xlabel('Time (frame index)');
+                    xlabel('Time (s)');
                     ylabel('Normalized Energy');
-                    xlim([1 Nz]);
+                    xlim([0 total_time]);
                     title('Motion Energy (Downsampled)');
                     legend show;
                     grid on;
@@ -249,16 +224,18 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             end
 
             % Lier les axes X
-            ax_all = findall(gcf, 'Type', 'axes');
-            linkaxes(ax_all, 'x');
+            linkaxes(findall(fig, 'Type', 'axes'), 'x');
 
             % Sauvegarde
-            saveas(gcf, fig_save_path);
+            saveas(fig, fig_save_path);
             disp(['Raster plot saved in: ' fig_save_path]);
-            close(gcf)
+            close(fig);
 
         catch ME
             fprintf('\nError for group %d: %s\n', m, ME.message);
+            if exist('fig','var') && ishghandle(fig)
+                close(fig);
+            end
         end
     end
 end
@@ -274,6 +251,79 @@ function [min_val, max_val] = calculate_scaling(data)
         warning('Invalid color scale limits, using raw min/max.');
         min_val = min(flattened_data);
         max_val = max(flattened_data);
+    end
+end
+
+function MAct_out = resize_MAct(MAct_in, Nz)
+    % Ajuste un vecteur MAct à Nz (crop/pad en fin)
+    if isempty(MAct_in)
+        MAct_out = zeros(1, Nz);
+        return;
+    end
+    MAct_in = MAct_in(:)'; % row
+    if numel(MAct_in) > Nz
+        MAct_out = MAct_in(1:Nz);
+    elseif numel(MAct_in) < Nz
+        MAct_out = [MAct_in, zeros(1, Nz - numel(MAct_in))];
+    else
+        MAct_out = MAct_in;
+    end
+end
+
+function MAct_sum = merge_MAct_planes(data, m, fieldName, Nz)
+    % SOMME des MAct_by_plane{m}{p} (même axe temps, pas concat)
+    MAct_sum = zeros(1, Nz);
+
+    if ~isfield(data, fieldName) || numel(data.(fieldName)) < m || isempty(data.(fieldName){m})
+        return;
+    end
+
+    MAct_cell = data.(fieldName){m};
+    for p = 1:numel(MAct_cell)
+        M_p = MAct_cell{p};
+        if isempty(M_p)
+            continue;
+        end
+        M_p = resize_MAct(M_p, Nz);
+        MAct_sum = MAct_sum + M_p;
+    end
+end
+
+function out = concat_planes(data, m, fieldName)
+    planes = data.(fieldName){m};
+    if isempty(planes)
+        out = [];
+        return;
+    end
+
+    sample = [];
+    for p = 1:numel(planes)
+        if ~isempty(planes{p})
+            sample = planes{p};
+            break;
+        end
+    end
+    if isempty(sample)
+        out = [];
+        return;
+    end
+
+    if isnumeric(sample)
+        out = [];
+        for p = 1:numel(planes)
+            if ~isempty(planes{p})
+                out = [out; planes{p}]; %#ok<AGROW>
+            end
+        end
+    elseif iscell(sample)
+        out = {};
+        for p = 1:numel(planes)
+            if ~isempty(planes{p})
+                out = [out; planes{p}(:)]; %#ok<AGROW>
+            end
+        end
+    else
+        error('concat_planes: type non supporté (%s) pour "%s".', class(sample), fieldName);
     end
 end
 
@@ -313,7 +363,7 @@ function isort_global = build_isort_from_planes(data, m, isort_field, DF_field)
 
         % Sanity check
         local_isort = local_isort(:);
-        local_isort(local_isort < 1 | local_isort > n_p) = [];  % clamp
+        local_isort(local_isort < 1 | local_isort > n_p) = [];
 
         isort_global = [isort_global; local_isort + offset]; %#ok<AGROW>
         offset = offset + n_p;

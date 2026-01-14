@@ -38,7 +38,7 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all] = proc
             current_blue_folders_group  = selected_groups(k).Fallmat_folders(:, 3);
             current_green_folders_group = selected_groups(k).Fallmat_folders(:, 4);
         
-            current_gcamp_folders_names_group  = selected_groups(k).TSeries_folders_names(:, 1);
+            %current_gcamp_folders_names_group  = selected_groups(k).TSeries_folders_names(:, 1);
         else
             current_gcamp_folders_group = selected_groups(k).Fallmat_folders;
             current_red_folders_group   = cell(size(current_gcamp_folders_group));
