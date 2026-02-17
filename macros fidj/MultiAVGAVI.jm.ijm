@@ -1,4 +1,4 @@
-// D'abord faire la correction de mouvements avec suite2p
+	// D'abord faire la correction de mouvements avec suite2p
 // Mettre camera dans TSeries !!!
 
 
@@ -188,6 +188,11 @@ function handleCamAndTSeries(BaseDir) {
 	    var suite2pFolder = tseriesFolder + File.separator + "suite2p" + File.separator;                            
 	    if (!File.isDirectory(suite2pFolder)) {
 	        print("Skipping " + tseriesFolder + ": No 'suite2p' subfolder found.");
+	        //if (tseriesFolderIndex + 1 < tseriesFolders.length) {
+			    //print("Next TSeries will be: " + tseriesFolders[tseriesFolderIndex + 1]);
+			//} else {
+			    //print("No more TSeries folders to process.");
+			//}
 	        continue; 
 	    }
 	                
@@ -226,18 +231,25 @@ function handleCamAndTSeries(BaseDir) {
 	    }
 	    
 	    // Gestion des images caméra
-	    var saveCamImDir;
-	                    
-	    if (File.isDirectory(tseriesFolder + File.separator + "cam" + File.separator)) {
-	        saveCamImDir = tseriesFolder + File.separator + "cam" + File.separator;
-	        proceed = true;
-	    } else if (File.isDirectory(tseriesFolder + File.separator + "camera" + File.separator)) {
-	        saveCamImDir = tseriesFolder + File.separator + "camera" + File.separator;
-	        proceed = true;
-	    } else {
-	        print("  No Camera images found in " + tseriesFolder + ".");
-	    }
-	                    
+		var saveCamImDir = "";
+		
+		cam_path1 = tseriesFolder + File.separator + "cam"    + File.separator;
+		cam_path2 = tseriesFolder + File.separator + "camera" + File.separator;
+		cam_path3 = BaseDir      + File.separator + "cam"    + File.separator;
+		cam_path4 = BaseDir      + File.separator + "camera" + File.separator;
+		
+		if (File.isDirectory(cam_path1)) saveCamImDir = cam_path1;
+		else if (File.isDirectory(cam_path2)) saveCamImDir = cam_path2;
+		else if (File.isDirectory(cam_path3)) saveCamImDir = cam_path3;
+		else if (File.isDirectory(cam_path4)) saveCamImDir = cam_path4;
+		
+		if (saveCamImDir != "") {
+		    proceed = true;
+		} else {
+		    print("  No Camera images found for " + tseriesFolder + "");
+		    continue;
+		}
+               
 	    if (proceed) {
 	        print("  Traitement des images caméra dans " + saveCamImDir);
 	        handleCamImages(saveCamImDir);
@@ -299,8 +311,10 @@ function handleCamAndTSeries(BaseDir) {
    						
    						resizeStackToHeight(resizeCamFile, 512);
 				
-				        newW_background = newW + 100;
-				        newImage("new cam_crop.tif kept stack", "8-bit black", newW_background, 612, nCam);
+				        var newW = getWidth();
+						var newW_background = newW + 100;
+					    
+					    newImage("new cam_crop.tif kept stack", "8-bit black", newW_background, 612, nCam);
 				
 				        // Insérer la projection dans le fond
 				        run("Insert...", 

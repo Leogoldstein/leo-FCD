@@ -172,9 +172,31 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
 
             % Subplot 1 : Raster plot (en secondes)
             subplot(subplot_count, 1, 1);
-            imagesc(t_sec, 1:NCell, DF(isort1, :));
-            [minValue, maxValue] = calculate_scaling(DF);
-            clim([minValue, maxValue]);
+            A = DF(isort1, :);
+
+            % --- Z-score robuste par cellule ---
+            A_z = zeros(size(A));
+            for i = 1:size(A,1)
+                x = A(i,:);
+                mu = median(x,'omitnan');
+                sigma = mad(x,1);
+                if sigma > eps
+                    A_z(i,:) = (x - mu) / sigma;
+                end
+            end
+            
+            % --- Binarisation visuelle ---
+            thr = 2.5;              % ESSENTIEL : ajuste ici (2–3)
+            BW = A_z > thr;
+            
+            % --- Affichage noir & blanc ---
+            imagesc(t_sec, 1:NCell, BW);
+            colormap(flipud(gray));
+            caxis([0 1]);
+            xlabel('Time (s)');
+            ylabel('Neurons');
+            title('Raster plot (binary activity)');
+
             axis tight;
             ylabel('Neurons');
             xlabel('Time (s)');
@@ -183,7 +205,7 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
 
             % Subplot 2 : proportion active cells (all)
             subplot(subplot_count, 1, 2);
-            plot(t_sec, prop_MAct, 'LineWidth', 2, 'Color', 'g');
+            plot(t_sec, prop_MAct, 'LineWidth', 2);
             ylabel('Prop. Active Cells');
             title('Proportion of Active Cells (All)');
             grid on;
@@ -193,7 +215,7 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             subplot_idx = 3;
             if ~isempty(prop_MActblue)
                 subplot(subplot_count, 1, subplot_idx);
-                plot(t_sec, prop_MActblue, 'LineWidth', 2, 'Color', 'b');
+                plot(t_sec, prop_MActblue, 'LineWidth', 2);
                 ylim([0 1]);
                 xlabel('Time (s)');
                 ylabel('Prop. Blue Active Cells');
@@ -243,16 +265,6 @@ end
 %---------------------------------------------
 % Fonctions utilitaires
 %---------------------------------------------
-function [min_val, max_val] = calculate_scaling(data)
-    flattened_data = data(:);
-    min_val = prctile(flattened_data, 5);
-    max_val = prctile(flattened_data, 99.9);
-    if min_val >= max_val
-        warning('Invalid color scale limits, using raw min/max.');
-        min_val = min(flattened_data);
-        max_val = max(flattened_data);
-    end
-end
 
 function MAct_out = resize_MAct(MAct_in, Nz)
     % Ajuste un vecteur MAct à Nz (crop/pad en fin)

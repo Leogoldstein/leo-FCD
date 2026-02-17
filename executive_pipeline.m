@@ -25,7 +25,7 @@ else
 end
 
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
-include_blue_cells = '1';
+include_blue_cells = '2';
 
 [selected_groups, daytime, results_analysis, plots_data] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells);
 
@@ -39,79 +39,86 @@ all_results = [];  % tableau de structures vide
 % all the recordings of an animal at a time)
 % selected_indices = select_animal_groups(selected_groups);
 % for k = 1:length(selected_indices)
-     
+   
+numFolders = length(selected_groups);
+
 % Perform analyses for each group
 for k = 1:length(selected_groups)
-
-    % Explore traces gcamp
-    for m = 1:numFolders
-        F_all = concat_planes(data, m, 'F_gcamp_by_plane'); % concat vertical cellules
-
-         [~, baseline_gcamp, noise_est_gcamp, SNR_gcamp, ...
-         valid_gcamp_cells_plane, DF_gcamp_plane, Raster_gcamp_plane, ...
-         Acttmp2_gcamp_plane, StartEnd_gcamp_plane, ...
-         MAct_gcamp_plane, thresholds_gcamp_plane] = ...
-            peak_detection_tuner(F_all, ...
-                                 data.sampling_rate{m}, ...
-                                 data.synchronous_frames{m}, ...
-                                 current_animal_group, ...
-                                 current_ages_group{m}, ...
-                                 'nogui', false);
-    end
-
-    % Explore traces bleues
-    for m = 1:numFolders
-        F_all = concat_planes(data, m, 'F_blue_by_plane'); % concat vertical cellules
-
-        [~, baseline_blue_p, noise_est_blue_p, SNR_blue_p, valid_blue_cells_p, ...
-                 DF_blue_p, Raster_blue_p, Acttmp2_blue_p, StartEnd_blue_p, MAct_blue_p, thresholds_blue_p] = ...
-                    peak_detection_tuner(F_all, ...
-                                         data.sampling_rate{m}, ...
-                                         data.synchronous_frames{m}, ...
-                                         'nogui', false);
-    end
-   
+    current_animal_group   = selected_groups(k).animal_group;
+    current_animal_type    = selected_groups(k).animal_type;       
+    current_ani_path_group = selected_groups(k).path;
+    current_dates_group    = selected_groups(k).dates;
+    current_ages_group     = selected_groups(k).ages;
+    gcamp_output_folders   = selected_groups(k).gcamp_output_folders;
+    data                   = selected_groups(k).data;  
+    
     % Correlation analysis
-    data = load_or_process_corr_data(gcamp_output_folders, data);
-    selected_groups(k).data = data;
-    % plot_pairwise_corr(current_ages_group, data.max_corr_gcamp_gcamp, current_ani_path_group, current_animal_group)
-    % corr_groups_boxplots_corr(selected_groups, data.max_corr_gcamp_gcamp, data.max_corr_gcamp_mtor, data.max_corr_mtor_mtor)
+    [max_corr_gcamp_gcamp, max_corr_gcamp_mtor, max_corr_mtor_mtor] = load_or_process_corr_data(gcamp_output_folders, data);
 
-    % SCEs analysis
-    data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, data);
-    selected_groups(k).data = data;
+    plot_pairwise_corr(current_ages_group, ...
+        max_corr_gcamp_gcamp, ...
+        current_ani_path_group, ...
+        current_animal_group);
+
+%     corr_groups_boxplots_corr(selected_groups, data.max_corr_gcamp_gcamp_by_plane, data.max_corr_gcamp_mtor_by_plane, data.max_corr_mtor_mtor_by_plane)
+% 
+%         % SCEs analysis
+%         data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, data);
+%         selected_groups(k).data = data;
+% 
+        results_analysis = compute_export_basic_metrics(selected_groups, k);
+
+        for m = 1:numFolders
+            
+            freq = results_analysis(m).FrequencyPerCell_gcamp;
+            freq = freq(isfinite(freq));
+            
+            figure;
+            histogram(freq, 'BinMethod','fd');  % fd = Freedman–Diaconis (robuste)
+            xlabel('Frequency (events / min)');
+            ylabel('Number of cells');
+            title(sprintf('GCaMP frequency – %s %s', ...
+                results_analysis(m).current_animal_group, ...
+                results_analysis(m).Age));
+            grid on;
     
-    [results_analysis, plots_data] = compute_export_basic_metrics(selected_groups, k);
+            %---------------------------------------------------------
+            dur = results_analysis(m).DurationPerCell_gcamp_s;
+            dur = dur(isfinite(dur));
+            
+            figure;
+            histogram(dur, 'BinMethod','fd');
+            xlabel('Transient duration (s)');
+            ylabel('Number of cells');
+            title(sprintf('GCaMP transient duration – %s %s', ...
+                results_analysis(m).current_animal_group, ...
+                results_analysis(m).Age));
+            grid on;
 
-    for m = 1:numFolders
-        plot_frequency_scatter( ...
-            plots_data(m).freq_gcamp, ...
-            plots_data(m).freq_blue, ...
-            plots_data(m).folder_name, ...
-            gcamp_output_folders{m});
-    
-        plot_amplitude_scatter( ...
-            plots_data(m).amp_gcamp, ...
-            plots_data(m).amp_blue, ...
-            plots_data(m).folder_name, ...
-            gcamp_output_folders{m});
-        
-        plot_duration_per_cell_boxplot( ...
-            plots_data(m).dur_non, ...
-            plots_data(m).dur_ele, ...
-            plots_data(m).folder_name, ...
-            gcamp_output_folders{m});
-    end
+            %--------------------------------------------------------------
+            iei = results_analysis(m).IEImeanPerCell_gcamp_s;
+            iei = iei(isfinite(iei));
+            
+            figure;
+            histogram(iei, 'BinMethod','fd');
+            xlabel('Mean inter-event interval (s)');
+            ylabel('Number of cells');
+            title(sprintf('GCaMP IEI – %s %s', ...
+                results_analysis(m).current_animal_group, ...
+                results_analysis(m).Age));
+            grid on;
 
-    % Cluster analysis
- % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_xml_group, data);
- % selected_groups(k).data = data;
- % plot_assemblies(data, current_gcamp_folders_group, gcamp_output_folders);
- % plot_clusters_metrics(gcamp_output_folders, data, current_animal_group, current_dates_group);
-        
-    selected_groups(k).results_analysis = results_analysis;
+
+        end
+%         % Cluster analysis
+%      % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_xml_group, data);
+%      % selected_groups(k).data = data;
+%      % plot_assemblies(data, current_gcamp_folders_group, gcamp_output_folders);
+%      % plot_clusters_metrics(gcamp_output_folders, data, current_animal_group, current_dates_group);
+% 
+%         selected_groups(k).results_analysis = results_analysis;
 end
-%%
+    %%
 corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysis required
 
 %%
