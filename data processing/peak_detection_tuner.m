@@ -1,4 +1,4 @@
-function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds] = ...
+function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds, focus_segs] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -18,7 +18,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
-        'prominence_factor', 4.62, ...
+        'prominence_factor', 5.2, ...
         'refrac_fr', 3 ...
     );
 
@@ -26,6 +26,8 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     nogui = false;
     fall_path = '';
     corrXY = [];
+    iscell_in = [];
+    stat_in   = [];
     
     if ~isempty(varargin)
     
@@ -45,8 +47,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
                         'Clé varargin #%d invalide (type %s). Paire ignorée.', i, class(key));
                 continue;
             end
-    
-            key = lower(char(key));
+   
             val = varargin{i+1};
     
             switch key
@@ -61,19 +62,46 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     
                 case 'ages_group'
                     ages_group = val; %#ok<NASGU>
-    
+
+                case 'iscell'
+                    iscell_in = val;
+            
+                case 'stat'
+                    stat_in = val;
+
+                case 'meanImg'
+                    meanImg = val;   % optionnel si tu l’as
+
+                case 'gcamp_TSeries_path'
+                    gcamp_TSeries_path = val;
+
+                case 'speed'
+                    speed = val;
             end
         end
     end
 
 
     % --- Prétraitement ---
-    [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
-    
-    speed = [];
-    [deviation, bad_frames] = motion_correction_substraction (DF_sg,ops,speed);
+    [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
+
+    [deviation, bad_frames, bad_frames_not_active, bad_frames_active] = motion_correction_substraction(DF_sg, ops, speed);
     deviation = deviation(:).';  % force row
+    bad_frames_active = bad_frames_active(:)';
+    bad_segs = badframes_to_segments(bad_frames_active, size(DF_sg,2));   % Nx2 
     
+    segTable = sort_segments_by_deviation(bad_segs, deviation);
+    assignin('base', 'segTable', segTable);
+
+    T = size(DF_sg,2);
+    [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T);
+    
+    % Pour le moment: on ignore bad_segs
+    focus_segs = user_focus_segs;
+            
+    % focus_segs = segments bad confirmés comme focus change
+    % focus_labels(k)=1 focus, 0 autre, NaN skip
+
     % === MODE BATCH (pas de GUI) ===
     if nogui
         fig = figure('Visible','off'); % fig cachée pour utiliser appdata
@@ -81,12 +109,14 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         setappdata(fig,'opts',opts);
         setappdata(fig,'noise_est',noise_est);
         setappdata(fig,'F0',F0);
-        setappdata(fig,'quality_index', quality_index);
-        setappdata(fig,'deviation',deviation);
-        setappdata(fig,'bad_frames',bad_frames);
-
-        % cell_status: 0 undecided, +1 keep, -1 exclude
-        setappdata(fig,'cell_status', zeros(size(DF_sg,1),1));
+        setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
+        setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
+        setappdata(fig,'deviation', deviation);
+        setappdata(fig,'bad_frames', bad_frames);
+        setappdata(fig,'focus_segs', focus_segs);
+        setappdata(fig,'cell_status', zeros(size(F,1),1));
+        setappdata(fig,'iscell', iscell_in);
+        setappdata(fig,'stat',   stat_in);
 
         [~, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, ~, summary] = ...
             save_peak_matrix(fig, synchronous_frames);
@@ -115,22 +145,21 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'Title','Contrôles','FontSize',10,'Tag','ctrl_panel');
 
     % --- Slider Quality threshold ---
-    uicontrol('Parent',ctrl_panel,'Style','text','String',sprintf('Quality threshold = %.2f',quality_thr0), ...
-        'Units','normalized','Position',[0.05 0.92 0.90 0.04], 'Tag','lbl_quality_thr', ...
-        'HorizontalAlignment','left');
+    % --- Slider Rang threshold (basé sur quality_rank) ---
+    uicontrol('Parent',ctrl_panel,'Style','text', ...
+        'String', sprintf('Rang minimum = %d', quality_thr0), ...
+        'Units','normalized','Position',[0.05 0.92 0.90 0.04], ...
+        'Tag','lbl_quality_thr','HorizontalAlignment','left');
 
-    uicontrol('Parent',ctrl_panel,'Style','slider','Min',quality_min,'Max',quality_max, ...
-        'Value',quality_thr0,'Units','normalized','Position',[0.05 0.87 0.90 0.04], ...
+    step_small = 1/(quality_max - quality_min);
+    step_big   = min(1, 10/(quality_max - quality_min));
+
+    uicontrol('Parent',ctrl_panel,'Style','slider', ...
+        'Min', quality_min, 'Max', quality_max, 'Value', quality_thr0, ...
+        'SliderStep', [step_small step_big], ...
+        'Units','normalized','Position',[0.05 0.87 0.90 0.04], ...
         'Tag','sldr_quality_thr', ...
-        'Callback',@(src,~) update_quality_threshold(fig,get(src,'Value')));
-
-    % --- Navigation ---
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Cellule suivante', ...
-        'Units','normalized','Position',[0.05 0.14 0.90 0.06], ...
-        'Callback',@(src,~) next_cell(fig));
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Cellule précédente', ...
-        'Units','normalized','Position',[0.05 0.20 0.90 0.06], ...
-        'Callback', @(src,~) prev_cell(fig));
+        'Callback', @(src,~) update_quality_threshold(fig, round(get(src,'Value'))));
 
     % --- Garder / Exclure cellule ---
     uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Garder cellule', ...
@@ -143,10 +172,17 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'BackgroundColor',[0.85 0.3 0.3], 'ForegroundColor','w', 'FontWeight','bold', ...
         'Callback', @(src,~) exclude_cell(fig));
 
-    % --- Terminer : calcule pics sur sélection finale + ferme ---
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Extraire les pics', ...
-    'Units','normalized','Position',[0.05 0.06 0.90 0.06], ...
-    'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
+    % --- Étape 1 : sélectionner cellules (filtrage >= seuil) ---
+    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Seuil de sélection', ...
+        'Units','normalized','Position',[0.05 0.10 0.90 0.06], ...
+        'BackgroundColor',[0.2 0.45 0.9], 'ForegroundColor','w','FontWeight','bold', ...
+        'Callback',@(src,~) enter_selection_mode(fig));
+    
+    % --- Étape 2 : confirmer (crée réellement les matrices) ---
+    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Confirmer sélection', ...
+        'Units','normalized','Position',[0.05 0.04 0.90 0.06], ...
+        'BackgroundColor',[0.1 0.6 0.35], 'ForegroundColor','w','FontWeight','bold', ...
+        'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
 
     % --- Contrôles détection ---
     make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.70 0.90 0.06]);
@@ -158,25 +194,83 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     ax1 = axes('Parent',fig,'Position',[0.28 0.60 0.70 0.33]); % un peu plus haut
     box(ax1,'on'); xlabel(ax1,'Frames'); ylabel(ax1,'\DeltaF/F (SavGol)');
     plot(ax1,NaN,NaN,'k-'); hold(ax1,'on');
-    
-    % ---- Axe déviation (bas, aligné X) ----
+
+    setappdata(fig,'deviation', deviation);
+    setappdata(fig,'bad_frames', bad_frames);
+    setappdata(fig,'focus_segs', focus_segs);
+
+    focus_segs = getappdata(fig,'focus_segs');
+    if ~isempty(focus_segs)
+        hBad1 = create_badframe_patch(ax1, focus_segs);
+        setappdata(fig,'hBadPatch_ax1', hBad1);
+    end
+
     axDev = axes('Parent',fig,'Position',[0.28 0.52 0.70 0.07]);
     box(axDev,'on'); ylabel(axDev,'Dev');
-    plot(axDev,NaN,NaN,'k-'); hold(axDev,'on');
-    set(axDev,'XTickLabel',[]); % optionnel: éviter doublon de labels
+    set(axDev,'XTickLabel',[]);
+    cla(axDev); hold(axDev,'on');
     
+    % trace deviation
+    dev = getappdata(fig,'deviation');   % ou directement deviation
+    dev = dev(:)'; 
+    tDev = 1:numel(dev);
+    
+    if ~isempty(dev)
+        hDev = plot(axDev, tDev, dev, 'k-','HitTest','off');
+        setappdata(fig,'hDev', hDev);
+    else
+        text(axDev,0.5,0.5,'deviation vide','Units','normalized','HorizontalAlignment','center');
+    end
+    
+    % y-lim robuste
+    dv = dev(isfinite(dev));
+    if ~isempty(dv)
+        lo = prctile(dv, 2);
+        hi = prctile(dv, 98);
+        if isfinite(lo) && isfinite(hi) && hi>lo
+            pad = 0.1*(hi-lo);
+            ylim(axDev, [lo-pad, hi+pad]);
+        end
+    end
+    
+    % patch bad frames (APRES ylim pour avoir la bonne hauteur)
+    focus_segs = getappdata(fig,'focus_segs'); % ou variable locale focus_segs
+    if ~isempty(focus_segs)
+        hBadDev = create_badframe_patch(axDev, focus_segs);
+        setappdata(fig,'hBadPatch_axDev', hBadDev);
+    end
+
+    % ylim robuste une fois (pour éviter que les patches changent de taille)
+    dv = deviation(isfinite(deviation));
+    if ~isempty(dv)
+        lo = prctile(dv, 2);
+        hi = prctile(dv, 98);
+        if isfinite(lo) && isfinite(hi) && hi>lo
+            pad = 0.1*(hi-lo);
+            ylim(axDev, [lo-pad, hi+pad]);
+        end
+    end
+
     setappdata(fig,'ax1',ax1);
     setappdata(fig,'axDev',axDev);
     
     % Lier les axes en X (navigation / zoom cohérents)
     linkaxes([ax1 axDev],'x');
 
+    % ---- Axe ROI zoom (bas milieu-gauche, à gauche de l'histogramme) ----
+    axROI = axes('Parent',fig,'Position',[0.28 0.08 0.30 0.32]);
+    box(axROI,'on');
+    title(axROI,'ROI (zoom)');
+    axis(axROI,'image');
+    setappdata(fig,'axROI', axROI);
+    
     % ---- Axe histogramme (bas droite) ----
     axH = axes('Parent',fig,'Position',[0.62 0.08 0.35 0.32]);
     box(axH,'on');
     title(axH,'# pics / cellule');
     xlabel(axH,'Nombre de pics');
     ylabel(axH,'Nombre de cellules');
+    setappdata(fig,'axH',axH);
 
     % ---- Stocker données ----
     setappdata(fig,'fs',fs);
@@ -188,17 +282,23 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     setappdata(fig,'SNR',SNR);
     setappdata(fig,'opts',opts);
     setappdata(fig,'ax1',ax1);
-    setappdata(fig,'quality_index', quality_index);
+    setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
+    setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
     setappdata(fig,'quality_min', quality_min);
     setappdata(fig,'quality_max', quality_max);
     setappdata(fig,'quality_thr', quality_thr0);
-    setappdata(fig,'axH',axH);
-    setappdata(fig,'deviation',deviation);
-    setappdata(fig,'bad_frames',bad_frames);
+    setappdata(fig,'axH', axH);
+    setappdata(fig,'selection_mode', false);
+    if isappdata(fig,'selection_thr_locked')
+        rmappdata(fig,'selection_thr_locked'); % évite qu'un lock ancien interfère
+    end
+    setappdata(fig,'iscell', iscell_in);
+    setappdata(fig,'stat',   stat_in);
+    setappdata(fig,'meanImg', meanImg);
 
     % cell_status: 0 undecided, +1 keep, -1 exclude
     nCells = size(F,1);
-    setappdata(fig,'cell_status', zeros(nCells,1));
+    setappdata(fig,'cell_status', zeros(size(F,1),1));
 
     update_quality_threshold(fig, quality_thr0);  % définit cell_id + refresh_data
     recompute_n_peaks_all(fig);
@@ -248,8 +348,14 @@ end
 
 
 %% ===================== DF PROCESSING (unique) =======================
-function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = ...
+function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = ...
     DF_processing(F, opts, fs)
+
+% DF_processing — VERSION "NAÏVE" POUR TEST (SANS FENÊTRE GLISSANTE)
+% Tri basé uniquement sur une estimation de "bruit" via MAD globale sur la trace lissée (DF_sg),
+% puis score = A / noise_sigma (pas de bulk, pas de résidu).
+%
+% Objectif: vérifier que ce tri est effectivement "moyen" vs résidu+bulk.
 
     % --------- Params ---------
     sg_win  = opts.savgol_win;
@@ -259,11 +365,6 @@ function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max
         fs = 20;
     end
 
-    % Fenêtre bruit (~0.25 s)
-    noise_window = round(0.25 * fs);
-    noise_window = max(11, min(41, noise_window));
-    if mod(noise_window,2)==0, noise_window = noise_window + 1; end
-
     snr_min_cap = 1e-3;
 
     % --- Step 1: baseline + dF/F ---
@@ -271,25 +372,29 @@ function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max
 
     [NCell, Nz] = size(DF);
 
-    noise_window = min(noise_window, Nz);
-    if mod(noise_window,2)==0, noise_window = max(1, noise_window-1); end
-
     DF_sg     = nan(NCell, Nz);
     noise_est = nan(NCell, Nz);
+    noise_sigma = nan(NCell, 1);   % <--- IMPORTANT: préallocation
 
-    % Fenêtre SavGol
+    % --- Fenêtre SavGol (impair, <= Nz, > sg_poly) ---
     sgN = max(sg_poly+2, round(sg_win));
     if mod(sgN,2)==0, sgN = sgN+1; end
-    sgN = min(sgN, Nz - (mod(Nz,2)==0));     % <= Nz et impair
+    if sgN > Nz
+        sgN = Nz - (mod(Nz,2)==0); % rend impair si Nz pair
+    end
     if sgN <= sg_poly
-        sgN = sg_poly + 1 + mod(sg_poly+1,2);
-        sgN = min(sgN, Nz - (mod(Nz,2)==0));
+        sgN = sg_poly + 2;
+        if mod(sgN,2)==0, sgN = sgN+1; end
+        if sgN > Nz
+            sgN = Nz - (mod(Nz,2)==0);
+        end
     end
 
+    % --- Step 2: SavGol + "bruit" MAD globale sur DF_sg ---
     for n = 1:NCell
         sig = DF(n,:);
 
-        % SavGol (lent + pics, lissé)
+        % SavGol
         sig_sg = sig;
         if all(isfinite(sig)) && sgN >= (sg_poly+2) && sgN <= Nz
             try
@@ -300,194 +405,49 @@ function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max
         end
         DF_sg(n,:) = sig_sg;
 
-        % ============================================================
-        % TEST "pas bon" : bruit = MAD locale sur le signal LISSÉ
-        % (donc ça mélange encore bruit rapide + variations lentes)
-        % movmad(...,1) = MAD (non-scalée) -> on met 1.4826 pour sigma
-        % ============================================================
-        mad_loc = movmad(sig_sg, noise_window, 1, 'omitnan'); % MAD locale
-        sigmad  = 1.4826 * mad_loc;                           % ~sigma si gaussien
-        sigmad(~isfinite(sigmad) | sigmad < 0) = NaN;
-        noise_est(n,:) = sigmad;
+        % ===== Bruit NAÏF : MAD globale sur la trace lissée =====
+        x = sig_sg;
+        m = median(x, 'omitnan');
+        ns = 1.4826 * median(abs(x - m), 'omitnan');
 
-        % ===== Ancienne version "résidu" (commentée) =====
-        % r = sig - sig_sg;
-        % med_r = movmedian(r, noise_window, 'omitnan');
-        % mad_r = movmedian(abs(r - med_r), noise_window, 'omitnan');
-        % noise_est(n,:) = 1.4826 * mad_r;
+        if ~isfinite(ns) || ns < snr_min_cap
+            ns = snr_min_cap;
+        end
+        noise_sigma(n,1) = ns;
+
+        % pour compat avec le reste du code : bruit constant dans le temps
+        noise_est(n,:) = ns;
     end
 
-    % ===== Résumé bruit par cellule =====
-    noise_sigma = median(noise_est, 2, 'omitnan');
-    noise_sigma(~isfinite(noise_sigma)) = snr_min_cap;
-    noise_sigma = max(noise_sigma, snr_min_cap);
-
-    % (optionnel) SNR “classique” juste pour inspection
-    pHi = 99.5;
-    A = prctile(DF_sg, pHi, 2) - prctile(DF_sg, 50, 2);
+    % --- Amplitude robuste des "pics" ---
+    A = prctile(DF_sg, 99.5, 2) - prctile(DF_sg, 50, 2);
     A(~isfinite(A) | A < 0) = 0;
-    SNR = A ./ noise_sigma;
 
-    % ============================================================
-    % SCORE basé UNIQUEMENT sur "bruit" (plus petit = meilleur)
-    % -> on inverse pour que grand = bon
-    % ============================================================
-    score = 1 ./ noise_sigma;         % cellule “propre” -> score ↑
+    % --- Score NAÏF ---
+    SNR   = A ./ noise_sigma;
+    SNR(~isfinite(SNR)) = 0;
+
+    score = max(0, SNR);
     score(~isfinite(score)) = 0;
+    
+    N = numel(score);
+    
+    % rang croissant : 1 = pire, N = meilleur
+    [~, idx_sort] = sort(score, 'ascend');
+    quality_rank = zeros(N,1);
+    quality_rank(idx_sort) = 1:N;
+    
+    % (optionnel) juste pour couleur/affichage si tu veux (0..1)
+    quality_index = (quality_rank - 1) / max(1, (N-1));
+    
+    % slider en "rang"
+    quality_min  = 1;
+    quality_max  = N;
+    quality_thr0 = round(0.5*N);
 
-    % --- Quality index (0..1) (normalisation robuste) ---
-    s_valid = score(score > 0 & isfinite(score));
-    if isempty(s_valid)
-        quality_index = zeros(NCell,1);
-        quality_min = 0; quality_max = 0; quality_thr0 = 0;
-        return;
-    end
-
-    s_lo = prctile(s_valid, 5);
-    s_hi = prctile(s_valid, 95);
-    if ~isfinite(s_hi) || s_hi <= s_lo
-        quality_index = zeros(NCell,1);
-        quality_min = 0; quality_max = 1; quality_thr0 = 0;
-        return;
-    end
-
-    quality_index = (score - s_lo) ./ (s_hi - s_lo);
-    quality_index = min(1, max(0, quality_index));
-
-    quality_min = 0;
-    quality_max = 1;
-    quality_thr0 = prctile(quality_index(isfinite(quality_index)), 25);
 end
 
-% function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = ...
-%     DF_processing(F, opts, fs)
-% 
-%     % --------- Params ---------
-%     sg_win  = opts.savgol_win;
-%     sg_poly = opts.savgol_poly;
-% 
-%     if nargin < 3 || isempty(fs) || ~isfinite(fs) || fs <= 0
-%         fs = 20;
-%     end
-% 
-%     % --- Fenêtre bruit (MAD sur résidu) : ~0.25 s ---
-%     noise_window = round(0.25 * fs);
-%     noise_window = max(11, min(41, noise_window));
-%     if mod(noise_window,2)==0, noise_window = noise_window + 1; end
-% 
-%     snr_min_cap  = 1e-3;
-% 
-%     % --- Step 1: baseline + dF/F ---
-%     [F0, DF] = baseline_calculation(F);
-% 
-%     [NCell, Nz] = size(DF);
-% 
-%     noise_window = min(noise_window, Nz);
-%     if mod(noise_window,2)==0, noise_window = max(1, noise_window-1); end
-% 
-%     DF_sg     = nan(NCell, Nz);
-%     noise_est = nan(NCell, Nz);
-% 
-%     % Fenêtre SavGol
-%     sgN = max(sg_poly+2, round(sg_win));
-%     if mod(sgN,2)==0, sgN = sgN+1; end
-%     sgN = min(sgN, Nz - (mod(Nz,2)==0));     % <= Nz et impair
-%     if sgN <= sg_poly
-%         sgN = sg_poly + 1 + mod(sg_poly+1,2); % assure > sg_poly et impair
-%         sgN = min(sgN, Nz - (mod(Nz,2)==0));
-%     end
-% 
-%     for n = 1:NCell
-%         sig = DF(n,:);
-% 
-%         % SavGol
-%         sig_sg = sig;
-%         if all(isfinite(sig)) && sgN >= (sg_poly+2) && sgN <= Nz
-%             try
-%                 sig_sg = sgolayfilt(sig, sg_poly, sgN);
-%             catch
-%                 sig_sg = sig;
-%             end
-%         else
-%             % si NaN : tu peux soit interpoler, soit garder brut
-%             % (ici: brut)
-%             sig_sg = sig;
-%         end
-%         DF_sg(n,:) = sig_sg;
-% 
-%         % Résidu après lissage
-%         r = sig - sig_sg;
-% 
-%         % sigma(t) via MAD locale sur r (ignore NaN)
-%         med_r = movmedian(r, noise_window, 'omitnan');
-%         mad_r = movmedian(abs(r - med_r), noise_window, 'omitnan');
-%         sigmad = 1.4826 * mad_r;
-% 
-%         sigmad(~isfinite(sigmad) | sigmad < 0) = NaN;
-%         noise_est(n,:) = sigmad;
-%     end
-% 
-%     % ===== Estimation globale bruit =====
-%     noise_sigma = median(noise_est, 2, 'omitnan');
-%     noise_sigma(~isfinite(noise_sigma)) = snr_min_cap;
-%     noise_sigma = max(noise_sigma, snr_min_cap);
-% 
-%     % Amplitude pic par rapport au bruit
-%     pHi = 99.5;
-%     A = prctile(DF_sg, pHi, 2) - prctile(DF_sg, 50, 2);
-%     A(~isfinite(A) | A < 0) = 0;
-% 
-%     % Bulk global (IQR)
-%     B = prctile(DF_sg, 75, 2) - prctile(DF_sg, 25, 2);
-%     B(~isfinite(B) | B <= 0) = NaN;
-% 
-%     % Plancher robuste sur B (évite explosions de P)
-%     B_valid = B(isfinite(B));
-%     if isempty(B_valid)
-%         B_floor = 1e-4;   % fallback dF/F
-%     else
-%         B_floor = prctile(B_valid, 5);
-%     end
-%     B = max(B, B_floor);
-% 
-%     % Scores
-%     SNR = A ./ noise_sigma;
-%     P   = A ./ B;
-% 
-%     P_thr  = 2.5;              % A doit être >= 2.5× bulk
-%     P_gain = max(0, P / P_thr);
-%     score  = SNR .* P_gain;
-% 
-%     % SNR → “est-ce que ça sort du bruit ?”
-%     % P = A/B → “est-ce que ce sont des pics nets ou juste une dérive lente (indépendamment du bruit rapide) ?”
-%     % P_gain → à quel point les pics dominent la structure lente => atout
-%     % ou pénalité
-% 
-%     % --- Quality index (0..1) à partir du score ---
-%     s = score;
-%     s(~isfinite(s)) = 0;
-%     s = max(0, s);
-% 
-%     s_valid = s(isfinite(s) & s > 0);
-% 
-%     if isempty(s_valid)
-%         quality_index  = zeros(size(s));
-%         quality_min = 0;
-%         quality_max  = 0;
-%         quality_thr0  = 0;
-%     else
-%         % Bornes robustes (tu peux mettre 1/99, 5/95 selon agressivité)
-%         quality_min_s  = prctile(s_valid, 5);
-%         quality_max_s  = prctile(s_valid, 95);
-% 
-%         % Évite division par ~0
-%         quality_index_s  = (s - quality_min_s) ./ (quality_max_s - quality_min_s);
-%         quality_index = min(1, max(0, quality_index_s));  % clamp [0,1]
-%         quality_min = 0;
-%         quality_max = 1;
-%         quality_thr0 = prctile(quality_index(isfinite(quality_index)), 25);
-%     end
-% end
+
 
 %% ===================== AUTO DETECT =======================
 function auto_detect_and_add(fig)
@@ -590,16 +550,21 @@ end
 function refresh_data(fig)
     DF_sg   = getappdata(fig,'DF_sg');
     cell_id = getappdata(fig,'cell_id');
-    ax      = getappdata(fig,'ax1');
+    
+    ax = getappdata(fig,'ax1');
 
-    % Axe déviation (peut ne pas exister si ancien fig)
-    axDev = [];
-    if isappdata(fig,'axDev')
-        axDev = getappdata(fig,'axDev');
+    % === clear léger : on garde le patch badframes s'il existe ===
+    hBad = [];
+    if isappdata(fig,'hBadPatch_ax1')
+        hBad = getappdata(fig,'hBadPatch_ax1');
     end
-
-    cla(ax);
-    if ~isempty(axDev) && ishghandle(axDev), cla(axDev); end
+    
+    kids = allchild(ax);
+    if ~isempty(hBad) && isgraphics(hBad)
+        delete(kids(kids ~= hBad));   % supprime tout sauf le patch
+    else
+        delete(kids);                 % sinon on supprime tout
+    end
 
     x = DF_sg(cell_id,:);
     x = x(:).';
@@ -608,48 +573,16 @@ function refresh_data(fig)
 
     xlim(ax,[1 max(1,T)]);
     plot(ax,t,x,'k-'); hold(ax,'on');
+
+    % --- mettre à jour la hauteur du bandeau (patch persistant) ---
+    if ~isempty(hBad) && isgraphics(hBad) && isappdata(fig,'focus_segs')
+        focus_segs = getappdata(fig,'focus_segs');
+        update_badframe_patch(hBad, focus_segs, ylim(ax));
+        uistack(hBad,'bottom');   % garantit que ça reste derrière
+    end
+
     xlabel(ax,'Frames'); ylabel(ax,'\DeltaF/F (SavGol)');
-
-    % --- Déviation (subplot du bas) ---
-    if ~isempty(axDev) && ishghandle(axDev)
-        dev = [];
-        if isappdata(fig,'deviation')
-            dev = getappdata(fig,'deviation');
-        end
-    
-        xlim(axDev,[1 max(1,T)]);
-        if ~isempty(dev)
-            dev = dev(:).';
-            if numel(dev) ~= T
-                dev = dev(1:min(end,T));
-                if numel(dev) < T, dev(end+1:T) = NaN; end
-            end
-            
-            %disp([numel(dev) T min(dev) max(dev)]);
-            plot(axDev,t,dev,'k-'); hold(axDev,'on');
-    
-            % === scaling robuste pour voir la trace ===
-            dv = dev(isfinite(dev));
-            if ~isempty(dv)
-                plot(axDev, t, dev, 'k-'); hold(axDev,'on');
-                ylim(axDev,'auto');    % <-- laisse MATLAB gérer
-            end
-        end
-    
-        ylabel(axDev,'Dev');
-        box(axDev,'on');
-    end
-
-
-    % --- Bandeaux bad frames sur les deux axes ---
-    if isappdata(fig,'bad_frames')
-        bad_frames = getappdata(fig,'bad_frames');
-        draw_badframe_bands(ax, bad_frames, T);
-        if ~isempty(axDev) && ishghandle(axDev)
-            draw_badframe_bands(axDev, bad_frames, T);
-        end
-    end
-
+   
     % Pics + intervalles
     if isappdata(fig,'auto_peaks') && isappdata(fig,'auto_intervals')
         auto_peaks = getappdata(fig,'auto_peaks');
@@ -692,36 +625,37 @@ function refresh_data(fig)
     end
 
     % Indicateur de qualité + statut keep/exclude
-    if isappdata(fig,'quality_index')
-        quality_index = getappdata(fig,'quality_index');
-        cid = getappdata(fig,'cell_id');
-        qval = quality_index(cid);
-
-        % Couleur basée sur q (0..1)
-        if qval >= 0.75
-            qcolor = [0.0 0.6 0.0];    % vert foncé
-            qstyle = 'bold';
-        elseif qval >= 0.55
-            qcolor = [0.2 0.7 0.2];    % vert clair
-            qstyle = 'normal';
-        elseif qval >= 0.35
-            qcolor = [0.9 0.6 0.1];    % orange
-            qstyle = 'normal';
-        else
-            qcolor = [0.8 0.0 0.0];    % rouge
-            qstyle = 'bold';
-        end
-
-        yMax = max(x,[],'omitnan');
-        yMin = min(x,[],'omitnan');
-        if ~isfinite(yMax), yMax = 1; end
-        if ~isfinite(yMin), yMin = 0; end
-        yPos = yMax - 0.05*(yMax - yMin);
-
-        text(ax, 0.02*max(1,length(x)), yPos, sprintf('Qualité = %.2f %s', qval), ...
-            'Color', qcolor, 'FontSize', 12, 'FontWeight', qstyle, ...
-            'BackgroundColor',[1 1 1 0.6], 'Margin', 3);
-    end
+    % if isappdata(fig,'quality_index')
+    %     quality_index = getappdata(fig,'quality_index');
+    %     cid = getappdata(fig,'cell_id');
+    %     qval = quality_index(cid);
+    % 
+    %     % Couleur basée sur q (0..1)
+    %     if qval >= 0.75
+    %         qcolor = [0.0 0.6 0.0];    % vert foncé
+    %         qstyle = 'bold';
+    %     elseif qval >= 0.55
+    %         qcolor = [0.2 0.7 0.2];    % vert clair
+    %         qstyle = 'normal';
+    %     elseif qval >= 0.35
+    %         qcolor = [0.9 0.6 0.1];    % orange
+    %         qstyle = 'normal';
+    %     else
+    %         qcolor = [0.8 0.0 0.0];    % rouge
+    %         qstyle = 'bold';
+    %     end
+    % 
+    %     yMax = max(x,[],'omitnan');
+    %     yMin = min(x,[],'omitnan');
+    %     if ~isfinite(yMax), yMax = 1; end
+    %     if ~isfinite(yMin), yMin = 0; end
+    %     yPos = yMax - 0.05*(yMax - yMin);
+    % 
+    %     text(ax, 0.02*max(1,length(x)), yPos, sprintf('Qualité = %.2f %s', qval), ...
+    %         'Color', qcolor, 'FontSize', 12, 'FontWeight', qstyle, ...
+    %         'BackgroundColor',[1 1 1 0.6], 'Margin', 3);
+    % end
+    update_roi_zoom(fig);
 end
 
 
@@ -742,6 +676,12 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
         quality_index = getappdata(fig, 'quality_index');
     else
         quality_index = ones(nCells,1);
+    end
+    
+    if isappdata(fig, 'quality_rank')
+        quality_rank = getappdata(fig, 'quality_rank');
+    else
+        quality_rank = (1:nCells).'; % fallback
     end
 
     % Statut manuel
@@ -777,12 +717,12 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
         if isappdata(fig,'quality_thr')
             qthr = getappdata(fig,'quality_thr');   % valeur du slider
         end
-        if ~force_keep && quality_index(cid) < qthr % le seuil utilisé pour extraire les pics est celui du slider.
+        if ~force_keep && quality_rank(cid) < qthr % le seuil utilisé pour extraire les pics est celui du slider.
             Acttmp2{cid} = [];
             thresholds(cid) = NaN;
             Raster(cid,:) = false;
             DF_sg(cid,:) = NaN;
-            fprintf('Cellule %d ignorée (qualité %.2f ≤ %.2f)\n', cid, quality_index(cid), qthr);
+            fprintf('Cellule %d ignorée (rank %d < %d)\n', cid, quality_rank(cid), qthr);
             continue;
         end
 
@@ -923,34 +863,107 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
 end
 
 %% ===================== QUALITY THRESHOLD / TRI =======================
-function update_quality_threshold(fig, thr)
-    quality_index = getappdata(fig,'quality_index');
-    cell_status   = getappdata(fig,'cell_status');
+function update_quality_threshold(fig, thr_slider)
+% update_quality_threshold
+% - Mode normal : thr_slider = seuil (rank min), affiche la cellule cutoff (pire gardée)
+% - Mode sélection : seuil figé (= selection_thr_locked), thr_slider = index de navigation
 
-    % on ne navigue pas sur les cellules exclues manuellement
-    valid_cells = find((quality_index >= thr) & (cell_status ~= -1));
+    % --- récup ---
+    if ~isappdata(fig,'quality_rank')
+        error('quality_rank non trouvé dans appdata.');
+    end
+    quality_rank = getappdata(fig,'quality_rank');   % 1..N (1=pire, N=meilleur)
+    N = numel(quality_rank);
 
+    if isappdata(fig,'cell_status')
+        cell_status = getappdata(fig,'cell_status'); % -1 exclu, +1 keep, 0 neutre
+    else
+        cell_status = zeros(N,1);
+    end
+
+    % --- selection_mode robuste ---
+    selection_mode = isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode'));
+
+    % slider entier
+    thr_slider = round(thr_slider);
+
+    % ============================================================
+    % MODE SÉLECTION : seuil FIXE (lock), slider = NAVIGATION (index)
+    % ============================================================
+    if selection_mode && isappdata(fig,'selection_thr_locked')
+    
+        order_cells = getappdata(fig,'order_cells');
+        if isempty(order_cells), return; end
+    
+        idx = max(1, min(numel(order_cells), round(thr_slider)));
+        new_cid = order_cells(idx);
+    
+        setappdata(fig,'cell_index_in_order', idx);
+        setappdata(fig,'cell_id', new_cid);
+    
+        lbl = findobj(fig,'Tag','lbl_quality_thr');
+        if ~isempty(lbl)
+            lbl.String = sprintf('MODE SÉLECTION — navigation (%d / %d)', idx, numel(order_cells));
+        end
+    
+        setappdata(fig,'auto_intervals', []);
+        if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
+        auto_detect_and_add(fig);
+        refresh_data(fig);
+        update_peak_histogram(fig);
+        return;
+    end
+
+    % ============================================================
+    % MODE NORMAL : slider = SEUIL (rank min), affiche la cutoff
+    % ============================================================
+
+    % clamp seuil
+    thr_eff = max(1, min(N, thr_slider));
+
+    % si pas en sélection -> supprimer lock résiduel
+    if ~selection_mode && isappdata(fig,'selection_thr_locked')
+        rmappdata(fig,'selection_thr_locked');
+    end
+
+    % cellules éligibles (rank >= seuil)
+    valid_cells = find((quality_rank >= thr_eff) & (cell_status ~= -1));
+
+    % label
     lbl = findobj(fig,'Tag','lbl_quality_thr');
-    if ~isempty(lbl), lbl.String = sprintf('Quality threshold = %.2f',thr); end
+    if ~isempty(lbl)
+        lbl.String = sprintf('Rang minimum = %d', thr_eff);
+    end
 
     ax = getappdata(fig,'ax1');
 
     if isempty(valid_cells)
         setappdata(fig,'order_cells', []);
         setappdata(fig,'cell_index_in_order', []);
-        cla(ax);
-        title(ax, sprintf('Aucune cellule avec Quality >= %.2f (hors exclues)',thr));
+        if ~isempty(ax) && ishghandle(ax)
+            cla(ax);
+            title(ax, sprintf('Aucune cellule avec rang >= %d', thr_eff));
+        end
         drawnow;
         return;
     end
 
-    [~, ord] = sort(quality_index(valid_cells),'ascend');
+    % ordre : meilleur -> pire
+    [~, ord] = sort(quality_rank(valid_cells), 'descend');
     order_cells = valid_cells(ord);
-
     setappdata(fig,'order_cells', order_cells);
-    setappdata(fig,'cell_index_in_order', 1);
-    setappdata(fig,'cell_id', order_cells(1));
-    setappdata(fig,'quality_thr', thr);
+
+    % en mode normal : afficher la cellule cutoff = pire parmi gardées = FIN de liste
+    idx = numel(order_cells);
+    new_cid = order_cells(idx);
+
+    setappdata(fig,'cell_index_in_order', idx);
+    setappdata(fig,'cell_id', new_cid);
+
+    % stocker seuil
+    setappdata(fig,'quality_thr', thr_eff);
+
+    % reset détection auto
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
 
@@ -959,37 +972,125 @@ function update_quality_threshold(fig, thr)
     update_peak_histogram(fig);
 end
 
-
 %% ===================== NAVIGATION =======================
 function next_cell(fig)
-    order_cells = getappdata(fig,'order_cells');
-    if isempty(order_cells), return; end
-    cur_idx = getappdata(fig,'cell_index_in_order');
-    if isempty(cur_idx), cur_idx = 1; end
-    if cur_idx < numel(order_cells), cur_idx = cur_idx + 1; end
-    setappdata(fig,'cell_index_in_order', cur_idx);
-    setappdata(fig,'cell_id', order_cells(cur_idx));
+
+    % --- seuil courant (ENTIER + clamp) ---
+    if isappdata(fig,'quality_rank')
+        N = numel(getappdata(fig,'quality_rank'));
+    else
+        return;
+    end
+
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr)
+        thr = round(get(sldr,'Value'));
+    elseif isappdata(fig,'quality_thr')
+        thr = round(getappdata(fig,'quality_thr'));
+    else
+        thr = 1;
+    end
+    thr = max(1, min(N, thr));
+
+    % --- ordre ---
+    order_cells = compute_order_cells(fig, thr);
+    setappdata(fig,'order_cells', order_cells);
+    if isempty(order_cells)
+        return;
+    end
+
+    % --- cellule courante ---
+    cid = [];
+    if isappdata(fig,'cell_id'), cid = getappdata(fig,'cell_id'); end
+    if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid))
+        cid = order_cells(1);
+    else
+        cid = round(cid);
+    end
+
+    % --- position ---
+    idx = find(order_cells == cid, 1);
+    if isempty(idx)
+        idx = numel(order_cells);  % repartir de la cutoff (pire gardée)
+    end
+
+    % --- avancer ---
+    idx = min(idx + 1, numel(order_cells));
+    new_cid = order_cells(idx);
+
+    % --- set ---
+    setappdata(fig,'cell_index_in_order', idx);
+    setappdata(fig,'cell_id', new_cid);
+
+    % reset détection auto
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
+    if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
+
     auto_detect_and_add(fig);
     refresh_data(fig);
     update_peak_histogram(fig);
 end
 
 function prev_cell(fig)
-    order_cells = getappdata(fig,'order_cells');
-    if isempty(order_cells), return; end
-    cur_idx = getappdata(fig,'cell_index_in_order');
-    if isempty(cur_idx), cur_idx = 1; end
-    if cur_idx > 1, cur_idx = cur_idx - 1; end
-    setappdata(fig,'cell_index_in_order', cur_idx);
-    setappdata(fig,'cell_id', order_cells(cur_idx));
+
+    % --- seuil courant (ENTIER + clamp) ---
+    if isappdata(fig,'quality_rank')
+        N = numel(getappdata(fig,'quality_rank'));
+    else
+        return;
+    end
+
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr)
+        thr = round(get(sldr,'Value'));
+    elseif isappdata(fig,'quality_thr')
+        thr = round(getappdata(fig,'quality_thr'));
+    else
+        thr = 1;
+    end
+    thr = max(1, min(N, thr));
+
+    % --- ordre ---
+    order_cells = compute_order_cells(fig, thr);
+    setappdata(fig,'order_cells', order_cells);
+    if isempty(order_cells)
+        return;
+    end
+
+    % --- cellule courante ---
+    cid = [];
+    if isappdata(fig,'cell_id'), cid = getappdata(fig,'cell_id'); end
+    if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid))
+        cid = order_cells(1);
+    else
+        cid = round(cid);
+    end
+
+    % --- position ---
+    idx = find(order_cells == cid, 1);
+    if isempty(idx)
+        idx = 1;
+    end
+
+    % --- reculer ---
+    idx = max(idx - 1, 1);
+    new_cid = order_cells(idx);
+
+    % --- set ---
+    setappdata(fig,'cell_index_in_order', idx);
+    setappdata(fig,'cell_id', new_cid);
+
+    % reset détection auto
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
+    if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
+
     auto_detect_and_add(fig);
     refresh_data(fig);
     update_peak_histogram(fig);
 end
+
 
 function navigate_cells(fig, evnt)
     switch evnt.Key
@@ -1005,7 +1106,12 @@ function keep_cell(fig)
     st  = getappdata(fig,'cell_status');
     st(cid) = +1;
     setappdata(fig,'cell_status', st);
-    next_cell(fig);
+
+    if isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode'))
+        refresh_selection_order(fig);
+    else
+        next_cell(fig);
+    end
 end
 
 function exclude_cell(fig)
@@ -1013,20 +1119,34 @@ function exclude_cell(fig)
     st  = getappdata(fig,'cell_status');
     st(cid) = -1;
     setappdata(fig,'cell_status', st);
-    next_cell(fig);
+
+    % Update live si mode sélection, sinon navigation normale
+    if isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode'))
+        refresh_selection_order(fig);
+    else
+        next_cell(fig);
+    end
 end
+
 
 function finalize_and_close(fig, synchronous_frames)
     [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
+    
+    % mapping : index original -> index dans matrices compactées
+    orig2new = nan(max(valid_cells),1);
+    orig2new(valid_cells) = 1:numel(valid_cells);
 
     if iscell(Acttmp2) && size(Acttmp2,2) > 1, Acttmp2 = reshape(Acttmp2, [], 1); end
     if iscell(StartEnd) && size(StartEnd,2) > 1, StartEnd = reshape(StartEnd, [], 1); end
 
     setappdata(fig,'last_save_outputs', struct( ...
-        'invalid_cells', invalid_cells, 'valid_cells', valid_cells, 'DF_sg', DF_sg, 'F0', F0, ...
-        'Raster', Raster, 'Acttmp2', {Acttmp2}, 'StartEnd', {StartEnd}, 'MAct', MAct, ...
-        'thresholds', thresholds, 'opts', opts, 'summary', summary));
+        'invalid_cells', invalid_cells, ...
+        'valid_cells', valid_cells, ...
+        'orig2new', orig2new, ...          % <--- AJOUT
+        'DF_sg', DF_sg, 'F0', F0, ...
+        'Raster', Raster, 'Acttmp2', {Acttmp2}, 'StartEnd', {StartEnd}, ...
+        'MAct', MAct, 'thresholds', thresholds, 'opts', opts, 'summary', summary));
 
     if ishghandle(fig)
         uiresume(fig);
@@ -1086,14 +1206,15 @@ function update_param(fig, field, value)
     % Si savgol_win change: recalcul DF_sg, noise, SNR + MAJ slider qualité
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
-        [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
+        [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
 
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
         setappdata(fig,'F0', F0);
         setappdata(fig,'noise_est', noise_est);
         setappdata(fig,'SNR', SNR);
-        setappdata(fig,'quality_index', quality_index);
+        setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
+        setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
 
         sldr = findobj(fig,'Tag','sldr_quality_thr');
         if ~isempty(sldr)
@@ -1255,12 +1376,93 @@ function update_peak_histogram(fig)
     box(axH,'on');
 end
 
-function draw_badframe_bands(ax, bad_frames, T)
-    if isempty(ax) || ~ishghandle(ax) || T <= 0, return; end
+function enter_selection_mode(fig)
 
-    % bad_frames peut être:
-    % - logique 1xT / Tx1
-    % - indices (vector)
+    setappdata(fig,'selection_mode', true);
+
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    thr_lock = round(get(sldr,'Value'));
+    setappdata(fig,'selection_thr_locked', thr_lock);
+
+    % ordre "normal" (meilleur -> pire)
+    order_cells = compute_order_cells(fig, thr_lock);
+    if isempty(order_cells)
+        return;
+    end
+
+    % >>> INVERSION pour que 1 = cutoff (pire) et fin = meilleur
+    order_cells = flipud(order_cells(:));
+
+    setappdata(fig,'order_cells', order_cells);
+
+    % slider devient un slider d'INDEX et démarre au début (= cutoff)
+    n = numel(order_cells);
+    set(sldr,'Min',1,'Max',n,'Value',1);
+    step = 1/max(1,n-1);
+    set(sldr,'SliderStep',[step min(1,10*step)]);
+
+    % afficher la 1ère cellule (cutoff)
+    setappdata(fig,'cell_index_in_order', 1);
+    setappdata(fig,'cell_id', order_cells(1));
+
+    update_quality_threshold(fig, 1);
+end
+
+
+function order_cells = compute_order_cells(fig, thr_slider)
+
+    % --- récup depuis appdata ---
+    if isappdata(fig,'quality_rank')
+        quality_rank = getappdata(fig,'quality_rank');   % 1..N (1=pire, N=meilleur)
+    else
+        order_cells = [];
+        return;
+    end
+
+    if isappdata(fig,'cell_status')
+        cell_status = getappdata(fig,'cell_status');     % -1 exclu, +1 keep, 0 neutre
+    else
+        cell_status = zeros(numel(quality_rank),1);
+    end
+
+    % --- selection_mode ? ---
+    selection_mode = isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode'));
+
+    % --- seuil effectif (lock seulement si sélection) ---
+    thr_slider = round(thr_slider);
+    thr_eff = thr_slider;
+
+    if selection_mode && isappdata(fig,'selection_thr_locked')
+        thr_lock = round(getappdata(fig,'selection_thr_locked'));
+        thr_eff = max(thr_slider, thr_lock);   % lock : empêche de descendre sous le lock
+    end
+
+    % --- cellules éligibles : rank >= thr_eff (meilleures) ---
+    valid_cells = find((quality_rank >= thr_eff) & (cell_status ~= -1));
+
+    if selection_mode
+        valid_cells = union(valid_cells, find(cell_status == +1));  % keep toujours
+        valid_cells = setdiff(valid_cells, find(cell_status == -1));% exclu jamais
+    end
+
+    if isempty(valid_cells)
+        order_cells = [];
+        return;
+    end
+
+    % --- ordre : meilleur -> pire ---
+    [~, ord] = sort(quality_rank(valid_cells), 'descend');
+    order_cells = valid_cells(ord);
+end
+
+
+
+function segs = badframes_to_segments(bad_frames, T)
+    if isempty(bad_frames) || T<=0
+        segs = zeros(0,2);
+        return;
+    end
+
     if islogical(bad_frames)
         bf = bad_frames(:).';
         if numel(bf) ~= T
@@ -1275,39 +1477,495 @@ function draw_badframe_bands(ax, bad_frames, T)
         idx = idx(idx>=1 & idx<=T);
     end
 
-    if isempty(idx), return; end
+    if isempty(idx)
+        segs = zeros(0,2);
+        return;
+    end
 
-    % Convertir idx en segments contigus [start end]
     d = diff(idx);
     cuts = [1 find(d>1)+1 numel(idx)+1];
+
     segs = zeros(numel(cuts)-1,2);
     for k=1:numel(cuts)-1
         a = idx(cuts(k));
         b = idx(cuts(k+1)-1);
         segs(k,:) = [a b];
     end
+end
 
+function h = create_badframe_patch(ax, segs)
+    if isempty(segs) || isempty(ax) || ~ishghandle(ax)
+        h = gobjects(1);
+        return;
+    end
+
+    % patch multi-rectangles (X/Y contiennent des NaN entre rectangles)
     yl = ylim(ax);
+    [X, Y] = segs_to_patchXY(segs, yl);
+
+    h = patch(ax, X, Y, [1 0 0], ...
+        'FaceAlpha', 0.25, ...
+        'EdgeColor', 'none', ...
+        'HitTest', 'off');
+
+    set(h,'XLimInclude','off','YLimInclude','off');
+    uistack(h,'bottom');
+end
+
+function update_badframe_patch(h, segs, yl)
+    if isempty(h) || ~isgraphics(h) || isempty(segs) || numel(yl)~=2
+        return;
+    end
+    [X, Y] = segs_to_patchXY(segs, yl);
+    set(h, 'XData', X, 'YData', Y);
+end
+
+function [X, Y] = segs_to_patchXY(segs, yl)
     y0 = yl(1); y1 = yl(2);
 
-    % bandeau rouge transparent (sans bord)
-    for k=1:size(segs,1)
+    n = size(segs,1);
+    X = nan(1, 5*n);
+    Y = nan(1, 5*n);
+
+    for k=1:n
         a = segs(k,1);
         b = segs(k,2);
 
-        h = patch(ax, [a b b a], [y0 y0 y1 y1], [1 0 0], ...   % rouge pur
-        'FaceAlpha', 0.30, ...                              % << plus visible (0.25–0.4)
-        'EdgeColor', [0.6 0 0], ...                         % bordure rouge foncé
-        'LineWidth', 0.6, ...
-        'HitTest','off');
-    
-        set(h,'XLimInclude','off','YLimInclude','off');
-        uistack(h,'bottom');      
-        
-        % Le bandeau ne doit PAS influencer les limites auto
-        set(h, 'XLimInclude','off', 'YLimInclude','off');
-        
-        % Bandeau derrière la courbe
-        uistack(h,'bottom');   
+        ii = (k-1)*5 + (1:5);
+        X(ii) = [a b b a a];
+        Y(ii) = [y0 y0 y1 y1 y0];
     end
+end
+
+function refresh_selection_order(fig)
+    % Ne fait quelque chose que si on est en mode sélection
+    if ~(isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode')))
+        return;
+    end
+    if ~isappdata(fig,'selection_thr_locked')
+        return;
+    end
+
+    thr_lock = round(getappdata(fig,'selection_thr_locked'));
+
+    % Recalcule order_cells (même logique que compute_order_cells + inversion si tu l’utilises)
+    order_cells = compute_order_cells(fig, thr_lock);   % renvoie meilleur -> pire
+    if isempty(order_cells)
+        % plus rien à naviguer
+        setappdata(fig,'order_cells', []);
+        sldr = findobj(fig,'Tag','sldr_quality_thr');
+        if ~isempty(sldr) && isgraphics(sldr)
+            set(sldr,'Min',1,'Max',1,'Value',1,'SliderStep',[1 1]);
+        end
+        lbl = findobj(fig,'Tag','lbl_quality_thr');
+        if ~isempty(lbl)
+            lbl.String = sprintf('MODE SÉLECTION — navigation (0 / 0)');
+        end
+        return;
+    end
+
+    % >>> si en sélection tu avais inversé l’ordre (cutoff -> meilleurs)
+    order_cells = flipud(order_cells(:));              % cutoff d'abord
+
+    old_order = [];
+    if isappdata(fig,'order_cells'), old_order = getappdata(fig,'order_cells'); end
+    old_idx = 1;
+    if isappdata(fig,'cell_index_in_order'), old_idx = round(getappdata(fig,'cell_index_in_order')); end
+    old_idx = max(1, old_idx);
+
+    % cellule courante si possible
+    cid = [];
+    if isappdata(fig,'cell_id'), cid = getappdata(fig,'cell_id'); end
+
+    % Choisir nouvel index :
+    % 1) si cid encore présent => rester dessus
+    % 2) sinon => garder old_idx clampé sur la nouvelle taille
+    if ~isempty(cid)
+        idx = find(order_cells == cid, 1);
+    else
+        idx = [];
+    end
+    if isempty(idx)
+        idx = min(old_idx, numel(order_cells));
+    end
+
+    % Stock
+    setappdata(fig,'order_cells', order_cells);
+    setappdata(fig,'cell_index_in_order', idx);
+    setappdata(fig,'cell_id', order_cells(idx));
+
+    % Update slider (index)
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr)
+        n = numel(order_cells);
+        set(sldr,'Min',1,'Max',n,'Value',idx);
+        step = 1/max(1,n-1);
+        set(sldr,'SliderStep',[step min(1,10*step)]);
+    end
+
+    % Label
+    lbl = findobj(fig,'Tag','lbl_quality_thr');
+    if ~isempty(lbl)
+        lbl.String = sprintf('MODE SÉLECTION — navigation (%d / %d)', idx, numel(order_cells));
+    end
+
+    % Refresh affichage
+    setappdata(fig,'auto_intervals', []);
+    if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
+    auto_detect_and_add(fig);
+    refresh_data(fig);
+    update_peak_histogram(fig);
+end
+
+function update_roi_zoom(fig)
+% update_roi_zoom
+% Affiche la meanImg zoomée autour de la cellule courante (cid) avec
+% contraste local (basé sur le crop) + contour Suite2p via xext/yext.
+%
+% Pré-requis appdata:
+%   'axROI'   : axes
+%   'meanImg' : image moyenne (H x W) numérique
+%   'stat'    : stat (cell/struct/py.list)
+%   'cell_id' : index cellule (1-based)
+
+    if ~isappdata(fig,'axROI'), return; end
+    ax = getappdata(fig,'axROI');
+    if isempty(ax) || ~ishghandle(ax), return; end
+
+    % --- meanImg ---
+    meanImg = [];
+    if isappdata(fig,'meanImg')
+        meanImg = getappdata(fig,'meanImg');
+    end
+    if isempty(meanImg) || ~(isnumeric(meanImg) || islogical(meanImg))
+        cla(ax);
+        title(ax,'ROI (zoom)');
+        text(ax,0.5,0.5,'meanImg non disponible/numérique', ...
+            'Units','normalized','HorizontalAlignment','center');
+        return;
+    end
+    meanImg = double(meanImg);
+
+    % --- cid ---
+    if ~isappdata(fig,'cell_id')
+        cla(ax); imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image');
+        set(ax,'YDir','reverse'); title(ax,'ROI (zoom)');
+        return;
+    end
+    cid = round(getappdata(fig,'cell_id'));
+
+    % --- stat ---
+    if ~isappdata(fig,'stat')
+        cla(ax);
+        imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image'); set(ax,'YDir','reverse');
+        title(ax, sprintf('Cell %d — stat absent', cid));
+        return;
+    end
+    stat_in = getappdata(fig,'stat');
+
+    % ============================================================
+    % 1) Extraire contour xext/yext (0-based -> 1-based)
+    % ============================================================
+    [xext, yext] = get_xext_yext(stat_in, cid);
+
+    cla(ax); hold(ax,'on');
+
+    if isempty(xext) || isempty(yext) || numel(xext) < 3
+        % fallback: juste afficher meanImg entier si pas de contour
+        imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image');
+        set(ax,'YDir','reverse');
+        title(ax, sprintf('Cellule %d — xext/yext vide', cid));
+        hold(ax,'off');
+        return;
+    end
+
+    % fermer le contour
+    xext = xext(:); yext = yext(:);
+    if xext(1) ~= xext(end) || yext(1) ~= yext(end)
+        xext(end+1) = xext(1);
+        yext(end+1) = yext(1);
+    end
+
+    % ============================================================
+    % 2) Définir bbox + crop (zoom)
+    % ============================================================
+    pad = 12;
+
+    xmin = floor(min(xext)) - pad;
+    xmax = ceil(max(xext)) + pad;
+    ymin = floor(min(yext)) - pad;
+    ymax = ceil(max(yext)) + pad;
+
+    [H,W] = size(meanImg);
+    xmin = max(1, xmin); xmax = min(W, xmax);
+    ymin = max(1, ymin); ymax = min(H, ymax);
+
+    cropImg = meanImg(ymin:ymax, xmin:xmax);
+
+    % ============================================================
+    % 3) Contraste local (sur crop uniquement)
+    % ============================================================
+    v = cropImg(isfinite(cropImg));
+    if isempty(v)
+        lo = min(cropImg(:)); hi = max(cropImg(:));
+    else
+        lo = prctile(v, 5);
+        hi = prctile(v, 99.5);
+        if ~isfinite(lo) || ~isfinite(hi) || hi <= lo
+            lo = min(v); hi = max(v);
+        end
+    end
+
+    % afficher le crop avec CLim local
+    imagesc(ax, cropImg);
+    colormap(ax, gray);
+    axis(ax, 'image');
+    set(ax,'YDir','reverse');
+    clim(ax, [lo hi]);
+
+    % ============================================================
+    % 4) Recaler contour en coordonnées du crop et tracer
+    % ============================================================
+    % 1) Construire masque pixel-wise
+    H = ymax - ymin + 1;
+    W = xmax - xmin + 1;
+    mask = false(H, W);
+    
+    % coordonnées locales
+    xloc = round(xext - (xmin - 1));
+    yloc = round(yext - (ymin - 1));
+    
+    valid = xloc>=1 & xloc<=W & yloc>=1 & yloc<=H;
+    idx = sub2ind([H W], yloc(valid), xloc(valid));
+    mask(idx) = true;
+    
+    % 2) Nettoyage léger
+    mask = imclose(mask, strel('disk',1));
+    mask = bwareaopen(mask, 10);   % enlève pixels dégénérés
+    
+    % 3) Extraire contour
+    B = bwboundaries(mask, 'noholes');
+    
+    if ~isempty(B)
+        boundary = B{1};
+        yb = boundary(:,1);
+        xb = boundary(:,2);
+    
+        % 4) Tracé propre
+        plot(ax, xb, yb, 'k-', 'LineWidth', 4);
+        plot(ax, xb, yb, 'r-', 'LineWidth', 2.5);
+    end
+
+    title(ax, sprintf('Cellule %d — ROI zoom (contraste local)', cid));
+    hold(ax,'off');
+end
+
+
+function [x, y] = get_xext_yext(stat_in, cid)
+% Retourne xext,yext en 1-based MATLAB, vide si introuvable.
+
+    x = []; y = [];
+    if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid) && cid>=1)
+        return;
+    end
+
+    try
+        if isa(stat_in,'py.list')
+            if cid > int64(length(stat_in)), return; end
+            s = stat_in{py.int(cid-1)};
+
+            % xext/yext
+            if isKey(s, 'xext') && isKey(s, 'yext')
+                x = double(s{'xext'}) + 1;
+                y = double(s{'yext'}) + 1;
+            else
+                return;
+            end
+
+        elseif iscell(stat_in)
+            if cid > numel(stat_in), return; end
+            s = stat_in{cid};
+            if isfield(s,'xext') && isfield(s,'yext')
+                x = double(s.xext) + 1;
+                y = double(s.yext) + 1;
+            else
+                return;
+            end
+
+        else % struct array
+            if cid > numel(stat_in), return; end
+            s = stat_in(cid);
+            if isfield(s,'xext') && isfield(s,'yext')
+                x = double(s.xext) + 1;
+                y = double(s.yext) + 1;
+            else
+                return;
+            end
+        end
+
+        % sécurité
+        x = x(:); y = y(:);
+        good = isfinite(x) & isfinite(y);
+        x = x(good); y = y(good);
+
+    catch
+        x = []; y = [];
+    end
+end
+
+function [user_segs, user_frames] = enter_observed_deviations(tifPath, T)
+% enter_observed_deviations
+% Indique à l'utilisateur quel TIFF ouvrir dans Fiji (manuellement),
+% puis récupère une saisie de FRAMES uniquement (ex: 120:140).
+%
+% Inputs:
+%   tifPath : chemin complet vers le .tif (ex: cam_crop.tif)
+%   T       : nombre total de frames (optionnel)
+%
+% Outputs:
+%   user_segs   : Nx2 segments [start end]
+%   user_frames : frames uniques triées
+
+    if nargin < 1
+        error('Usage: [user_segs,user_frames] = enter_observed_deviations(tifPath,T)');
+    end
+    if nargin < 2, T = []; end
+
+    if ~exist(tifPath,'file')
+        error('TIFF introuvable : %s', tifPath);
+    end
+
+    fprintf('\n=== OUVRIR MANUELLEMENT DANS FIJI ===\n');
+    fprintf('Fichier TIFF :\n%s\n\n', tifPath);
+    fprintf('Ouvre ce fichier dans Fiji, observe les déviations,\n');
+    fprintf('puis reviens ici pour entrer les frames correspondantes.\n\n');
+
+    fprintf('Entrée attendue (FRAMES uniquement) :\n');
+    fprintf('  ex: 120:140\n');
+    fprintf('      [120:140 300:320]\n');
+    fprintf('[] si aucune déviation.\n\n');
+
+    x = input('Frames observées = ');
+
+    % --- Aucun ---
+    if isempty(x)
+        fprintf('Aucune déviation saisie.\n');
+        user_segs = zeros(0,2);
+        user_frames = [];
+        return;
+    end
+
+    % --- Validation stricte ---
+    if ~isnumeric(x) || ~isvector(x)
+        error('Entrée invalide: entrer UNIQUEMENT un vecteur de frames.');
+    end
+
+    % Nettoyage
+    fr = round(x(:).');
+    fr = fr(isfinite(fr));
+
+    if ~isempty(T)
+        fr = fr(fr>=1 & fr<=T);
+    else
+        fr = fr(fr>=1);
+    end
+
+    fr = unique(fr);
+
+    % Conversion frames -> segments
+    user_segs = frames_to_segments(fr);
+    user_frames = fr;
+
+    fprintf('\n=== Enregistré ===\n');
+    fprintf('Segments détectés: %d\n', size(user_segs,1));
+    if ~isempty(user_segs)
+        disp(user_segs);
+    end
+end
+
+
+function segs = frames_to_segments(fr)
+    if isempty(fr)
+        segs = zeros(0,2);
+        return;
+    end
+    d = diff(fr);
+    cuts = [1 find(d>1)+1 numel(fr)+1];
+    segs = zeros(numel(cuts)-1,2);
+    for k = 1:numel(cuts)-1
+        segs(k,:) = [fr(cuts(k)) fr(cuts(k+1)-1)];
+    end
+end
+
+
+
+function segTable = sort_segments_by_deviation(bad_segs, deviation)
+% sort_segments_by_deviation
+% Trie des segments [start end] selon la déviation dans le segment.
+% Hypothèse: les grandes déviations sont les plus NEGATIVES.
+%
+% Inputs:
+%   bad_segs   : Nx2 (start,end) en frames (1-indexed)
+%   deviation  : vecteur 1xT ou Tx1
+%
+% Output:
+%   segTable : table triée avec StartFrame, EndFrame, FrameExtent, ValMaxDeviation
+
+    if nargin < 2
+        error('Usage: segTable = sort_segments_by_deviation(bad_segs, deviation)');
+    end
+
+    deviation = deviation(:).';   % row
+    T = numel(deviation);
+
+    if isempty(bad_segs)
+        segTable = table([], [], [], [], ...
+            'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
+        disp(segTable);
+        return;
+    end
+
+    if size(bad_segs,2) ~= 2
+        error('bad_segs doit être une matrice Nx2 [start end].');
+    end
+
+    N = size(bad_segs,1);
+
+    startF = nan(N,1);
+    endF   = nan(N,1);
+    extent = nan(N,1);
+    valMax = nan(N,1);  % ici = minimum (plus négatif) dans le segment
+
+    for k = 1:N
+        a = round(bad_segs(k,1));
+        b = round(bad_segs(k,2));
+
+        % normaliser
+        if a > b
+            tmp = a; a = b; b = tmp;
+        end
+
+        % clip dans [1..T]
+        a = max(1, min(T, a));
+        b = max(1, min(T, b));
+
+        startF(k) = a;
+        endF(k)   = b;
+        extent(k) = b - a + 1;
+
+        segVals = deviation(a:b);
+        segVals = segVals(isfinite(segVals));
+
+        if isempty(segVals)
+            valMax(k) = NaN;
+        else
+            valMax(k) = min(segVals);   % plus négatif = “plus grande” déviation
+        end
+    end
+
+    segTable = table(startF, endF, extent, valMax, ...
+        'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
+
+    % Trier: ordre croissant (plus négatif d'abord)
+    segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
 end

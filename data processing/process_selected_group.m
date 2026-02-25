@@ -99,18 +99,27 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all] = proc
         end
 
         meta_tbl = metadata_results{k};
+        [sampling_rate_group, synchronous_frames_group] = fill_sampling_and_sync_frames( gcamp_output_folders, current_xml_group, meta_tbl, 0.2);
         
         % Performing mean images
         meanImgs_gcamp = save_mean_images(current_animal_group, current_dates_group, current_ages_group, gcamp_output_folders, current_gcamp_folders_group);
-
+        
+         % Performing motion_energy
+        avg_block = 5; % Moyenne toutes les 5 frames
+        [motion_energy_group, motion_energy_smooth_group, ...
+         avg_active_motion_onsets_group, avg_active_motion_offsets_group, ...
+         active_motion_onsets_group, active_motion_offsets_group, speed_active_group] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group);
+    
         % Preprocess and process data
         % 1) GCaMP d'abord
         [data, fields] = process_gcamp_cells( ...
             gcamp_output_folders, ...
             current_xml_group, meta_tbl, ...
+            sampling_rate_group, synchronous_frames_group, ...
             current_gcamp_folders_group, ...
             current_animal_group, current_ages_group, ...
-            data, fields);
+            data, fields, meanImgs_gcamp, ...
+            current_gcamp_TSeries_path, speed_active_group);
         
         % 2) Puis les cellules bleues
         [data, fields] = process_blue_cells( ...
@@ -127,11 +136,7 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all] = proc
             data, fields);
 
         selected_groups(k).data = data;
-        
-        % Performing motion_energy
-        avg_block = 5; % Moyenne toutes les 5 frames
-        [motion_energy_group, avg_motion_energy_group]  = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block);      
-            
+  
         if ~isempty(checking_choice2)
             [~, selected_gcamp_neurons_original, selected_blue_neurons_original, suite2p] = data_checking(data, gcamp_output_folders, current_gcamp_folders_group, ...
                   current_animal_group, current_dates_group, ...
@@ -139,10 +144,10 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all] = proc
 
             checked_indices = find(~cellfun(@isempty, selected_gcamp_neurons_original) | ~cellfun(@isempty, selected_blue_neurons_original)); % Indices des dossiers avec des neurones sélectionnés
             
-            build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group);
+            build_rasterplot_checking(data, gcamp_output_folders, current_animal_group, current_ages_group, motion_energy_smooth_group);
         end
         
-        build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, avg_motion_energy_group)
+        build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, sampling_rate_group, motion_energy_smooth_group, speed_active_group)
         
         %Global analysis of activity
         % [results_analysis, plots_data] = compute_export_basic_metrics( ...
@@ -160,4 +165,45 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all] = proc
         % plots_data_all{k}       = plots_data;
 
     end    
+end
+
+function [sampling_rate, synchronous_frames] = ...
+    fill_sampling_and_sync_frames(gcamp_output_folders, current_xml_group, meta_tbl, sync_window_sec)
+%FILL_SAMPLING_AND_SYNC_FRAMES
+%   Récupère sampling_rate et synchronous_frames pour chaque groupe m.
+%
+% OUTPUTS
+%   sampling_rate{m}       : fréquence d’échantillonnage (Hz)
+%   synchronous_frames{m}  : nombre de frames de la fenêtre
+
+    numFolders = numel(gcamp_output_folders);
+
+    % Initialisation des sorties
+    sampling_rate = cell(numFolders, 1);
+    synchronous_frames = cell(numFolders, 1);
+
+    % Boucle groupes
+    for m = 1:numFolders
+
+        this_xml = current_xml_group{m};
+
+        % -----------------------------
+        % Sampling rate
+        % -----------------------------
+        idx_meta = strcmp(meta_tbl.Filename, this_xml);
+
+        if any(idx_meta)
+            sampling_rate{m} = meta_tbl.SamplingRate(idx_meta);
+        else
+            warning('SamplingRate not found in metadata_results for %s, using find_key_value.', this_xml);
+            [~, sr, ~, ~] = find_key_value(this_xml);
+            sampling_rate{m} = sr;
+        end
+
+        % -----------------------------
+        % synchronous_frames
+        % -----------------------------
+        synchronous_frames{m} = round(sync_window_sec * sampling_rate{m});
+
+    end
 end

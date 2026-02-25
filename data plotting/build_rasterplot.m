@@ -1,9 +1,15 @@
-function build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, motion_energy_group)
+function build_rasterplot(data, gcamp_output_folders, current_animal_group, current_ages_group, sampling_rate_group, motion_energy_smooth_group, speed_active_group)
 
     numFolders = numel(gcamp_output_folders);
 
     for m = 1:numFolders
+        fig = [];
         try
+            %----------------------------------------------------------
+            % 0) Charger speed_active (0/1 frame caméra) depuis results_movie.mat
+            %----------------------------------------------------------
+            speed_active = speed_active_group{m};
+
             %----------------------------------------------------------
             % 1) Déterminer si on est en mode COMBINED ou GCaMP only
             %----------------------------------------------------------
@@ -23,10 +29,10 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             DF = [];
             DF_blue = [];
             isort1 = [];
-            sampling_rate = data.sampling_rate{m};
+            sampling_rate = sampling_rate_group{m};
 
             if use_combined
-                % ================= COMBINED GCaMP + BLUE =================
+                % ================= COMBINED =================
                 if has_combined_by_plane
                     DF = concat_planes(data, m, 'DF_combined_by_plane');
 
@@ -46,7 +52,6 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                     isort1 = data.isort1_combined{m};
                 end
 
-                % Bleu
                 has_blue_by_plane = isfield(data, 'DF_blue_by_plane') && ...
                                     numel(data.DF_blue_by_plane) >= m && ...
                                     ~isempty(data.DF_blue_by_plane{m});
@@ -85,26 +90,31 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                     strrep(current_animal_group, ' ', '_'), strrep(current_ages_group{m}, ' ', '_')));
             end
 
-            % Si DF vide → rien à tracer
             if isempty(DF)
                 fprintf('Group %d: DF is empty, skipping rasterplot.\n', m);
                 continue;
             end
 
-            % isort1 : identité si vide ou incohérent
             [NCell, Nz] = size(DF);
+
             if isempty(isort1) || numel(isort1) ~= NCell
                 isort1 = (1:NCell)';
+            else
+                isort1 = isort1(:);
+                bad = isort1 < 1 | isort1 > NCell | isnan(isort1);
+                if any(bad), isort1(bad) = []; end
+                if numel(isort1) ~= NCell || numel(unique(isort1)) ~= numel(isort1)
+                    isort1 = (1:NCell)';
+                end
             end
 
-            % Figure déjà existante ?
             if exist(fig_save_path, 'file')
                 disp(['Figure already exists and was skipped: ' fig_save_path]);
                 continue;
             end
 
             %----------------------------------------------------------
-            % 3) MAct et MActblue : SOMME par plan (pas concat)
+            % 3) MAct (+ blue si applicable)
             %----------------------------------------------------------
             MAct = [];
             MActblue = [];
@@ -120,7 +130,6 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                     MAct = resize_MAct(data.MAct_gcamp_not_blue{m}, Nz);
                 end
 
-                % Bleu
                 if ~isempty(DF_blue)
                     Nz_blue = size(DF_blue,2);
                     if isfield(data, 'MAct_blue_by_plane') && ...
@@ -141,9 +150,7 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                 end
             end
 
-            if isempty(MAct)
-                MAct = zeros(1, Nz);
-            end
+            if isempty(MAct), MAct = zeros(1, Nz); end
             prop_MAct = MAct / NCell;
 
             if ~isempty(MActblue) && ~isempty(DF_blue)
@@ -154,27 +161,35 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             end
 
             %----------------------------------------------------------
-            % 4) Config des subplots
+            % 4) Config subplots + time axes
             %----------------------------------------------------------
-            has_motion_energy = nargin >= 5 && ~isempty(motion_energy_group) && ...
-                                numel(motion_energy_group) >= m && ...
-                                ~isempty(motion_energy_group{m});
+            has_motion_energy = (nargin >= 6) && ~isempty(motion_energy_smooth_group) && ...
+                                numel(motion_energy_smooth_group) >= m && ...
+                                ~isempty(motion_energy_smooth_group{m});
 
             subplot_count = 2 + ~isempty(prop_MActblue) + has_motion_energy;
 
-            % Création figure
             fig = figure;
             set(fig, 'Position', get(0, 'ScreenSize'));
 
-            % Temps en secondes
             total_time = Nz / sampling_rate;
             t_sec = (0:Nz-1) / sampling_rate;
 
-            % Subplot 1 : Raster plot (en secondes)
-            subplot(subplot_count, 1, 1);
+            % --------- Préparer segments d’activité en secondes ----------
+            % speed_active est par frame caméra (longueur L), on le mappe sur [0,total_time]
+            activity_segs_sec = [];
+            if ~isempty(speed_active)
+                L = numel(speed_active);
+                t_speed = linspace(0, total_time, L);
+                activity_segs_sec = mask_to_segments_time(t_speed, speed_active > 0);
+            end
+
+            %----------------------------------------------------------
+            % Subplot 1 : Raster plot + bad segs + activité (bandes)
+            %----------------------------------------------------------
+            ax1 = subplot(subplot_count, 1, 1);
             A = DF(isort1, :);
 
-            % --- Z-score robuste par cellule ---
             A_z = zeros(size(A));
             for i = 1:size(A,1)
                 x = A(i,:);
@@ -184,37 +199,40 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                     A_z(i,:) = (x - mu) / sigma;
                 end
             end
-            
-            % --- Binarisation visuelle ---
-            thr = 2.5;              % ESSENTIEL : ajuste ici (2–3)
-            BW = A_z > thr;
-            
-            % --- Affichage noir & blanc ---
-            imagesc(t_sec, 1:NCell, BW);
-            colormap(flipud(gray));
-            caxis([0 1]);
-            xlabel('Time (s)');
-            ylabel('Neurons');
-            title('Raster plot (binary activity)');
 
+            thr = 2.5;
+            BW = A_z > thr;
+
+            imagesc(t_sec, 1:NCell, BW);
+            colormap(ax1, flipud(gray));
+            caxis([0 1]);
             axis tight;
             ylabel('Neurons');
             xlabel('Time (s)');
-            title('Raster Plot');
+            title('Raster plot (binary activity)');
             xlim([0 total_time]);
 
-            % Subplot 2 : proportion active cells (all)
-            subplot(subplot_count, 1, 2);
+            % bandes activité sur ce subplot
+            plot_activity_bands(ax1, activity_segs_sec);
+
+            %----------------------------------------------------------
+            % Subplot 2 : proportion active cells (all) + activité
+            %----------------------------------------------------------
+            ax2 = subplot(subplot_count, 1, 2);
             plot(t_sec, prop_MAct, 'LineWidth', 2);
             ylabel('Prop. Active Cells');
             title('Proportion of Active Cells (All)');
             grid on;
             xlim([0 total_time]);
 
-            % Subplot cellules bleues
+            plot_activity_bands(ax2, activity_segs_sec);
+
+            %----------------------------------------------------------
+            % Subplot blue (si applicable) + activité
+            %----------------------------------------------------------
             subplot_idx = 3;
             if ~isempty(prop_MActblue)
-                subplot(subplot_count, 1, subplot_idx);
+                axb = subplot(subplot_count, 1, subplot_idx);
                 plot(t_sec, prop_MActblue, 'LineWidth', 2);
                 ylim([0 1]);
                 xlabel('Time (s)');
@@ -222,45 +240,49 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                 title('Proportion of Active Blue Cells');
                 grid on;
                 xlim([0 total_time]);
+
+                plot_activity_bands(axb, activity_segs_sec);
+
                 subplot_idx = subplot_idx + 1;
             end
 
-            % Subplot motion energy
+            %----------------------------------------------------------
+            % Subplot motion energy (si applicable) + activité
+            %----------------------------------------------------------
             if has_motion_energy
-                subplot(subplot_count, 1, subplot_idx);
+                axm = subplot(subplot_count, 1, subplot_idx);
                 hold on;
 
-                energy = motion_energy_group{m};
+                energy = motion_energy_smooth_group{m};
                 if ~isempty(energy)
                     x_stretched = linspace(0, total_time, numel(energy));
                     plot(x_stretched, energy, 'DisplayName', sprintf('Session %d', m));
                     xlabel('Time (s)');
-                    ylabel('Normalized Energy');
+                    ylabel('Motion energy');
                     xlim([0 total_time]);
-                    title('Motion Energy (Downsampled)');
-                    legend show;
+                    title('Motion Energy');
                     grid on;
                 end
-
                 hold off;
+
+                plot_activity_bands(axm, activity_segs_sec);
             end
 
-            % Lier les axes X
             linkaxes(findall(fig, 'Type', 'axes'), 'x');
 
-            % Sauvegarde
             saveas(fig, fig_save_path);
             disp(['Raster plot saved in: ' fig_save_path]);
             close(fig);
 
         catch ME
             fprintf('\nError for group %d: %s\n', m, ME.message);
-            if exist('fig','var') && ishghandle(fig)
+            if ~isempty(fig) && ishghandle(fig)
                 close(fig);
             end
         end
     end
 end
+
 
 %---------------------------------------------
 % Fonctions utilitaires
@@ -380,4 +402,48 @@ function isort_global = build_isort_from_planes(data, m, isort_field, DF_field)
         isort_global = [isort_global; local_isort + offset]; %#ok<AGROW>
         offset = offset + n_p;
     end
+end
+
+
+function segs_sec = mask_to_segments_time(t, mask)
+% t : 1xL temps en secondes
+% mask : 1xL logique
+% segs_sec : Nx2 [t_start t_end]
+
+    mask = mask(:)'; 
+    t = t(:)';
+
+    if isempty(mask)
+        segs_sec = [];
+        return;
+    end
+
+    d = diff([false, mask, false]);
+    starts = find(d == 1);
+    ends   = find(d == -1) - 1;
+
+    segs_sec = [t(starts(:))', t(ends(:))'];
+end
+
+function plot_activity_bands(ax, segs_sec)
+% Ajoute des bandes verticales (activité) derrière les courbes sur l’axe ax
+
+    if isempty(segs_sec)
+        return;
+    end
+
+    axes(ax); %#ok<LAXES>
+    yl = ylim(ax);
+    hold(ax, 'on');
+
+    for k = 1:size(segs_sec,1)
+        x1 = segs_sec(k,1);
+        x2 = segs_sec(k,2);
+        patch(ax, [x1 x2 x2 x1], [yl(1) yl(1) yl(2) yl(2)], ...
+              [1 0.8 0.8], 'EdgeColor','none', 'FaceAlpha',0.25);
+    end
+
+    % remet les limites (patch peut les changer)
+    ylim(ax, yl);
+    hold(ax, 'off');
 end

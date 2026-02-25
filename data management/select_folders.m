@@ -166,17 +166,70 @@ function processedFolders = process_folder(folderPath)
 end
 
 function isDate = is_date_format(folderName)
+    % Accepte:
+    %   - YYYY-MM-DD
+    %   - DD-MM-YYYY
+    %   - avec suffixe optionnel "_a" (ex: 2024-06-26_a ou 26-06-2024_a)
+
     isDate = false;
-    if length(folderName) == 10 || length(folderName) == 12
-        year = str2double(folderName(1:4));
-        month = str2double(folderName(6:7));
-        day = str2double(folderName(9:10));
-        if ~isnan(year) && ~isnan(month) && ~isnan(day) && folderName(5) == '-' && folderName(8) == '-'
-            if length(folderName) == 12 && strcmp(folderName(end-1:end), '_a')
-                isDate = true;
-            elseif length(folderName) == 10
-                isDate = true;
-            end
-        end
+    if ~ischar(folderName) && ~isstring(folderName)
+        return;
+    end
+    folderName = char(folderName);
+
+    % Enlève le suffixe _a si présent
+    base = folderName;
+    if numel(base) >= 2 && strcmp(base(end-1:end), '_a')
+        base = base(1:end-2);
+    end
+
+    % Doit être "xx-xx-xxxx" ou "xxxx-xx-xx" => longueur 10
+    if numel(base) ~= 10
+        return;
+    end
+    if base(3) ~= '-' && base(5) ~= '-'
+        % pas un format avec tirets aux bons endroits
+        % (on continue quand même via regexp plus bas)
+    end
+
+    % 1) YYYY-MM-DD
+    if ~isempty(regexp(base, '^\d{4}-\d{2}-\d{2}$', 'once'))
+        y = str2double(base(1:4));
+        m = str2double(base(6:7));
+        d = str2double(base(9:10));
+        isDate = is_valid_ymd(y,m,d);
+        return;
+    end
+
+    % 2) DD-MM-YYYY
+    if ~isempty(regexp(base, '^\d{2}-\d{2}-\d{4}$', 'once'))
+        d = str2double(base(1:2));
+        m = str2double(base(4:5));
+        y = str2double(base(7:10));
+        isDate = is_valid_ymd(y,m,d);
+        return;
+    end
+end
+
+function ok = is_valid_ymd(y,m,d)
+    ok = false;
+    if any(isnan([y m d]))
+        return;
+    end
+    if y < 1900 || y > 2100
+        return;
+    end
+    if m < 1 || m > 12
+        return;
+    end
+    if d < 1 || d > 31
+        return;
+    end
+    % Validation calendrier simple (suffisant ici)
+    try
+        datetime(y,m,d);
+        ok = true;
+    catch
+        ok = false;
     end
 end

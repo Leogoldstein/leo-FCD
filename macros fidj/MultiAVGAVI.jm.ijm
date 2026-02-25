@@ -259,7 +259,7 @@ function handleCamAndTSeries(BaseDir) {
 		
 		    var CombinedFilePath = CombinedSavePath + "Combine.tif";
 		    
-		    if (!File.exists(CombinedFilePath)) {
+		    // if (!File.exists(CombinedFilePath)) {
  	
 		    	for (var planeFolderIndex = 0; planeFolderIndex < PlaneFolderList.length; planeFolderIndex++) {
 		    		
@@ -271,15 +271,15 @@ function handleCamAndTSeries(BaseDir) {
 		    		open(GroupZTiffPlane);
 		    		var GroupZ = getTitle();
 		               							  
-		            if (isOpen(GroupZ));{
+		            if (isOpen(GroupZ)) {
 	
-			            run("8-bit");
+			            //run("8-bit");
 			            
 			            // Créer l'image de fond				
 			            var newGroupZ = "plane" + planeFolderIndex;
 			            var stackSize = nSlices;		
 			            newImage(newGroupZ, "8-bit black", 612, 562, stackSize);	
-			            
+
 			            run("Insert...", "source=[" + GroupZ + "] destination=[" + newGroupZ + "] x=50 y=50");
 			            
 			            // Time Stamper seulement pour le premier
@@ -298,7 +298,7 @@ function handleCamAndTSeries(BaseDir) {
 			    var CamFile = saveCamImDir + "Concatenated" + File.separator + "cam_crop.tif";
 			    open(CamFile);
 				
-				if (isOpen(CamFile));{
+				if (isOpen(GroupZ)) {
 					
 					CamFileName = getTitle();
 					nCam = nSlices;
@@ -315,7 +315,7 @@ function handleCamAndTSeries(BaseDir) {
 						var newW_background = newW + 100;
 					    
 					    newImage("new cam_crop.tif kept stack", "8-bit black", newW_background, 612, nCam);
-				
+									            						
 				        // Insérer la projection dans le fond
 				        run("Insert...", 
 				            "source=["+ resizeCamFile +"] destination=[new cam_crop.tif kept stack] x=50 y=50"
@@ -400,9 +400,9 @@ function handleCamAndTSeries(BaseDir) {
 				        run("Close All");
 				    }
 				}
-		    } else {
-				print("Le fichier Tiff combiné existe déjà : " + CombinedFilePath);
-		    }
+		    //} else {
+				 //print("Le fichier Tiff combiné existe déjà : " + CombinedFilePath);
+		     //}
 	    }
 	}
 }
@@ -426,6 +426,12 @@ function processRegTifFolder(regTifFolder, savePlaneFolder, tseriesFolderName) {
     var ConcatenatedTiffPlane = savePlaneFolder + File.separator + "Concatenated.tif";
     var GroupZTiffPlane       = savePlaneFolder + File.separator + "AVG_groupZ.tif";
     var ZProject              = savePlaneFolder + File.separator + "Zproject.tif";
+	
+	// Supprimer le GroupZ existant s'il est présent
+	if (File.exists(GroupZTiffPlane)) {
+	    print("Suppression de l'ancien GroupZ : " + GroupZTiffPlane);
+	    File.delete(GroupZTiffPlane);
+	}
 
     // Déterminer si c’est une série "blue" ou non
     // blue → indexOf(...) >= 0 ; non-blue → < 0
@@ -467,33 +473,33 @@ function processRegTifFolder(regTifFolder, savePlaneFolder, tseriesFolderName) {
             // Non-blue → sauvegarde concaténée + Grouped Z Project
             saveAs("Tiff", ConcatenatedTiffPlane);
 
-            if (!File.exists(GroupZTiffPlane)) {
+           	if (!File.exists(GroupZTiffPlane)) {
             	// Ajouter des tranches vides pour que la pile soit un multiple de 10
             	addSlicesToMakeMultipleOfTen();
-            
+            	run("8-bit");
                 run("Grouped Z Project...", "projection=[Average Intensity] group=10");
                 // run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
                 // run("Animation Options...", "speed=30 first=1 last=" + nSlices);
                 saveAs("Tiff", GroupZTiffPlane);
-            }
+             }
         }
 
     // CAS 2 : Concatenated.tif existe déjà, plusieurs fichiers, non-blue, mais pas de GroupZTiffPlane
-    } else if (!File.exists(GroupZTiffPlane)
-               && tifFiles.length > 1
-               && !isBlue) {
-
-        open(ConcatenatedTiffPlane);
-
-        // S’assurer que le nombre de slices est multiple de 10
-        addSlicesToMakeMultipleOfTen();
-
-        run("Grouped Z Project...", "projection=[Average Intensity] group=10");
-        // run("Time Stamper", "starting=0 interval=0.2987373388 x=15 y=15 font=12 '00 decimal=0 or=sec");
-        // run("Animation Options...", "speed=30 first=1 last=" + nSlices);
-
-        saveAs("Tiff", GroupZTiffPlane);
-
+	} else if (
+	    File.exists(ConcatenatedTiffPlane) &&
+	    tifFiles.length > 1 &&
+	    !isBlue
+	) {
+	
+	    open(ConcatenatedTiffPlane);
+	
+	    // S’assurer que le nombre de slices est multiple de 10
+	    addSlicesToMakeMultipleOfTen();
+	    run("8-bit");
+	    run("Grouped Z Project...", "projection=[Average Intensity] group=10");
+	
+	    saveAs("Tiff", GroupZTiffPlane);
+	
     // CAS 3 : un seul fichier, pas de Concatenated.tif
     } else if (!File.exists(ConcatenatedTiffPlane)
                && tifFiles.length == 1

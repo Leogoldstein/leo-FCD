@@ -1,60 +1,58 @@
 function motion_energy = compute_motion_energy(movie_path, xrange, yrange)
-%COMPUTE_MOTION_ENERGY Compute normalized motion energy from a multi-frame TIFF movie (BigTIFF).
-%   motion_energy = compute_motion_energy(movie_path)
-%   motion_energy = compute_motion_energy(movie_path, xrange, yrange)
-%
-%   Parameters:
-%   - movie_path: string, path to the TIFF stack (3D volume)
-%   - xrange: 2-element vector for cropping columns [x_start, x_end] (optional)
-%   - yrange: 2-element vector for cropping rows [y_start, y_end] (optional)
+    if nargin < 2, xrange = []; end
+    if nargin < 3, yrange = []; end
 
-    if nargin < 2
-        xrange = [];
-    end
-    if nargin < 3
-        yrange = [];
-    end
+    reader = bfGetReader(movie_path);
+    cleanup = onCleanup(@() reader.close());
 
-    % Load the full 3D TIFF volume (works for BigTIFF stacks)
-    movie = tiffreadVolume(movie_path);  % size: height x width x frames
-    [height, width, num_frames] = size(movie);
+    sizeX = reader.getSizeX();
+    sizeY = reader.getSizeY();
+    sizeT = reader.getSizeT();   % time points (frames)
+    sizeZ = reader.getSizeZ();
+    sizeC = reader.getSizeC();
 
-    fprintf('Loaded movie with %d frames, height=%d, width=%d\n', num_frames, height, width);
+    % Beaucoup de stacks ImageJ sont stockés en T, mais parfois en Z.
+    nFrames = max([sizeT, sizeZ]);  % fallback simple
+    fprintf('Bio-Formats: X=%d Y=%d Z=%d C=%d T=%d -> using nFrames=%d\n', ...
+        sizeX, sizeY, sizeZ, sizeC, sizeT, nFrames);
 
-    % Optional cropping
-    if ~isempty(yrange)
-        movie = movie(yrange(1):yrange(2), :, :);
-    end
-    if ~isempty(xrange)
-        movie = movie(:, xrange(1):xrange(2), :);
-    end
+    if isempty(yrange), yrange = [1 sizeY]; end
+    if isempty(xrange), xrange = [1 sizeX]; end
 
-    % Recompute dimensions after cropping
-    [height, width, num_frames] = size(movie);
+    motion_energy = zeros(1, nFrames-1, 'double');
 
-    % Pre-allocate motion energy array
-    motion_energy = zeros(1, num_frames);
+    img_prev = double(readBFFrame(reader, 1, sizeZ, sizeC, sizeT, xrange, yrange));
 
-    % First frame
-    img_prev = double(movie(:,:,1));
-
-    for i = 2:num_frames
-        img = double(movie(:,:,i));
-
-        % Compute squared difference
-        diff = img - img_prev;
-        motion_energy(i) = sum(diff(:).^2);
-
+    for i = 2:nFrames
+        img = double(readBFFrame(reader, i, sizeZ, sizeC, sizeT, xrange, yrange));
+        d = img - img_prev;
+        motion_energy(i-1) = sum(d(:).^2);
         img_prev = img;
 
         if mod(i, 1000) == 0
-            fprintf('Done computing for %d/%d frames\n', i, num_frames);
+            fprintf('Done %d/%d\n', i, nFrames);
         end
     end
 
-    % Normalize and return
-    motion_energy = motion_energy(2:end);  % Skip first frame
-    if max(motion_energy) > 0
-        motion_energy = motion_energy / max(motion_energy);
+    mmax = max(motion_energy);
+    if mmax > 0, motion_energy = motion_energy / mmax; end
+end
+
+function img = readBFFrame(reader, i, sizeZ, sizeC, sizeT, xrange, yrange)
+    % Essaye d'interpréter i comme T si T>1, sinon comme Z
+    if sizeT > 1
+        z = 1; c = 1; t = i;
+    else
+        z = i; c = 1; t = 1;
+    end
+
+    index = reader.getIndex(z-1, c-1, t-1) + 1; % 1-based for bfGetPlane
+    plane = bfGetPlane(reader, index);
+
+    img = plane(yrange(1):yrange(2), xrange(1):xrange(2));
+
+    % Si jamais c’est multi-canal (rare ici), tu peux moyenner
+    if ndims(img) > 2
+        img = mean(double(img), 3);
     end
 end

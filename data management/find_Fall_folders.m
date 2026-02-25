@@ -223,23 +223,20 @@ function dataFolders = process_TSeries(TSeriesPath)
         dataFolders = {};
         return;
     end
-    
+
     planeFolders = dir(fullfile(suite2pFolder, 'plane*'));
-    planeFolders = planeFolders([planeFolders.isdir]); % ne garder que les dossiers
-    
+    planeFolders = planeFolders([planeFolders.isdir]);
+
     if isempty(planeFolders)
         disp(['Error: No ''plane'' folder found in ', suite2pFolder, '. Skipping processing.']);
         dataFolders = {};
         return;
     end
-    
-    % Retourner tous les dossiers plane*
-    dataFolders = strings(1, numel(planeFolders));
 
+    dataFolders = cell(1, numel(planeFolders));
     for k = 1:numel(planeFolders)
-        dataFolders(k) = fullfile(suite2pFolder, planeFolders(k).name);
+        dataFolders{k} = fullfile(suite2pFolder, planeFolders(k).name);
     end
-
 end
 
 function s = to_char_path(x)
