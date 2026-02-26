@@ -1,9 +1,13 @@
 function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_mtor_mtor_by_plane, data] = ...
     load_or_process_corr_data(gcamp_output_folders, data)
+% load_or_process_corr_data
+% - Sorties au format "par session" -> {m} = cell(1,nPlanes), chaque {p} = vecteur/matrice
+% - Lit/écrit results_corrs.mat dans chaque dossier session
+% - Supporte anciens fichiers (variables sans suffixe) ET nouveau format (_by_plane)
 
     numFolders = numel(gcamp_output_folders);
 
-    % Outputs (session-level): each cell is {1 x nPlanes}, each entry is a vector or matrix
+    % Outputs (session-level): each cell is {1 x nPlanes}
     max_corr_gcamp_gcamp_by_plane = cell(numFolders, 1);
     max_corr_gcamp_mtor_by_plane  = cell(numFolders, 1);
     max_corr_mtor_mtor_by_plane   = cell(numFolders, 1);
@@ -60,14 +64,20 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
         if exist(filePath, 'file') == 2
             loaded = load(filePath);
 
+            % Compat: d'abord nouveau nom (si tu décides de changer), sinon ancien
             mc_gg_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_gcamp_by_plane', cell(1,nPlanes));
             mc_gm_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_mtor_by_plane',  cell(1,nPlanes));
             mc_mm_planes = getFieldOrDefault(loaded, 'max_corr_mtor_mtor_by_plane',   cell(1,nPlanes));
 
-            % Ensure shape
+            % Si l'ancien fichier a stocké au mauvais format (non cell), on reset
             if ~iscell(mc_gg_planes), mc_gg_planes = cell(1,nPlanes); end
             if ~iscell(mc_gm_planes), mc_gm_planes = cell(1,nPlanes); end
             if ~iscell(mc_mm_planes), mc_mm_planes = cell(1,nPlanes); end
+
+            % Si la taille n’est pas 1xnPlanes, on tente de réparer
+            mc_gg_planes = ensure_plane_cell(mc_gg_planes, nPlanes);
+            mc_gm_planes = ensure_plane_cell(mc_gm_planes, nPlanes);
+            mc_mm_planes = ensure_plane_cell(mc_mm_planes, nPlanes);
 
         else
             disp(['Computing and saving pairwise correlations (BY PLANE) for folder ', num2str(m)]);
@@ -93,27 +103,46 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
                     mc_gm_planes{p} = mc_gm;
                     mc_mm_planes{p} = mc_mm;
                 else
-                    [mc_gg, ~, ~] = compute_pairwise_corr(DFg, gcamp_output_folders{m}, [], []);
+                    [mc_gg, ~, ~] = compute_pairwise_corr(DFg, gcamp_output_folders{m});
                     mc_gg_planes{p} = mc_gg;
                     mc_gm_planes{p} = [];
                     mc_mm_planes{p} = [];
                 end
             end
 
-            % Save new-format only (cells by plane)
-            max_corr_gcamp_gcamp_by_plane = mc_gg_planes;
-            max_corr_gcamp_mtor_by_plane  = mc_gm_planes;
-            max_corr_mtor_mtor_by_plane   = mc_mm_planes;
+            % IMPORTANT: on sauve seulement les variables "par plan"
+            max_corr_gcamp_gcamp_by_plane_file = mc_gg_planes;
+            max_corr_gcamp_mtor_by_plane_file  = mc_gm_planes;
+            max_corr_mtor_mtor_by_plane_file   = mc_mm_planes;
 
             save(filePath, ...
-                'max_corr_gcamp_gcamp_by_plane', ...
-                'max_corr_gcamp_mtor_by_plane', ...
-                'max_corr_mtor_mtor_by_plane');
+                'max_corr_gcamp_gcamp_by_plane_file', ...
+                'max_corr_gcamp_mtor_by_plane_file', ...
+                'max_corr_mtor_mtor_by_plane_file');
 
-            % Put back into session variables for consistent downstream
-            mc_gg_planes = max_corr_gcamp_gcamp_by_plane;
-            mc_gm_planes = max_corr_gcamp_mtor_by_plane;
-            mc_mm_planes = max_corr_mtor_mtor_by_plane;
+            % Pour downstream: on reste sur mc_*_planes
+        end
+
+        % Si on a sauvé avec *_file dans un fichier, et qu’on relit plus tard,
+        % on peut vouloir aussi charger ces champs. Donc: fallback ici aussi.
+        % (utile si tu as créé des fichiers avec *_file seulement)
+        if exist(filePath, 'file') == 2
+            loaded2 = load(filePath);
+            mc_gg_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_gcamp_by_plane', mc_gg_planes);
+            mc_gm_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_mtor_by_plane',  mc_gm_planes);
+            mc_mm_planes = getFieldOrDefault(loaded2, 'max_corr_mtor_mtor_by_plane',   mc_mm_planes);
+
+            mc_gg_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_gcamp_by_plane_file', mc_gg_planes);
+            mc_gm_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_mtor_by_plane_file',  mc_gm_planes);
+            mc_mm_planes = getFieldOrDefault(loaded2, 'max_corr_mtor_mtor_by_plane_file',   mc_mm_planes);
+
+            if ~iscell(mc_gg_planes), mc_gg_planes = cell(1,nPlanes); end
+            if ~iscell(mc_gm_planes), mc_gm_planes = cell(1,nPlanes); end
+            if ~iscell(mc_mm_planes), mc_mm_planes = cell(1,nPlanes); end
+
+            mc_gg_planes = ensure_plane_cell(mc_gg_planes, nPlanes);
+            mc_gm_planes = ensure_plane_cell(mc_gm_planes, nPlanes);
+            mc_mm_planes = ensure_plane_cell(mc_mm_planes, nPlanes);
         end
 
         % Return outputs (session -> planes) WITHOUT touching data
@@ -139,5 +168,26 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
         value = structure.(fieldName);
     else
         value = defaultValue;
+    end
+end
+
+function c = ensure_plane_cell(c, nPlanes)
+% ensure_plane_cell
+% Force une cell(1,nPlanes). Si c est plus long, crop; si plus court, pad.
+    if isempty(c)
+        c = cell(1,nPlanes);
+        return;
+    end
+    if ~iscell(c)
+        c = cell(1,nPlanes);
+        return;
+    end
+
+    % aplatit en row
+    c = c(:).';
+    if numel(c) > nPlanes
+        c = c(1:nPlanes);
+    elseif numel(c) < nPlanes
+        c = [c, cell(1, nPlanes-numel(c))];
     end
 end

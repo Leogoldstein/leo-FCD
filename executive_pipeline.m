@@ -27,7 +27,7 @@ end
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '2';
 
-[selected_groups, daytime, results_analysis, plots_data] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells);
+[selected_groups, daytime, results_analysis, plots_data, sampling_rate_group] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells);
 
 % Processing and analysis
 PathSave = 'D:\Imaging\Outputs\';
@@ -40,7 +40,6 @@ all_results = [];  % tableau de structures vide
 % selected_indices = select_animal_groups(selected_groups);
 % for k = 1:length(selected_indices)
    
-numFolders = length(selected_groups);
 
 % Perform analyses for each group
 for k = 1:length(selected_groups)
@@ -50,14 +49,14 @@ for k = 1:length(selected_groups)
     current_dates_group    = selected_groups(k).dates;
     current_ages_group     = selected_groups(k).ages;
     gcamp_output_folders   = selected_groups(k).gcamp_output_folders;
-    data                   = selected_groups(k).data;  
+    data                   = selected_groups(k).data;
     
     % Correlation analysis
     [max_corr_gcamp_gcamp, max_corr_gcamp_mtor, max_corr_mtor_mtor] = load_or_process_corr_data(gcamp_output_folders, data);
 
     plot_pairwise_corr(current_ages_group, ...
         max_corr_gcamp_gcamp, ...
-        current_ani_path_group, ...
+        gcamp_output_folders, ...
         current_animal_group);
 
 %     corr_groups_boxplots_corr(selected_groups, data.max_corr_gcamp_gcamp_by_plane, data.max_corr_gcamp_mtor_by_plane, data.max_corr_mtor_mtor_by_plane)
@@ -66,7 +65,9 @@ for k = 1:length(selected_groups)
 %         data = load_or_process_sce_data(current_animal_group, current_dates_group, gcamp_output_folders, data);
 %         selected_groups(k).data = data;
 % 
-        results_analysis = compute_export_basic_metrics(selected_groups, k);
+        results_analysis = compute_export_basic_metrics(selected_groups, k, sampling_rate_group);
+        
+        numFolders = length(gcamp_output_folders);
 
         for m = 1:numFolders
             
@@ -108,6 +109,7 @@ for k = 1:length(selected_groups)
                 results_analysis(m).Age));
             grid on;
 
+            mean_gcamp_freq = mean(freq);
 
         end
 %         % Cluster analysis

@@ -1,4 +1,4 @@
-function [selected_groups, daytime, results_analysis_all, plots_data_all] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells)
+function [selected_groups, daytime, results_analysis_all, plots_data_all, sampling_rate_group] = process_selected_group(selected_groups, metadata_results, checking_choice2, include_blue_cells)
     
     % Récupérer daytime depuis selected_groups si déjà créé dans le pipeline
     if isfield(selected_groups, 'daytime') && ~isempty(selected_groups(1).daytime)

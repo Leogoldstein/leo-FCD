@@ -1,4 +1,4 @@
-function results_analysis = compute_export_basic_metrics(selected_groups, k)
+function results_analysis = compute_export_basic_metrics(selected_groups, k, sampling_rate_group)
 
     % -------------------------------
     % Infos groupe courant
@@ -51,11 +51,7 @@ function results_analysis = compute_export_basic_metrics(selected_groups, k)
                 ~isempty(data.DF_combined_by_plane{m});
             use_combined = has_combined_by_plane;
 
-            if ~isfield(data,'sampling_rate') || numel(data.sampling_rate) < m || isempty(data.sampling_rate{m})
-                warning('Rec %d (%s) — sampling_rate manquant.', m, gcamp_output_folders{m});
-                continue;
-            end
-            sampling_rate = data.sampling_rate{m};
+            sampling_rate = sampling_rate_group{m};
 
             %==========================================================
             % 1) GCaMP : concat tous les plans
@@ -74,7 +70,7 @@ function results_analysis = compute_export_basic_metrics(selected_groups, k)
             [num_cells, Nframes] = size(Raster_gcamp);
 
             % All freqs per cell (/min)
-            freq_gcamp = compute_frequency(Acttmp2_gcamp, Nframes, sampling_rate);
+            freq_gcamp = compute_frequency_from_raster(Raster_gcamp, sampling_rate);
 
             % All amplitudes per cell
             amp_gcamp = compute_normalized_amplitude_per_cell(DF_gcamp, Acttmp2_gcamp);
@@ -105,7 +101,7 @@ function results_analysis = compute_export_basic_metrics(selected_groups, k)
                     [DF_blue, Raster_blue] = align_data(DF_blue, Raster_blue);
                     [num_cells_blue, Nframes_blue] = size(Raster_blue);
 
-                    freq_blue = compute_frequency(Acttmp2_blue, Nframes_blue, sampling_rate);
+                    freq_blue = compute_frequency_from_raster(Raster_blue, sampling_rate);
                     amp_blue  = compute_normalized_amplitude_per_cell(DF_blue, Acttmp2_blue);
                     dur_cell_blue = extract_mean_duration_per_cell_full(StartEnd_blue, sampling_rate);
                     [iei_mean_blue, iei_all_blue] = compute_iei_per_cell(Acttmp2_blue, sampling_rate);
@@ -202,20 +198,27 @@ function [DF, Raster] = align_data(DF, Raster)
     Raster = Raster(1:min_cells, 1:min_frames);
 end
 
-function freq = compute_frequency(Acttmp2, Nframes, sampling_rate)
-    if iscell(Acttmp2)
-        freq = cellfun(@(x) numel(x)/Nframes*sampling_rate*60, Acttmp2);
-    elseif isnumeric(Acttmp2)
-        if isempty(Acttmp2)
-            freq = nan;
-        elseif size(Acttmp2,2) == Nframes
-            freq = sum(Acttmp2,2)/Nframes*sampling_rate*60;
-        else
-            freq = nan;
-        end
-    else
-        freq = nan;
+function freq_per_cell_per_min = compute_frequency_from_raster(Raster, sampling_rate)
+% Raster: nCells x nFrames, 0/1 avec 1 = pic (1 frame par événement)
+% sampling_rate: Hz
+% Retour: nCells x 1, événements/min
+
+    if isempty(Raster) || sampling_rate <= 0
+        freq_per_cell_per_min = [];
+        return;
     end
+
+    Raster = Raster ~= 0; % logique
+    [nCells, nFrames] = size(Raster);
+
+    duration_min = (nFrames / sampling_rate) / 60;
+    if duration_min <= 0
+        freq_per_cell_per_min = nan(nCells,1);
+        return;
+    end
+
+    nEvents = sum(Raster, 2); % 1 frame = 1 événement
+    freq_per_cell_per_min = nEvents ./ duration_min;
 end
 
 function amp = compute_normalized_amplitude_per_cell(DF, Acttmp2)

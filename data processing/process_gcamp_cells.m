@@ -238,8 +238,21 @@ function [data, fields] = process_gcamp_cells( ...
             % 2.c.4 Tri (isort) par plan (optionnel)
             %---------------------------------------
             if ~isempty(DF_gcamp_plane)
+                if ~isempty(Raster_gcamp_plane)
+                    Raster_for_sort = double(Raster_gcamp_plane);  % <-- clé : single/double
+                else
+                    Raster_for_sort = [];
+                end
+                
                 [isort1_gcamp_plane, isort2_gcamp_plane, Sm_gcamp_plane] = ...
-                    raster_processing(DF_gcamp_plane, fall_path, ops);
+                    raster_processing(Raster_for_sort, fall_path, ops);
+                                
+                Raster_sorted = Raster_gcamp_plane(isort1_gcamp_plane, :);
+            
+                % (optionnel) aussi trier DF pour cohérence visuelle
+                % DF_sorted = DF_gcamp_plane(isort1_gcamp_plane, :);
+
+                plot_raster_sorted(Raster_sorted, sprintf('Raster trié isort1 — m=%d p=%d', m, p));
 
                 data.isort1_gcamp_by_plane{m}{p} = isort1_gcamp_plane;
                 data.isort2_gcamp_by_plane{m}{p} = isort2_gcamp_plane;
@@ -301,4 +314,32 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
     else
         value = defaultValue;
     end
+end
+
+
+function plot_raster_sorted(Raster, figTitle)
+% Raster: logical (nCells x T), déjà trié si besoin.
+
+    if nargin < 2 || isempty(figTitle)
+        figTitle = 'Raster trié';
+    end
+
+    if isempty(Raster) || ~islogical(Raster)
+        warning('plot_raster_sorted: Raster vide ou non-logical.');
+        return;
+    end
+
+    [nC, T] = size(Raster);
+
+    figure('Name', figTitle, 'Color','w');
+    ax = axes(); hold(ax,'on'); box(ax,'on');
+
+    [r, c] = find(Raster);
+    scatter(ax, c, r, 8, 'k', 'filled');
+
+    xlim(ax, [1 T]);
+    ylim(ax, [0.5 nC+0.5]);
+    xlabel(ax, 'Frames');
+    ylabel(ax, 'Cellules (après tri)');
+    title(ax, sprintf('%s — %d cellules x %d frames', figTitle, nC, T));
 end

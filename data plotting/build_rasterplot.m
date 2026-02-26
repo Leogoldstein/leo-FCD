@@ -185,34 +185,46 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
             end
 
             %----------------------------------------------------------
-            % Subplot 1 : Raster plot + bad segs + activité (bandes)
+            % Subplot 1 : Raster plot CONTINU (non binarisé)
             %----------------------------------------------------------
-            ax1 = subplot(subplot_count, 1, 1);
+            ax1 = subplot(subplot_count, 1, 1);   % <<< OBLIGATOIRE
             A = DF(isort1, :);
-
-            A_z = zeros(size(A));
+            
+            % --- z-score robuste continu ---
+            A_z = nan(size(A));
             for i = 1:size(A,1)
                 x = A(i,:);
                 mu = median(x,'omitnan');
-                sigma = mad(x,1);
-                if sigma > eps
-                    A_z(i,:) = (x - mu) / sigma;
+                sig = 1.4826 * mad(x,1);   % sigma robuste
+                if isfinite(sig) && sig > eps
+                    A_z(i,:) = (x - mu) / sig;
+                else
+                    A_z(i,:) = x - mu;
                 end
             end
-
-            thr = 2.5;
-            BW = A_z > thr;
-
-            imagesc(t_sec, 1:NCell, BW);
-            colormap(ax1, flipud(gray));
-            caxis([0 1]);
-            axis tight;
-            ylabel('Neurons');
-            xlabel('Time (s)');
-            title('Raster plot (binary activity)');
-            xlim([0 total_time]);
-
-            % bandes activité sur ce subplot
+            
+            imagesc(ax1, t_sec, 1:NCell, A_z);
+            axis(ax1, 'tight');
+            set(ax1, 'YDir','normal');
+            xlabel(ax1, 'Time (s)');
+            ylabel(ax1, 'Neurons');
+            
+            colormap(ax1, parula);
+            
+            % saturation robuste
+            v = A_z(isfinite(A_z));
+            if ~isempty(v)
+                lo = prctile(v, 2);
+                hi = prctile(v, 98);
+                if isfinite(lo) && isfinite(hi) && hi > lo
+                    clim(ax1, [lo hi]);   % sinon caxis([lo hi])
+                end
+            end
+            colorbar(ax1);
+            title(ax1, 'Raster plot (activité continue, z-score robuste)');
+            xlim(ax1, [0 total_time]);
+            
+            % bandes d’activité
             plot_activity_bands(ax1, activity_segs_sec);
 
             %----------------------------------------------------------

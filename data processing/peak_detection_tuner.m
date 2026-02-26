@@ -18,7 +18,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
-        'prominence_factor', 5.2, ...
+        'prominence_factor', 6.6, ...
         'refrac_fr', 3 ...
     );
 
@@ -96,8 +96,11 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     T = size(DF_sg,2);
     [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T);
     
-    % Pour le moment: on ignore bad_segs
-    focus_segs = user_focus_segs;
+    if ~isempty(user_focus_segs)
+        focus_segs = user_focus_segs;
+    else
+        focus_segs = bad_segs;
+    end
             
     % focus_segs = segments bad confirmés comme focus change
     % focus_labels(k)=1 focus, 0 autre, NaN skip
@@ -1133,6 +1136,15 @@ function finalize_and_close(fig, synchronous_frames)
     [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
     
+    % === RASTER + FOCUS SEGS ===
+    if isappdata(fig,'focus_segs')
+        focus_segs = getappdata(fig,'focus_segs');
+    else
+        focus_segs = [];
+    end
+
+    plot_raster_window(Raster, focus_segs);
+
     % mapping : index original -> index dans matrices compactées
     orig2new = nan(max(valid_cells),1);
     orig2new(valid_cells) = 1:numel(valid_cells);
@@ -1968,4 +1980,54 @@ function segTable = sort_segments_by_deviation(bad_segs, deviation)
 
     % Trier: ordre croissant (plus négatif d'abord)
     segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
+end
+
+function plot_raster_window(Raster, focus_segs)
+% plot_raster_window
+% Raster : logical [nCells x T]
+% focus_segs : Nx2 [start end] frames (optionnel)
+
+    if nargin < 2
+        focus_segs = [];
+    end
+
+    if isempty(Raster) || ~islogical(Raster)
+        warning('Raster vide ou invalide.');
+        return;
+    end
+
+    [nC, T] = size(Raster);
+
+    fR = figure('Name','Raster (pics détectés)','Color','w');
+    ax = axes('Parent', fR);
+    hold(ax,'on'); box(ax,'on');
+
+    % ================= RASTER =================
+    [cells, frames] = find(Raster);
+    scatter(ax, frames, cells, 8, 'k', 'filled');
+
+    xlim(ax,[1 T]);
+    ylim(ax,[0.5 nC+0.5]);
+    xlabel(ax,'Frames');
+    ylabel(ax,'Cellules (valid\_cells)');
+    title(ax, sprintf('Raster (%d cellules)', nC));
+
+    % ================= FOCUS SEGS =================
+    if ~isempty(focus_segs)
+        yl = ylim(ax);
+        for k = 1:size(focus_segs,1)
+            a = focus_segs(k,1);
+            b = focus_segs(k,2);
+
+            patch(ax, ...
+                [a b b a], ...
+                [yl(1) yl(1) yl(2) yl(2)], ...
+                [1 0 0], ...
+                'FaceAlpha',0.18, ...
+                'EdgeColor','none', ...
+                'HitTest','off');
+        end
+        uistack(findobj(ax,'Type','patch'),'bottom');
+    end
+
 end
