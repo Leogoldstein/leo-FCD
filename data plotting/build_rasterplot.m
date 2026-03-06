@@ -220,12 +220,12 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                     clim(ax1, [lo hi]);   % sinon caxis([lo hi])
                 end
             end
-            colorbar(ax1);
+            %colorbar(ax1);
             title(ax1, 'Raster plot (activité continue, z-score robuste)');
             xlim(ax1, [0 total_time]);
             
             % bandes d’activité
-            plot_activity_bands(ax1, activity_segs_sec);
+            %plot_activity_bands(ax1, activity_segs_sec);
 
             %----------------------------------------------------------
             % Subplot 2 : proportion active cells (all) + activité
@@ -332,44 +332,6 @@ function MAct_sum = merge_MAct_planes(data, m, fieldName, Nz)
         end
         M_p = resize_MAct(M_p, Nz);
         MAct_sum = MAct_sum + M_p;
-    end
-end
-
-function out = concat_planes(data, m, fieldName)
-    planes = data.(fieldName){m};
-    if isempty(planes)
-        out = [];
-        return;
-    end
-
-    sample = [];
-    for p = 1:numel(planes)
-        if ~isempty(planes{p})
-            sample = planes{p};
-            break;
-        end
-    end
-    if isempty(sample)
-        out = [];
-        return;
-    end
-
-    if isnumeric(sample)
-        out = [];
-        for p = 1:numel(planes)
-            if ~isempty(planes{p})
-                out = [out; planes{p}]; %#ok<AGROW>
-            end
-        end
-    elseif iscell(sample)
-        out = {};
-        for p = 1:numel(planes)
-            if ~isempty(planes{p})
-                out = [out; planes{p}(:)]; %#ok<AGROW>
-            end
-        end
-    else
-        error('concat_planes: type non supporté (%s) pour "%s".', class(sample), fieldName);
     end
 end
 

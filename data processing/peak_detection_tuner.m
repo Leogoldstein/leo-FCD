@@ -1,4 +1,4 @@
-function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds, focus_segs] = ...
+function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds, focus_segs, opts] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -18,7 +18,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
-        'prominence_factor', 6.6, ...
+        'prominence_factor', 7.4, ...
         'refrac_fr', 3 ...
     );
 
@@ -28,6 +28,13 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     corrXY = [];
     iscell_in = [];
     stat_in   = [];
+    speed = [];  
+    deviation   = [];
+    bad_frames  = [];
+    focus_segs  = [];
+    gcamp_TSeries_path = '';
+    meanImg = [];
+    ops = [];
     
     if ~isempty(varargin)
     
@@ -83,25 +90,29 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
 
 
     % --- Prétraitement ---
-    [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
-
-    [deviation, bad_frames, bad_frames_not_active, bad_frames_active] = motion_correction_substraction(DF_sg, ops, speed);
-    deviation = deviation(:).';  % force row
-    bad_frames_active = bad_frames_active(:)';
-    bad_segs = badframes_to_segments(bad_frames_active, size(DF_sg,2));   % Nx2 
+    [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
     
-    segTable = sort_segments_by_deviation(bad_segs, deviation);
-    assignin('base', 'segTable', segTable);
-
-    T = size(DF_sg,2);
-    [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T);
+    if exist('speed','var') && ~isempty(speed)
+        [deviation, bad_frames, bad_frames_not_active, bad_frames_active] = ...
+            motion_correction_substraction(DF_sg, ops, speed);
     
-    if ~isempty(user_focus_segs)
-        focus_segs = user_focus_segs;
-    else
-        focus_segs = bad_segs;
+        deviation = deviation(:).';  % force row
+        bad_frames_active = bad_frames_active(:)';
+    
+        bad_segs  = badframes_to_segments(bad_frames_active, size(DF_sg,2)); % Nx2
+        segTable  = sort_segments_by_deviation(bad_segs, deviation);
+        assignin('base', 'segTable', segTable);
+    
+        T = size(DF_sg,2);
+        [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T); %#ok<ASGLU>
+    
+        if ~isempty(user_focus_segs)
+            focus_segs = user_focus_segs;
+        else
+            focus_segs = bad_segs;
+        end
     end
-            
+                
     % focus_segs = segments bad confirmés comme focus change
     % focus_labels(k)=1 focus, 0 autre, NaN skip
 
@@ -112,11 +123,10 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         setappdata(fig,'opts',opts);
         setappdata(fig,'noise_est',noise_est);
         setappdata(fig,'F0',F0);
-        setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
         setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
-        setappdata(fig,'deviation', deviation);
-        setappdata(fig,'bad_frames', bad_frames);
-        setappdata(fig,'focus_segs', focus_segs);
+        if exist('deviation','var'),  setappdata(fig,'deviation', deviation);  else, setappdata(fig,'deviation', []); end
+        if exist('bad_frames','var'), setappdata(fig,'bad_frames', bad_frames); else, setappdata(fig,'bad_frames', []); end
+        if exist('focus_segs','var'), setappdata(fig,'focus_segs', focus_segs); else, setappdata(fig,'focus_segs', []); end
         setappdata(fig,'cell_status', zeros(size(F,1),1));
         setappdata(fig,'iscell', iscell_in);
         setappdata(fig,'stat',   stat_in);
@@ -129,8 +139,6 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             fprintf('\n===== RÉCAPITULATIF SÉLECTION CELLULES =====\n');
             fprintf('Total cellules             : %d\n', summary.n_total);
             fprintf('Cellules finales (analysées): %d\n', summary.n_kept_final);
-            fprintf('Qualité moyenne (toutes)    : %.3f\n', summary.mean_quality_all);
-            fprintf('Qualité moyenne (finales)   : %.3f\n', summary.mean_quality_kept_final);
             fprintf('===========================================\n\n');
         end
 
@@ -139,8 +147,23 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     end
 
     % === MODE INTERACTIF (GUI) ===
-    fig = figure('Name','Param Tuner - Cells triées par Qualité', ...
+    winTitle = '';
+    
+    if exist('gcamp_TSeries_path','var') && ~isempty(gcamp_TSeries_path)
+    
+        % enlever le fichier Concatenated.tif -> garder le dossier planeX
+        planePath = fileparts(gcamp_TSeries_path);
+    
+        % nombre de cellules
+        nCells = size(F,1);
+    
+        winTitle = sprintf('%s | nCells=%d', planePath, nCells);
+    
+    end
+    
+    fig = figure('Name', winTitle, ...
         'NumberTitle','off','Position',[100 100 1300 820], 'Color',[.97 .97 .98]);
+    
     set(fig,'KeyPressFcn', @(~,evnt) navigate_cells(fig, evnt));
     set(fig,'CloseRequestFcn',@(src,~) uiresume(src)); % on laisse l'utilisateur fermer, pas de save auto
 
@@ -198,9 +221,9 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     box(ax1,'on'); xlabel(ax1,'Frames'); ylabel(ax1,'\DeltaF/F (SavGol)');
     plot(ax1,NaN,NaN,'k-'); hold(ax1,'on');
 
-    setappdata(fig,'deviation', deviation);
-    setappdata(fig,'bad_frames', bad_frames);
-    setappdata(fig,'focus_segs', focus_segs);
+    if exist('deviation','var'),  setappdata(fig,'deviation', deviation);  else, setappdata(fig,'deviation', []); end
+    if exist('bad_frames','var'), setappdata(fig,'bad_frames', bad_frames); else, setappdata(fig,'bad_frames', []); end
+    if exist('focus_segs','var'), setappdata(fig,'focus_segs', focus_segs); else, setappdata(fig,'focus_segs', []); end
 
     focus_segs = getappdata(fig,'focus_segs');
     if ~isempty(focus_segs)
@@ -285,7 +308,6 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     setappdata(fig,'SNR',SNR);
     setappdata(fig,'opts',opts);
     setappdata(fig,'ax1',ax1);
-    setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
     setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
     setappdata(fig,'quality_min', quality_min);
     setappdata(fig,'quality_max', quality_max);
@@ -328,8 +350,6 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             fprintf('\n===== RÉCAPITULATIF SÉLECTION CELLULES =====\n');
             fprintf('Total cellules             : %d\n', s.n_total);
             fprintf('Cellules finales (analysées): %d\n', s.n_kept_final);
-            fprintf('Qualité moyenne (toutes)    : %.3f\n', s.mean_quality_all);
-            fprintf('Qualité moyenne (finales)   : %.3f\n', s.mean_quality_kept_final);
             fprintf('===========================================\n\n');
         end
     else
@@ -351,7 +371,7 @@ end
 
 
 %% ===================== DF PROCESSING (unique) =======================
-function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = ...
+function [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = ...
     DF_processing(F, opts, fs)
 
 % DF_processing — VERSION "NAÏVE" POUR TEST (SANS FENÊTRE GLISSANTE)
@@ -439,9 +459,6 @@ function [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_mi
     [~, idx_sort] = sort(score, 'ascend');
     quality_rank = zeros(N,1);
     quality_rank(idx_sort) = 1:N;
-    
-    % (optionnel) juste pour couleur/affichage si tu veux (0..1)
-    quality_index = (quality_rank - 1) / max(1, (N-1));
     
     % slider en "rang"
     quality_min  = 1;
@@ -627,37 +644,6 @@ function refresh_data(fig)
         end
     end
 
-    % Indicateur de qualité + statut keep/exclude
-    % if isappdata(fig,'quality_index')
-    %     quality_index = getappdata(fig,'quality_index');
-    %     cid = getappdata(fig,'cell_id');
-    %     qval = quality_index(cid);
-    % 
-    %     % Couleur basée sur q (0..1)
-    %     if qval >= 0.75
-    %         qcolor = [0.0 0.6 0.0];    % vert foncé
-    %         qstyle = 'bold';
-    %     elseif qval >= 0.55
-    %         qcolor = [0.2 0.7 0.2];    % vert clair
-    %         qstyle = 'normal';
-    %     elseif qval >= 0.35
-    %         qcolor = [0.9 0.6 0.1];    % orange
-    %         qstyle = 'normal';
-    %     else
-    %         qcolor = [0.8 0.0 0.0];    % rouge
-    %         qstyle = 'bold';
-    %     end
-    % 
-    %     yMax = max(x,[],'omitnan');
-    %     yMin = min(x,[],'omitnan');
-    %     if ~isfinite(yMax), yMax = 1; end
-    %     if ~isfinite(yMin), yMin = 0; end
-    %     yPos = yMax - 0.05*(yMax - yMin);
-    % 
-    %     text(ax, 0.02*max(1,length(x)), yPos, sprintf('Qualité = %.2f %s', qval), ...
-    %         'Color', qcolor, 'FontSize', 12, 'FontWeight', qstyle, ...
-    %         'BackgroundColor',[1 1 1 0.6], 'Margin', 3);
-    % end
     update_roi_zoom(fig);
 end
 
@@ -673,13 +659,6 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
 
     nCells = size(DF_sg,1);
     Nz     = size(DF_sg,2);
-
-    % Quality index
-    if isappdata(fig, 'quality_index')
-        quality_index = getappdata(fig, 'quality_index');
-    else
-        quality_index = ones(nCells,1);
-    end
     
     if isappdata(fig, 'quality_rank')
         quality_rank = getappdata(fig, 'quality_rank');
@@ -842,19 +821,6 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     summary.n_manual_excl = sum(cell_status == -1);
     summary.n_undecided   = sum(cell_status == 0);
     summary.n_kept_final  = numel(valid_cells);
-
-    % Qualité moyenne (toutes les cellules) + (finales)
-    summary.mean_quality_all = mean(quality_index, 'omitnan');
-    if ~isempty(valid_cells)
-        summary.mean_quality_kept_final = mean(quality_index(valid_cells), 'omitnan');
-    else
-        summary.mean_quality_kept_final = NaN;
-    end
-
-    % Optionnel: qualité moyenne par statut manuel
-    summary.mean_quality_manual_keep = mean(quality_index(cell_status == +1), 'omitnan');
-    summary.mean_quality_manual_excl = mean(quality_index(cell_status == -1), 'omitnan');
-    summary.mean_quality_undecided   = mean(quality_index(cell_status == 0),  'omitnan');
 
     % réduire aux valid_cells
     DF_sg      = DF_sg(valid_cells, :);
@@ -1218,14 +1184,13 @@ function update_param(fig, field, value)
     % Si savgol_win change: recalcul DF_sg, noise, SNR + MAJ slider qualité
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
-        [DF, DF_sg, F0, noise_est, SNR, quality_index, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
+        [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
 
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
         setappdata(fig,'F0', F0);
         setappdata(fig,'noise_est', noise_est);
         setappdata(fig,'SNR', SNR);
-        setappdata(fig,'quality_index', quality_index);   % pour couleur/affichage
         setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
 
         sldr = findobj(fig,'Tag','sldr_quality_thr');
@@ -1678,7 +1643,7 @@ function update_roi_zoom(fig)
     % ============================================================
     % 1) Extraire contour xext/yext (0-based -> 1-based)
     % ============================================================
-    [xext, yext] = get_xext_yext(stat_in, cid);
+    [xext, yext] = get_xext_yext(stat_in, cid, size(meanImg));
 
     cla(ax); hold(ax,'on');
 
@@ -1773,58 +1738,104 @@ function update_roi_zoom(fig)
 end
 
 
-function [x, y] = get_xext_yext(stat_in, cid)
-% Retourne xext,yext en 1-based MATLAB, vide si introuvable.
+function [x, y] = get_xext_yext(stat_in, cid, imgSize)
+% get_xext_yext
+% - Retourne x,y (1-based) du contour ROI.
+% - Si xext/yext absents, reconstruit depuis xpix/ypix.
+%
+% imgSize = [H W] optionnel (meanImg size) pour clipper.
 
     x = []; y = [];
-    if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid) && cid>=1)
+
+    if nargin < 3, imgSize = []; end
+    if ~(isnumeric(cid)&&isscalar(cid)&&isfinite(cid)&&cid>=1), return; end
+    cid = round(cid);
+
+    % --- récupérer l'entrée stat ---
+    s = [];
+    if iscell(stat_in)
+        if cid > numel(stat_in), return; end
+        s = stat_in{cid};
+    elseif isstruct(stat_in)
+        if cid > numel(stat_in), return; end
+        s = stat_in(cid);
+    else
+        return;
+    end
+    if ~isstruct(s), return; end
+
+    % ============================================================
+    % 1) Si xext/yext existent, utiliser
+    % ============================================================
+    if isfield(s,'xext') && isfield(s,'yext') && isnumeric(s.xext) && isnumeric(s.yext) ...
+            && ~isempty(s.xext) && ~isempty(s.yext)
+        x = double(s.xext(:)) + 1;
+        y = double(s.yext(:)) + 1;
         return;
     end
 
-    try
-        if isa(stat_in,'py.list')
-            if cid > int64(length(stat_in)), return; end
-            s = stat_in{py.int(cid-1)};
-
-            % xext/yext
-            if isKey(s, 'xext') && isKey(s, 'yext')
-                x = double(s{'xext'}) + 1;
-                y = double(s{'yext'}) + 1;
-            else
-                return;
-            end
-
-        elseif iscell(stat_in)
-            if cid > numel(stat_in), return; end
-            s = stat_in{cid};
-            if isfield(s,'xext') && isfield(s,'yext')
-                x = double(s.xext) + 1;
-                y = double(s.yext) + 1;
-            else
-                return;
-            end
-
-        else % struct array
-            if cid > numel(stat_in), return; end
-            s = stat_in(cid);
-            if isfield(s,'xext') && isfield(s,'yext')
-                x = double(s.xext) + 1;
-                y = double(s.yext) + 1;
-            else
-                return;
-            end
-        end
-
-        % sécurité
-        x = x(:); y = y(:);
-        good = isfinite(x) & isfinite(y);
-        x = x(good); y = y(good);
-
-    catch
-        x = []; y = [];
+    % ============================================================
+    % 2) Fallback: reconstruire depuis xpix/ypix
+    % ============================================================
+    if ~(isfield(s,'xpix') && isfield(s,'ypix') && isnumeric(s.xpix) && isnumeric(s.ypix))
+        return;
     end
-end
 
+    xp = double(s.xpix(:)) + 1;   % 0-based -> 1-based
+    yp = double(s.ypix(:)) + 1;
+
+    good = isfinite(xp) & isfinite(yp);
+    xp = xp(good); yp = yp(good);
+    if numel(xp) < 3, return; end
+
+    % clip à l'image si taille connue
+    if ~isempty(imgSize) && numel(imgSize)==2
+        H = imgSize(1); W = imgSize(2);
+        in = xp>=1 & xp<=W & yp>=1 & yp<=H;
+        xp = xp(in); yp = yp(in);
+        if numel(xp) < 3, return; end
+    end
+
+    % bbox locale
+    pad = 2;
+    xmin = floor(min(xp))-pad; xmax = ceil(max(xp))+pad;
+    ymin = floor(min(yp))-pad; ymax = ceil(max(yp))+pad;
+
+    if ~isempty(imgSize) && numel(imgSize)==2
+        H = imgSize(1); W = imgSize(2);
+        xmin = max(1,xmin); xmax = min(W,xmax);
+        ymin = max(1,ymin); ymax = min(H,ymax);
+    end
+
+    w = xmax - xmin + 1;
+    h = ymax - ymin + 1;
+    if w<=2 || h<=2, return; end
+
+    mask = false(h,w);
+    xloc = round(xp - xmin + 1);
+    yloc = round(yp - ymin + 1);
+
+    ok = xloc>=1 & xloc<=w & yloc>=1 & yloc<=h;
+    if nnz(ok) < 3, return; end
+    mask(sub2ind([h w], yloc(ok), xloc(ok))) = true;
+
+    % lisser un peu le masque pour une boundary propre
+    mask = imclose(mask, strel('disk',1));
+    mask = imfill(mask,'holes');
+
+    B = bwboundaries(mask, 'noholes');
+    if isempty(B), return; end
+
+    % plus grande boundary
+    [~, imax] = max(cellfun(@(b) size(b,1), B));
+    b = B{imax};
+    yb = b(:,1);
+    xb = b(:,2);
+
+    % re-projeter en coords globales
+    x = xb + (xmin - 1);
+    y = yb + (ymin - 1);
+end
 function [user_segs, user_frames] = enter_observed_deviations(tifPath, T)
 % enter_observed_deviations
 % Indique à l'utilisateur quel TIFF ouvrir dans Fiji (manuellement),

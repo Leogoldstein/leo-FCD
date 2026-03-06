@@ -105,50 +105,63 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
 end
 
 function out = subset_pylist(pylist, idx)
-    % subset_pylist : extrait certains éléments d'un py.list et les convertit en struct MATLAB
-    %
-    % Entrées :
-    %   - pylist : liste Python (py.list) contenant des py.dict
-    %   - idx    : indices MATLAB des éléments à garder (1-based)
-    %
-    % Sortie :
-    %   - out : cell array MATLAB contenant des structs
-    
-    out = cell(1, numel(idx));   % Prépare un cell array vide
-    for k = 1:numel(idx)
-        % Python est 0-based, MATLAB est 1-based
-        py_idx = py.int(idx(k)-1);      
-        dict = pylist{py_idx};   % Récupère le py.dict correspondant
+    out = cell(1, numel(idx));
 
-        % ---- Récupération des clés du dict ----
+    np = py.importlib.import_module('numpy');
+
+    for k = 1:numel(idx)
+        py_idx = py.int(idx(k)-1);
+        dict = pylist{py_idx};
+
         keys = cellfun(@char, cell(py.list(dict.keys())), 'UniformOutput', false);
 
-        % ---- Conversion en struct MATLAB ----
         s = struct();
         for kk = 1:numel(keys)
-            key = keys{kk};        % ex: 'xpix'
-            value = dict{key};     % valeur associée à cette clé
+            key = keys{kk};
+            value = dict{key};
 
-            % Conversion selon le type Python
-            if isa(value, 'py.list') || isa(value, 'py.tuple')
-                % Convertir en vecteur MATLAB
-                val = double(py.array.array('d', py.numpy.array(value)));
-            elseif isa(value, 'py.dict')
-                % (optionnel : récursif si tu veux garder des sous-structs)
-                val = struct();
-            else
-                % Tentative de conversion simple
-                try
-                    val = double(value);
-                catch
-                    % Si impossible -> on garde brut
-                    val = value;
-                end
-            end
-
-            % Ajout du champ dans le struct MATLAB
-            s.(key) = val;
+            s.(key) = py_to_mat(value, np);
         end
-        out{k} = s;  % Sauvegarde dans la sortie
+
+        out{k} = s;
+    end
+end
+
+function val = py_to_mat(value, np)
+% Conversion robuste python->matlab pour Suite2p stat fields
+
+    % numpy ndarray
+    try
+        if isa(value, 'py.numpy.ndarray')
+            % tolist() marche bien pour vecteurs/arrays
+            val = double(np.array(value).flatten().tolist());
+            return;
+        end
+    catch
+    end
+
+    % python list/tuple
+    if isa(value,'py.list') || isa(value,'py.tuple')
+        try
+            val = double(py.array.array('d', np.array(value)));
+        catch
+            % fallback
+            val = cellfun(@double, cell(value));
+        end
+        return;
+    end
+
+    % scalaires numériques python
+    try
+        val = double(value);
+        return;
+    catch
+    end
+
+    % fallback: string ou objet brut
+    try
+        val = char(value);
+    catch
+        val = value;
     end
 end

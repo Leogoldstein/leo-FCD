@@ -2,7 +2,7 @@ function meanImgs = save_mean_images(current_animal_group, current_dates_group, 
     % SAVE_MEAN_IMAGES
     % Génère et sauvegarde une meanImg par plan, et retourne une structure
     % meanImgs{m}{p} où p = numéro du plan.
-    
+
     numFolders = length(current_gcamp_folders_group);
     meanImgs = cell(1, numFolders);  % meanImgs{m}{p}
 
@@ -16,7 +16,9 @@ function meanImgs = save_mean_images(current_animal_group, current_dates_group, 
         end
 
         nPlanes = numel(fall_paths);
-        meanImgs{m} = cell(1, nPlanes);
+
+        % CHANGEMENT ICI : vecteur colonne
+        meanImgs{m} = cell(nPlanes, 1);
 
         fprintf("Computing meanImgs for %d planes in folder %d\n", nPlanes, m);
 
@@ -73,7 +75,6 @@ function meanImgs = save_mean_images(current_animal_group, current_dates_group, 
             end
 
         end % fin boucle plan
-
 
         % --- OPTIONNEL : image moyenne sur tous les plans ---
         try

@@ -13,7 +13,7 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
     max_corr_mtor_mtor_by_plane   = cell(numFolders, 1);
 
     for m = 1:numFolders
-        filePath = fullfile(gcamp_output_folders{m}, 'results_corrs.mat');
+        filePath = fullfile(gcamp_output_folders{m}, 'results_corr.mat');
         disp(filePath);
 
         % --- combined? (BY-PLANE ONLY) ---

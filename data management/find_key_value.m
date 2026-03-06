@@ -199,81 +199,107 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
 
         %% === Nombre de plans Z (n_plans) + positions par plan pour ZSeries ===
         % Par défaut n_plans = 1 et position déjà définie globalement.
-        % Si on trouve une Sequence ZSeries, on remplace position par un vecteur
+        % Si on trouve une Sequence ZSeries, on remplace "position" par un vecteur
         seqNodes = xmlDoc.getElementsByTagName('Sequence');
+        
         for s = 0:seqNodes.getLength-1
             seqNode = seqNodes.item(s);
-            if seqNode.hasAttribute('type')
-                seqType = char(seqNode.getAttribute('type'));
-                if contains(seqType, 'ZSeries')   % ex: "TSeries ZSeries Element"
-                    frameNodes = seqNode.getElementsByTagName('Frame');
-                    n_plans = frameNodes.getLength;
-
-                    % Vecteur des positions Z par plan
-                    position_per_plane = NaN(1, n_plans);
-
-                    for f = 0:n_plans-1
-                        frameNode = frameNodes.item(f);
-
-                        % Chercher le PVStateShard de ce Frame
-                        shardNodes = frameNode.getElementsByTagName('PVStateShard');
-                        if shardNodes.getLength == 0
+        
+            if ~seqNode.hasAttribute('type')
+                continue;
+            end
+        
+            seqType = char(seqNode.getAttribute('type'));
+            if ~contains(seqType, 'ZSeries')   % ex: "TSeries ZSeries Element"
+                continue;
+            end
+        
+            frameNodes = seqNode.getElementsByTagName('Frame');
+        
+            % On collecte seulement les frames qui ont une position Z définie
+            positions = [];  % vecteur dynamique
+        
+            for f = 0:frameNodes.getLength-1
+                frameNode = frameNodes.item(f);
+        
+                % Chercher un PVStateShard "utile" (qui contient des PVStateValue)
+                shardNodes = frameNode.getElementsByTagName('PVStateShard');
+                if shardNodes.getLength == 0
+                    continue;
+                end
+        
+                shardNode = [];
+                for k = 0:shardNodes.getLength-1
+                    candidate = shardNodes.item(k);
+                    if candidate.getElementsByTagName('PVStateValue').getLength > 0
+                        shardNode = candidate;
+                        break;
+                    end
+                end
+                if isempty(shardNode)
+                    continue;
+                end
+        
+                framePV = shardNode.getElementsByTagName('PVStateValue');
+        
+                z_focus = NaN;
+                etl_raw = NaN;   % ETL en "unités ETL" (parfois absent)
+        
+                for p = 0:framePV.getLength-1
+                    pvNode = framePV.item(p);
+                    kkey = char(pvNode.getAttribute('key'));
+        
+                    if ~strcmp(kkey, 'positionCurrent')
+                        continue;
+                    end
+        
+                    subindexedValuesNodes = pvNode.getElementsByTagName('SubindexedValues');
+                    for j = 0:subindexedValuesNodes.getLength-1
+                        subNode = subindexedValuesNodes.item(j);
+                        if ~strcmp(char(subNode.getAttribute('index')), 'ZAxis')
                             continue;
                         end
-                        shardNode = shardNodes.item(0);
-
-                        % Dans ce shard, trouver PVStateValue key="positionCurrent"
-                        framePV = shardNode.getElementsByTagName('PVStateValue');
-                        z_focus = NaN;
-                        etl_raw = 0;   % ETL en "unités ETL"
-
-                        for p = 0:framePV.getLength-1
-                            pvNode = framePV.item(p);
-                            k = char(pvNode.getAttribute('key'));
-                            if strcmp(k, 'positionCurrent')
-                                subindexedValuesNodes = pvNode.getElementsByTagName('SubindexedValues');
-                                for j = 0:subindexedValuesNodes.getLength-1
-                                    subNode = subindexedValuesNodes.item(j);
-                                    if ~strcmp(char(subNode.getAttribute('index')), 'ZAxis')
-                                        continue;
-                                    end
-                                    % On est sur ZAxis
-                                    sv = subNode.getElementsByTagName('SubindexedValue');
-                                    for t = 0:sv.getLength-1
-                                        svNode = sv.item(t);
-                                        val = str2num_local(svNode.getAttribute('value'));
-
-                                        subidx = '';
-                                        if svNode.hasAttribute('subindex')
-                                            subidx = char(svNode.getAttribute('subindex'));
-                                        end
-                                        descr = '';
-                                        if svNode.hasAttribute('description')
-                                            descr = char(svNode.getAttribute('description'));
-                                        end
-
-                                        % Z Focus
-                                        if contains(descr, 'Z Focus') || strcmp(subidx, '0')
-                                            z_focus = val;
-                                        % ETL
-                                        elseif contains(descr, 'Optotune') || strcmp(subidx, '1')
-                                            etl_raw = val;
-                                        end
-                                    end
-                                end
+        
+                        sv = subNode.getElementsByTagName('SubindexedValue');
+                        for t = 0:sv.getLength-1
+                            svNode = sv.item(t);
+                            val = str2num_local(svNode.getAttribute('value'));
+        
+                            descr = '';
+                            if svNode.hasAttribute('description')
+                                descr = char(svNode.getAttribute('description'));
+                            end
+                            subidx = '';
+                            if svNode.hasAttribute('subindex')
+                                subidx = char(svNode.getAttribute('subindex'));
+                            end
+        
+                            % Priorité à "description" si dispo, sinon fallback subindex
+                            if (~isempty(descr) && contains(descr, 'Z Focus')) || (isempty(descr) && strcmp(subidx, '0'))
+                                z_focus = val;
+                            elseif (~isempty(descr) && contains(descr, 'Optotune')) || (isempty(descr) && strcmp(subidx, '1'))
+                                etl_raw = val;
                             end
                         end
-
-                        % Position Z plan = Z Focus + ETL/1000 (1000 ETL = 1 µm)
-                        if ~isnan(z_focus)
-                            position_per_plane(f+1) = z_focus + etl_raw / 1000;
-                        end
                     end
-
-                    position = position_per_plane;
-                    break;  % on s'arrête au premier ZSeries
+                end
+        
+                % Si on a un Z Focus, on considère que ce frame correspond à un plan Z
+                if ~isnan(z_focus)
+                    if isnan(etl_raw)
+                        etl_raw = 0; % si ETL absent, on prend 0
+                    end
+        
+                    % Position Z plan = Z Focus + ETL/1000 (1000 ETL = 1 µm)
+                    positions(end+1) = z_focus + etl_raw/1000; %#ok<AGROW>
                 end
             end
+        
+            % Sortie
+            position = positions;
+            n_plans  = numel(position);
+        
+            break; % on s'arrête au premier ZSeries
         end
 
         %% === Pixel size final (uniquement depuis micronsPerPixel) ===
