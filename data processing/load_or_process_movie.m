@@ -2,16 +2,18 @@ function [motion_energy_group, motion_energy_smooth_group, ...
           avg_active_motion_onsets_group, avg_active_motion_offsets_group, ...
           active_motion_onsets_group, active_motion_offsets_group, ...
           speed_active_group] = ...
-    load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group)
+    load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group, current_animal_group)
+    
+
 %LOAD_OR_PROCESS_MOVIE
-% - Load existing results_movie.mat fields if present
-% - Otherwise compute ONLY missing parts (field-by-field)
-% - Compute motion energy if missing (with Fiji prompt)
-% - Average, smooth, threshold, binarise
-% - Detect active periods (avg + frame level)
-% - Build speed_active directly from bin_sig
-% - Save everything in results_movie.mat
-% - Plot active periods
+    % - Load existing results_movie.mat fields if present
+    % - Otherwise compute ONLY missing parts (field-by-field)
+    % - Compute motion energy if missing (with Fiji prompt)
+    % - Average, smooth, threshold, binarise
+    % - Detect active periods (avg + frame level)
+    % - Build speed_active directly from bin_sig
+    % - Save everything in results_movie.mat
+    % - Plot active periods
 
     numFolders = numel(current_gcamp_TSeries_path);
 
@@ -207,45 +209,61 @@ function [motion_energy_group, motion_energy_smooth_group, ...
             'avg_block', ...
             '-v7.3');
 
-        % ============================================================
-        % 6) Plot (only if we have thr/bin; otherwise skip threshold line)
-        % ============================================================
-        dt = avg_block / sampling_rate_group{m};
-        time_axis = (0:numel(motion_energy_smooth)-1) * dt;
-
-        figure('Color','w'); hold on;
-
-        yl = [min(motion_energy_smooth) max(motion_energy_smooth)];
-        if yl(1) == yl(2), yl = yl + [-1 1]*eps; end
-
-        for k = 1:min(numel(avg_onsets), numel(avg_offsets))
-            patch([time_axis(avg_onsets(k)) time_axis(avg_offsets(k)) ...
-                   time_axis(avg_offsets(k)) time_axis(avg_onsets(k))], ...
-                  [yl(1) yl(1) yl(2) yl(2)], ...
-                  [1 0.8 0.8], 'EdgeColor','none', 'FaceAlpha',0.4);
-        end
-
-        % Plot bin if available (otherwise compute a quick one for display)
-        if isempty(bin_sig)
-            % just for plotting (does not affect saved results)
-            [~, thr_tmp, ~] = compute_thresholds_for_bin_state_detection(motion_energy_smooth, false);
-            [bin_tmp, ~, ~, ~] = binarise_motion(motion_energy_smooth, thr_tmp, sampling_rate_group{m}, avg_block, 3.0, 5);
-            plot(time_axis, bin_tmp(:)' * yl(2), 'Color',[1 0.5 0], 'LineWidth',2);
-            yline(thr_tmp, '--r', 'LineWidth',1);
-        else
-            plot(time_axis, bin_sig(:)' * yl(2), 'Color',[1 0.5 0], 'LineWidth',2);
-            if ~isempty(thr_li)
-                yline(thr_li, '--r', 'LineWidth',1);
+       % ---- Sauvegarde image PNG ----
+        png_filename = fullfile(gcamp_output_folders{m}, ...
+            sprintf('binary_motion_energy.png'));
+        
+        if ~isfile(png_filename)
+        
+            fig = figure('Visible','off', 'Color','w');
+            hold on;
+        
+            % ============================================================
+            % 6) Plot (only if we have thr/bin; otherwise skip threshold line)
+            % ============================================================
+            dt = avg_block / sampling_rate_group{m};
+            time_axis = (0:numel(motion_energy_smooth)-1) * dt;
+        
+            yl = [min(motion_energy_smooth) max(motion_energy_smooth)];
+            if yl(1) == yl(2)
+                yl = yl + [-1 1]*eps;
             end
+        
+            for k = 1:min(numel(avg_onsets), numel(avg_offsets))
+                patch([time_axis(avg_onsets(k)) time_axis(avg_offsets(k)) ...
+                       time_axis(avg_offsets(k)) time_axis(avg_onsets(k))], ...
+                      [yl(1) yl(1) yl(2) yl(2)], ...
+                      [1 0.8 0.8], 'EdgeColor','none', 'FaceAlpha',0.4);
+            end
+        
+            % Plot bin if available (otherwise compute a quick one for display)
+            if isempty(bin_sig)
+                % just for plotting (does not affect saved results)
+                [~, thr_tmp, ~] = compute_thresholds_for_bin_state_detection(motion_energy_smooth, false);
+                [bin_tmp, ~, ~, ~] = binarise_motion(motion_energy_smooth, thr_tmp, ...
+                    sampling_rate_group{m}, avg_block, 3.0, 5);
+        
+                plot(time_axis, bin_tmp(:)' * yl(2), 'Color',[1 0.5 0], 'LineWidth',2);
+                yline(thr_tmp, '--r', 'LineWidth',1);
+            else
+                plot(time_axis, bin_sig(:)' * yl(2), 'Color',[1 0.5 0], 'LineWidth',2);
+                if ~isempty(thr_li)
+                    yline(thr_li, '--r', 'LineWidth',1);
+                end
+            end
+        
+            plot(time_axis, motion_energy_smooth, 'Color',[0 0 1], 'LineWidth',2);
+        
+            title(sprintf('binary motion_energy – %s', ...
+                current_animal_group));
+            xlabel('Time (s)');
+            ylabel('Motion energy');
+            grid on;
+            hold off;
+        
+            saveas(fig, png_filename);
+            close(fig);
         end
-
-        plot(time_axis, motion_energy_smooth, 'Color',[0 0 1], 'LineWidth',2);
-
-        title(sprintf('binary motion\\_energy (m=%d)', m), 'FontSize', 18);
-        xlabel('Time (s)');
-        ylabel('Motion energy');
-        grid on;
-        hold off;
 
     end % for m
 end % main

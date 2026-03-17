@@ -35,6 +35,8 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     gcamp_TSeries_path = '';
     meanImg = [];
     ops = [];
+    meta_tbl = [];
+    viewer_mode = false;
     
     if ~isempty(varargin)
     
@@ -58,6 +60,9 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             val = varargin{i+1};
     
             switch key
+                case 'viewer_mode'
+                    viewer_mode = logical(val);
+    
                 case 'nogui'
                     nogui = logical(val);
     
@@ -84,6 +89,9 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
 
                 case 'speed'
                     speed = val;
+
+                case 'meta_tbl'
+                    meta_tbl = val;
             end
         end
     end
@@ -93,19 +101,22 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
     
     if exist('speed','var') && ~isempty(speed)
-        [deviation, bad_frames, bad_frames_not_active, bad_frames_active] = ...
+        [deviation, bad_frames, ~, ~, DF_sg] = ...
             motion_correction_substraction(DF_sg, ops, speed);
     
         deviation = deviation(:).';  % force row
-        bad_frames_active = bad_frames_active(:)';
+        bad_frames = bad_frames(:).'; 
+        %%bad_frames_active = bad_frames_active(:)';
     
-        bad_segs  = badframes_to_segments(bad_frames_active, size(DF_sg,2)); % Nx2
+        bad_segs  = badframes_to_segments(bad_frames, size(DF_sg,2)); % Nx2
         segTable  = sort_segments_by_deviation(bad_segs, deviation);
         assignin('base', 'segTable', segTable);
     
         T = size(DF_sg,2);
-        [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T); %#ok<ASGLU>
-    
+        user_focus_segs = [];
+
+        % [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T); %#ok<ASGLU>
+
         if ~isempty(user_focus_segs)
             focus_segs = user_focus_segs;
         else
@@ -130,6 +141,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         setappdata(fig,'cell_status', zeros(size(F,1),1));
         setappdata(fig,'iscell', iscell_in);
         setappdata(fig,'stat',   stat_in);
+        setappdata(fig,'meta_tbl', meta_tbl);
 
         [~, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, ~, summary] = ...
             save_peak_matrix(fig, synchronous_frames);
@@ -188,27 +200,36 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'Callback', @(src,~) update_quality_threshold(fig, round(get(src,'Value'))));
 
     % --- Garder / Exclure cellule ---
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Garder cellule', ...
-        'Units','normalized','Position',[0.05 0.36 0.90 0.06], ...
-        'BackgroundColor',[0.25 0.65 0.25], 'ForegroundColor','w', 'FontWeight','bold', ...
-        'Callback', @(src,~) keep_cell(fig));
-
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Exclure cellule', ...
-        'Units','normalized','Position',[0.05 0.28 0.90 0.06], ...
-        'BackgroundColor',[0.85 0.3 0.3], 'ForegroundColor','w', 'FontWeight','bold', ...
-        'Callback', @(src,~) exclude_cell(fig));
-
-    % --- Étape 1 : sélectionner cellules (filtrage >= seuil) ---
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Seuil de sélection', ...
-        'Units','normalized','Position',[0.05 0.10 0.90 0.06], ...
-        'BackgroundColor',[0.2 0.45 0.9], 'ForegroundColor','w','FontWeight','bold', ...
-        'Callback',@(src,~) enter_selection_mode(fig));
+    if ~viewer_mode
+        uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Garder cellule', ...
+            'Units','normalized','Position',[0.05 0.36 0.90 0.06], ...
+            'BackgroundColor',[0.25 0.65 0.25], 'ForegroundColor','w', 'FontWeight','bold', ...
+            'Callback', @(src,~) keep_cell(fig));
     
-    % --- Étape 2 : confirmer (crée réellement les matrices) ---
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Confirmer sélection', ...
-        'Units','normalized','Position',[0.05 0.04 0.90 0.06], ...
-        'BackgroundColor',[0.1 0.6 0.35], 'ForegroundColor','w','FontWeight','bold', ...
-        'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
+        uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Exclure cellule', ...
+            'Units','normalized','Position',[0.05 0.28 0.90 0.06], ...
+            'BackgroundColor',[0.85 0.3 0.3], 'ForegroundColor','w', 'FontWeight','bold', ...
+            'Callback', @(src,~) exclude_cell(fig));
+    
+        % --- Étape 1 : sélectionner cellules (filtrage >= seuil) ---
+        uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Seuil de sélection', ...
+            'Units','normalized','Position',[0.05 0.10 0.90 0.06], ...
+            'BackgroundColor',[0.2 0.45 0.9], 'ForegroundColor','w','FontWeight','bold', ...
+            'Callback',@(src,~) enter_selection_mode(fig));
+        
+        % --- Étape 2 : confirmer (crée réellement les matrices) ---
+        uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Confirmer sélection', ...
+            'Units','normalized','Position',[0.05 0.04 0.90 0.06], ...
+            'BackgroundColor',[0.1 0.6 0.35], 'ForegroundColor','w','FontWeight','bold', ...
+            'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
+    else
+        uicontrol('Parent',ctrl_panel,'Style','text', ...
+            'String','Viewer mode : navigation seulement', ...
+            'Units','normalized','Position',[0.05 0.04 0.90 0.08], ...
+            'BackgroundColor',[.97 .97 .98], ...
+            'ForegroundColor',[0.3 0.3 0.3], ...
+            'FontWeight','bold');
+    end
 
     % --- Contrôles détection ---
     make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.70 0.90 0.06]);
@@ -320,12 +341,14 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     setappdata(fig,'iscell', iscell_in);
     setappdata(fig,'stat',   stat_in);
     setappdata(fig,'meanImg', meanImg);
+    setappdata(fig,'meta_tbl', meta_tbl);
+    setappdata(fig,'viewer_mode', viewer_mode);
 
     % cell_status: 0 undecided, +1 keep, -1 exclude
     nCells = size(F,1);
     setappdata(fig,'cell_status', zeros(size(F,1),1));
 
-    update_quality_threshold(fig, quality_thr0);  % définit cell_id + refresh_data
+    update_quality_threshold(fig, quality_thr0);
     recompute_n_peaks_all(fig);
     update_peak_histogram(fig);      
 
@@ -483,6 +506,7 @@ function auto_detect_and_add(fig)
     sigma = median(noise_est(cid,:), 'omitnan');
     prominence = opts.prominence_factor * sigma;
     thr_glo = max([3 * iqr(x), 3 * std(x), minithreshold]);
+    thr_glo = median(x, 'omitnan') + thr_glo;
 
     minW = max(1, round(opts.min_width_fr));
     [~, locs] = findpeaks(x, ...
@@ -645,6 +669,7 @@ function refresh_data(fig)
     end
 
     update_roi_zoom(fig);
+    update_peak_histogram(fig);
 end
 
 
@@ -704,7 +729,7 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
             thresholds(cid) = NaN;
             Raster(cid,:) = false;
             DF_sg(cid,:) = NaN;
-            fprintf('Cellule %d ignorée (rank %d < %d)\n', cid, quality_rank(cid), qthr);
+            %fprintf('Cellule %d ignorée (rank %d < %d)\n', cid, quality_rank(cid), qthr);
             continue;
         end
 
@@ -831,11 +856,15 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     Raster     = Raster(valid_cells, :);
 end
 
-%% ===================== QUALITY THRESHOLD / TRI =======================
 function update_quality_threshold(fig, thr_slider)
 % update_quality_threshold
-% - Mode normal : thr_slider = seuil (rank min), affiche la cellule cutoff (pire gardée)
+% - Mode normal    : thr_slider = seuil (rank min), affiche la cellule cutoff
 % - Mode sélection : seuil figé (= selection_thr_locked), thr_slider = index de navigation
+% - Mode viewer    : thr_slider = index de navigation (toutes les cellules affichables)
+%
+% Convention:
+%   quality_rank = 1 -> pire, N -> meilleur
+%   order_cells  = pire -> meilleur
 
     % --- récup ---
     if ~isappdata(fig,'quality_rank')
@@ -850,31 +879,56 @@ function update_quality_threshold(fig, thr_slider)
         cell_status = zeros(N,1);
     end
 
-    % --- selection_mode robuste ---
     selection_mode = isappdata(fig,'selection_mode') && logical(getappdata(fig,'selection_mode'));
+    viewer_mode    = isappdata(fig,'viewer_mode')    && logical(getappdata(fig,'viewer_mode'));
 
     % slider entier
     thr_slider = round(thr_slider);
 
     % ============================================================
-    % MODE SÉLECTION : seuil FIXE (lock), slider = NAVIGATION (index)
+    % MODE SÉLECTION / VIEWER : slider = NAVIGATION (index)
     % ============================================================
-    if selection_mode && isappdata(fig,'selection_thr_locked')
-    
-        order_cells = getappdata(fig,'order_cells');
+    if (selection_mode && isappdata(fig,'selection_thr_locked')) || viewer_mode
+
+        if viewer_mode
+            % Toutes les cellules non exclues, triées pire -> meilleur
+            valid_cells = find(cell_status ~= -1);
+            if isempty(valid_cells)
+                valid_cells = (1:N).';
+            end
+
+            [~, ord] = sort(quality_rank(valid_cells), 'ascend');
+            order_cells = valid_cells(ord);
+            setappdata(fig,'order_cells', order_cells);
+        else
+            order_cells = getappdata(fig,'order_cells');
+        end
+
         if isempty(order_cells), return; end
-    
-        idx = max(1, min(numel(order_cells), round(thr_slider)));
+
+        idx = max(1, min(numel(order_cells), thr_slider));
         new_cid = order_cells(idx);
-    
+
         setappdata(fig,'cell_index_in_order', idx);
         setappdata(fig,'cell_id', new_cid);
-    
+
+        % synchroniser le slider visuellement
+        sldr = findobj(fig,'Tag','sldr_quality_thr');
+        if ~isempty(sldr) && isgraphics(sldr)
+            set(sldr,'Min',1,'Max',numel(order_cells),'Value',idx);
+            step = 1/max(1,numel(order_cells)-1);
+            set(sldr,'SliderStep',[step min(1,10*step)]);
+        end
+
         lbl = findobj(fig,'Tag','lbl_quality_thr');
         if ~isempty(lbl)
-            lbl.String = sprintf('MODE SÉLECTION — navigation (%d / %d)', idx, numel(order_cells));
+            if viewer_mode
+                lbl.String = sprintf('VIEWER MODE — navigation (%d / %d)', idx, numel(order_cells));
+            else
+                lbl.String = sprintf('MODE SÉLECTION — navigation (%d / %d)', idx, numel(order_cells));
+            end
         end
-    
+
         setappdata(fig,'auto_intervals', []);
         if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
         auto_detect_and_add(fig);
@@ -898,6 +952,14 @@ function update_quality_threshold(fig, thr_slider)
     % cellules éligibles (rank >= seuil)
     valid_cells = find((quality_rank >= thr_eff) & (cell_status ~= -1));
 
+    % remettre le slider en mode "seuil"
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr)
+        set(sldr,'Min',1,'Max',N,'Value',thr_eff);
+        step = 1/max(1,N-1);
+        set(sldr,'SliderStep',[step min(1,10*step)]);
+    end
+
     % label
     lbl = findobj(fig,'Tag','lbl_quality_thr');
     if ~isempty(lbl)
@@ -917,13 +979,13 @@ function update_quality_threshold(fig, thr_slider)
         return;
     end
 
-    % ordre : meilleur -> pire
-    [~, ord] = sort(quality_rank(valid_cells), 'descend');
+    % ordre : pire -> meilleur
+    [~, ord] = sort(quality_rank(valid_cells), 'ascend');
     order_cells = valid_cells(ord);
     setappdata(fig,'order_cells', order_cells);
 
-    % en mode normal : afficher la cellule cutoff = pire parmi gardées = FIN de liste
-    idx = numel(order_cells);
+    % en mode normal : afficher la cutoff = pire parmi gardées
+    idx = 1;
     new_cid = order_cells(idx);
 
     setappdata(fig,'cell_index_in_order', idx);
@@ -944,54 +1006,59 @@ end
 %% ===================== NAVIGATION =======================
 function next_cell(fig)
 
-    % --- seuil courant (ENTIER + clamp) ---
-    if isappdata(fig,'quality_rank')
-        N = numel(getappdata(fig,'quality_rank'));
+    viewer_mode = isappdata(fig,'viewer_mode') && logical(getappdata(fig,'viewer_mode'));
+
+    if viewer_mode
+        if ~isappdata(fig,'order_cells')
+            return;
+        end
+        order_cells = getappdata(fig,'order_cells');
+        if isempty(order_cells), return; end
     else
-        return;
+        if isappdata(fig,'quality_rank')
+            N = numel(getappdata(fig,'quality_rank'));
+        else
+            return;
+        end
+
+        sldr = findobj(fig,'Tag','sldr_quality_thr');
+        if ~isempty(sldr) && isgraphics(sldr)
+            thr = round(get(sldr,'Value'));
+        elseif isappdata(fig,'quality_thr')
+            thr = round(getappdata(fig,'quality_thr'));
+        else
+            thr = 1;
+        end
+        thr = max(1, min(N, thr));
+
+        order_cells = compute_order_cells(fig, thr);
+        setappdata(fig,'order_cells', order_cells);
+        if isempty(order_cells), return; end
     end
 
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
-    if ~isempty(sldr) && isgraphics(sldr)
-        thr = round(get(sldr,'Value'));
-    elseif isappdata(fig,'quality_thr')
-        thr = round(getappdata(fig,'quality_thr'));
-    else
-        thr = 1;
-    end
-    thr = max(1, min(N, thr));
-
-    % --- ordre ---
-    order_cells = compute_order_cells(fig, thr);
-    setappdata(fig,'order_cells', order_cells);
-    if isempty(order_cells)
-        return;
-    end
-
-    % --- cellule courante ---
     cid = [];
-    if isappdata(fig,'cell_id'), cid = getappdata(fig,'cell_id'); end
+    if isappdata(fig,'cell_id')
+        cid = getappdata(fig,'cell_id');
+    end
     if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid))
-        cid = order_cells(1);
+        idx = 1;
     else
-        cid = round(cid);
+        idx = find(order_cells == round(cid), 1);
+        if isempty(idx), idx = 1; end
     end
 
-    % --- position ---
-    idx = find(order_cells == cid, 1);
-    if isempty(idx)
-        idx = numel(order_cells);  % repartir de la cutoff (pire gardée)
-    end
-
-    % --- avancer ---
     idx = min(idx + 1, numel(order_cells));
     new_cid = order_cells(idx);
 
-    % --- set ---
     setappdata(fig,'cell_index_in_order', idx);
     setappdata(fig,'cell_id', new_cid);
 
-    % reset détection auto
+    % sync slider avec l'index courant
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr) && viewer_mode
+        set(sldr,'Value', idx);
+    end
+
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
     if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
@@ -1003,54 +1070,59 @@ end
 
 function prev_cell(fig)
 
-    % --- seuil courant (ENTIER + clamp) ---
-    if isappdata(fig,'quality_rank')
-        N = numel(getappdata(fig,'quality_rank'));
+    viewer_mode = isappdata(fig,'viewer_mode') && logical(getappdata(fig,'viewer_mode'));
+
+    if viewer_mode
+        if ~isappdata(fig,'order_cells')
+            return;
+        end
+        order_cells = getappdata(fig,'order_cells');
+        if isempty(order_cells), return; end
     else
-        return;
+        if isappdata(fig,'quality_rank')
+            N = numel(getappdata(fig,'quality_rank'));
+        else
+            return;
+        end
+
+        sldr = findobj(fig,'Tag','sldr_quality_thr');
+        if ~isempty(sldr) && isgraphics(sldr)
+            thr = round(get(sldr,'Value'));
+        elseif isappdata(fig,'quality_thr')
+            thr = round(getappdata(fig,'quality_thr'));
+        else
+            thr = 1;
+        end
+        thr = max(1, min(N, thr));
+
+        order_cells = compute_order_cells(fig, thr);
+        setappdata(fig,'order_cells', order_cells);
+        if isempty(order_cells), return; end
     end
 
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
-    if ~isempty(sldr) && isgraphics(sldr)
-        thr = round(get(sldr,'Value'));
-    elseif isappdata(fig,'quality_thr')
-        thr = round(getappdata(fig,'quality_thr'));
-    else
-        thr = 1;
-    end
-    thr = max(1, min(N, thr));
-
-    % --- ordre ---
-    order_cells = compute_order_cells(fig, thr);
-    setappdata(fig,'order_cells', order_cells);
-    if isempty(order_cells)
-        return;
-    end
-
-    % --- cellule courante ---
     cid = [];
-    if isappdata(fig,'cell_id'), cid = getappdata(fig,'cell_id'); end
+    if isappdata(fig,'cell_id')
+        cid = getappdata(fig,'cell_id');
+    end
     if ~(isnumeric(cid) && isscalar(cid) && isfinite(cid))
-        cid = order_cells(1);
-    else
-        cid = round(cid);
-    end
-
-    % --- position ---
-    idx = find(order_cells == cid, 1);
-    if isempty(idx)
         idx = 1;
+    else
+        idx = find(order_cells == round(cid), 1);
+        if isempty(idx), idx = 1; end
     end
 
-    % --- reculer ---
     idx = max(idx - 1, 1);
     new_cid = order_cells(idx);
 
-    % --- set ---
     setappdata(fig,'cell_index_in_order', idx);
     setappdata(fig,'cell_id', new_cid);
 
-    % reset détection auto
+    % sync slider avec l'index courant
+    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    if ~isempty(sldr) && isgraphics(sldr) && viewer_mode
+        set(sldr,'Value', idx);
+    end
+
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
     if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
@@ -1060,8 +1132,18 @@ function prev_cell(fig)
     update_peak_histogram(fig);
 end
 
-
 function navigate_cells(fig, evnt)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        % autoriser navigation seulement
+        switch evnt.Key
+            case 'rightarrow', next_cell(fig);
+            case 'leftarrow',  prev_cell(fig);
+        end
+        return;
+    end
+
+    % comportement normal sinon
     switch evnt.Key
         case 'rightarrow', next_cell(fig);
         case 'leftarrow',  prev_cell(fig);
@@ -1071,6 +1153,11 @@ end
 
 %% ===================== KEEP / EXCLUDE / FINALIZE =======================
 function keep_cell(fig)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        return;
+    end
+
     cid = getappdata(fig,'cell_id');
     st  = getappdata(fig,'cell_status');
     st(cid) = +1;
@@ -1084,6 +1171,11 @@ function keep_cell(fig)
 end
 
 function exclude_cell(fig)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        return;
+    end
+    
     cid = getappdata(fig,'cell_id');
     st  = getappdata(fig,'cell_status');
     st(cid) = -1;
@@ -1099,9 +1191,18 @@ end
 
 
 function finalize_and_close(fig, synchronous_frames)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        if ishghandle(fig)
+            uiresume(fig);
+            close(fig);
+        end
+        return;
+    end
+
     [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
-    
+
     % === RASTER + FOCUS SEGS ===
     if isappdata(fig,'focus_segs')
         focus_segs = getappdata(fig,'focus_segs');
@@ -1109,9 +1210,8 @@ function finalize_and_close(fig, synchronous_frames)
         focus_segs = [];
     end
 
-    plot_raster_window(Raster, focus_segs);
+    % plot_raster_window(Raster, focus_segs);
 
-    % mapping : index original -> index dans matrices compactées
     orig2new = nan(max(valid_cells),1);
     orig2new(valid_cells) = 1:numel(valid_cells);
 
@@ -1121,7 +1221,7 @@ function finalize_and_close(fig, synchronous_frames)
     setappdata(fig,'last_save_outputs', struct( ...
         'invalid_cells', invalid_cells, ...
         'valid_cells', valid_cells, ...
-        'orig2new', orig2new, ...          % <--- AJOUT
+        'orig2new', orig2new, ...
         'DF_sg', DF_sg, 'F0', F0, ...
         'Raster', Raster, 'Acttmp2', {Acttmp2}, 'StartEnd', {StartEnd}, ...
         'MAct', MAct, 'thresholds', thresholds, 'opts', opts, 'summary', summary));
@@ -1184,7 +1284,8 @@ function update_param(fig, field, value)
     % Si savgol_win change: recalcul DF_sg, noise, SNR + MAJ slider qualité
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
-        [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts);
+        fs = getappdata(fig,'fs');
+        [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts, fs);
 
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
@@ -1427,8 +1528,8 @@ function order_cells = compute_order_cells(fig, thr_slider)
         return;
     end
 
-    % --- ordre : meilleur -> pire ---
-    [~, ord] = sort(quality_rank(valid_cells), 'descend');
+    % --- ordre : pire -> meilleur ---
+    [~, ord] = sort(quality_rank(valid_cells), 'ascend');
     order_cells = valid_cells(ord);
 end
 
@@ -1597,13 +1698,17 @@ end
 function update_roi_zoom(fig)
 % update_roi_zoom
 % Affiche la meanImg zoomée autour de la cellule courante (cid) avec
-% contraste local (basé sur le crop) + contour Suite2p via xext/yext.
+% contraste local + contour Suite2p via xext/yext.
+% Le titre affiche la probabilité que ce soit une cellule via iscell(:,2).
+% Une barre d'échelle est tracée si PixelSize est disponible dans meta_tbl.
 %
 % Pré-requis appdata:
-%   'axROI'   : axes
-%   'meanImg' : image moyenne (H x W) numérique
-%   'stat'    : stat (cell/struct/py.list)
-%   'cell_id' : index cellule (1-based)
+%   'axROI'    : axes
+%   'meanImg'  : image moyenne (H x W)
+%   'stat'     : stat (cell/struct)
+%   'cell_id'  : index cellule (1-based)
+%   'iscell'   : matrice Nx2 ou plus (colonne 2 = probabilité)
+%   'meta_tbl' : table contenant PixelSize
 
     if ~isappdata(fig,'axROI'), return; end
     ax = getappdata(fig,'axROI');
@@ -1616,7 +1721,7 @@ function update_roi_zoom(fig)
     end
     if isempty(meanImg) || ~(isnumeric(meanImg) || islogical(meanImg))
         cla(ax);
-        title(ax,'ROI (zoom)');
+        title(ax,'P(cellule)=NaN');
         text(ax,0.5,0.5,'meanImg non disponible/numérique', ...
             'Units','normalized','HorizontalAlignment','center');
         return;
@@ -1625,17 +1730,72 @@ function update_roi_zoom(fig)
 
     % --- cid ---
     if ~isappdata(fig,'cell_id')
-        cla(ax); imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image');
-        set(ax,'YDir','reverse'); title(ax,'ROI (zoom)');
+        cla(ax);
+        imagesc(ax, meanImg);
+        colormap(ax,gray);
+        axis(ax,'image');
+        set(ax,'YDir','reverse');
+        title(ax,'P(cellule)=NaN');
         return;
     end
     cid = round(getappdata(fig,'cell_id'));
 
+    % --- probabilité iscell (colonne 2) ---
+    prob_cell = NaN;
+    if isappdata(fig,'iscell')
+        iscell_in = getappdata(fig,'iscell');
+        try
+            if isnumeric(iscell_in) || islogical(iscell_in)
+                if size(iscell_in,1) >= cid && size(iscell_in,2) >= 2
+                    prob_cell = double(iscell_in(cid,2));
+                end
+            elseif iscell(iscell_in)
+                if size(iscell_in,1) >= cid && size(iscell_in,2) >= 2
+                    prob_cell = double(iscell_in{cid,2});
+                end
+            end
+        catch
+            prob_cell = NaN;
+        end
+    end
+
+    if isfinite(prob_cell)
+        ttl = sprintf('Cellule %d — P(cellule)=%.3f', cid, prob_cell);
+    else
+        ttl = sprintf('Cellule %d — P(cellule)=NaN', cid);
+    end
+
+    % --- PixelSize depuis meta_tbl ---
+    pixel_size_um = NaN;   % µm / pixel
+
+    if isappdata(fig,'meta_tbl')
+        meta_tbl = getappdata(fig,'meta_tbl');
+        try
+            if istable(meta_tbl) && any(strcmp(meta_tbl.Properties.VariableNames,'PixelSize'))
+                px = meta_tbl.PixelSize;
+
+                if isnumeric(px)
+                    pixel_size_um = double(px(1));
+                elseif iscell(px) && ~isempty(px)
+                    pixel_size_um = str2double(string(px{1}));
+                elseif isstring(px) || ischar(px)
+                    pixel_size_um = str2double(string(px(1)));
+                end
+            end
+        catch
+            pixel_size_um = NaN;
+        end
+    end
+
     % --- stat ---
     if ~isappdata(fig,'stat')
         cla(ax);
-        imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image'); set(ax,'YDir','reverse');
-        title(ax, sprintf('Cell %d — stat absent', cid));
+        imagesc(ax, meanImg);
+        colormap(ax,gray);
+        axis(ax,'image');
+        set(ax,'YDir','reverse');
+        title(ax, ttl);
+        add_scale_bar(ax, pixel_size_um);
         return;
     end
     stat_in = getappdata(fig,'stat');
@@ -1645,19 +1805,23 @@ function update_roi_zoom(fig)
     % ============================================================
     [xext, yext] = get_xext_yext(stat_in, cid, size(meanImg));
 
-    cla(ax); hold(ax,'on');
+    cla(ax);
+    hold(ax,'on');
 
     if isempty(xext) || isempty(yext) || numel(xext) < 3
-        % fallback: juste afficher meanImg entier si pas de contour
-        imagesc(ax, meanImg); colormap(ax,gray); axis(ax,'image');
+        imagesc(ax, meanImg);
+        colormap(ax,gray);
+        axis(ax,'image');
         set(ax,'YDir','reverse');
-        title(ax, sprintf('Cellule %d — xext/yext vide', cid));
+        title(ax, ttl);
+        add_scale_bar(ax, pixel_size_um);
         hold(ax,'off');
         return;
     end
 
     % fermer le contour
-    xext = xext(:); yext = yext(:);
+    xext = xext(:);
+    yext = yext(:);
     if xext(1) ~= xext(end) || yext(1) ~= yext(end)
         xext(end+1) = xext(1);
         yext(end+1) = yext(1);
@@ -1673,27 +1837,28 @@ function update_roi_zoom(fig)
     ymin = floor(min(yext)) - pad;
     ymax = ceil(max(yext)) + pad;
 
-    [H,W] = size(meanImg);
-    xmin = max(1, xmin); xmax = min(W, xmax);
-    ymin = max(1, ymin); ymax = min(H, ymax);
+    [Himg,Wimg] = size(meanImg);
+    xmin = max(1, xmin); xmax = min(Wimg, xmax);
+    ymin = max(1, ymin); ymax = min(Himg, ymax);
 
     cropImg = meanImg(ymin:ymax, xmin:xmax);
 
     % ============================================================
-    % 3) Contraste local (sur crop uniquement)
+    % 3) Contraste local
     % ============================================================
     v = cropImg(isfinite(cropImg));
     if isempty(v)
-        lo = min(cropImg(:)); hi = max(cropImg(:));
+        lo = min(cropImg(:));
+        hi = max(cropImg(:));
     else
         lo = prctile(v, 5);
         hi = prctile(v, 99.5);
         if ~isfinite(lo) || ~isfinite(hi) || hi <= lo
-            lo = min(v); hi = max(v);
+            lo = min(v);
+            hi = max(v);
         end
     end
 
-    % afficher le crop avec CLim local
     imagesc(ax, cropImg);
     colormap(ax, gray);
     axis(ax, 'image');
@@ -1703,40 +1868,37 @@ function update_roi_zoom(fig)
     % ============================================================
     % 4) Recaler contour en coordonnées du crop et tracer
     % ============================================================
-    % 1) Construire masque pixel-wise
     H = ymax - ymin + 1;
     W = xmax - xmin + 1;
     mask = false(H, W);
-    
-    % coordonnées locales
+
     xloc = round(xext - (xmin - 1));
     yloc = round(yext - (ymin - 1));
-    
+
     valid = xloc>=1 & xloc<=W & yloc>=1 & yloc<=H;
     idx = sub2ind([H W], yloc(valid), xloc(valid));
     mask(idx) = true;
-    
-    % 2) Nettoyage léger
+
     mask = imclose(mask, strel('disk',1));
-    mask = bwareaopen(mask, 10);   % enlève pixels dégénérés
-    
-    % 3) Extraire contour
+    mask = bwareaopen(mask, 10);
+
     B = bwboundaries(mask, 'noholes');
-    
+
     if ~isempty(B)
         boundary = B{1};
         yb = boundary(:,1);
         xb = boundary(:,2);
-    
-        % 4) Tracé propre
+
         plot(ax, xb, yb, 'k-', 'LineWidth', 4);
         plot(ax, xb, yb, 'r-', 'LineWidth', 2.5);
     end
 
-    title(ax, sprintf('Cellule %d — ROI zoom (contraste local)', cid));
+    % --- barre d'échelle ---
+    add_scale_bar(ax, pixel_size_um);
+
+    title(ax, ttl);
     hold(ax,'off');
 end
-
 
 function [x, y] = get_xext_yext(stat_in, cid, imgSize)
 % get_xext_yext
@@ -1836,6 +1998,7 @@ function [x, y] = get_xext_yext(stat_in, cid, imgSize)
     x = xb + (xmin - 1);
     y = yb + (ymin - 1);
 end
+
 function [user_segs, user_frames] = enter_observed_deviations(tifPath, T)
 % enter_observed_deviations
 % Indique à l'utilisateur quel TIFF ouvrir dans Fiji (manuellement),
@@ -2041,4 +2204,48 @@ function plot_raster_window(Raster, focus_segs)
         uistack(findobj(ax,'Type','patch'),'bottom');
     end
 
+end
+
+function add_scale_bar(ax, pixel_size_um)
+% add_scale_bar
+% Trace une barre d'échelle sur l'axe courant.
+% pixel_size_um : taille d'un pixel en µm/pixel
+
+    if isempty(ax) || ~ishghandle(ax) || ~isfinite(pixel_size_um) || pixel_size_um <= 0
+        return;
+    end
+
+    xl = xlim(ax);
+    yl = ylim(ax);
+
+    w = abs(diff(xl));
+    h = abs(diff(yl));
+
+    if w <= 0 || h <= 0
+        return;
+    end
+
+    % Choix automatique d'une longueur "jolie" en µm
+    candidate_um = [5 10 20 25 50 100];
+    target_um = 0.25 * w * pixel_size_um;  % ~25% de la largeur visible
+    [~, idx] = min(abs(candidate_um - target_um));
+    bar_um = candidate_um(idx);
+
+    bar_px = bar_um / pixel_size_um;
+
+    % Position : bas-gauche, avec marge
+    x0 = xl(1) + 0.08 * w;
+    x1 = x0 + bar_px;
+
+    % YDir est reverse, donc "bas" = grande valeur en y
+    y0 = yl(1) + 0.92 * h;
+
+    % tracé fond noir puis blanc pour visibilité
+    plot(ax, [x0 x1], [y0 y0], 'k-', 'LineWidth', 5, 'Clipping', 'off');
+    plot(ax, [x0 x1], [y0 y0], 'w-', 'LineWidth', 3, 'Clipping', 'off');
+
+    text(ax, (x0+x1)/2, y0 - 0.04*h, sprintf('%g \\mum', bar_um), ...
+        'Color','w', 'FontWeight','bold', 'HorizontalAlignment','center', ...
+        'VerticalAlignment','bottom', 'Clipping','off', ...
+        'BackgroundColor','k', 'Margin',1);
 end

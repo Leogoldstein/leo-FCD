@@ -108,7 +108,7 @@ function [selected_groups, daytime, results_analysis_all, plots_data_all, sampli
         avg_block = 5; % Moyenne toutes les 5 frames
         [motion_energy_group, motion_energy_smooth_group, ...
          avg_active_motion_onsets_group, avg_active_motion_offsets_group, ...
-         active_motion_onsets_group, active_motion_offsets_group, speed_active_group] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group);
+         active_motion_onsets_group, active_motion_offsets_group, speed_active_group] = load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group, current_animal_group);
     
         % Preprocess and process data
         % 1) GCaMP d'abord
