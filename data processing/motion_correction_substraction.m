@@ -1,5 +1,5 @@
-function [deviation, bad_frames, bad_frames_no_movement, bad_frames_with_movement, DF_sg] = ...
-    motion_correction_substraction(DF_sg, ops, speed)
+function [deviation, bad_frames, bad_frames_no_movement, bad_frames_with_movement, F] = ...
+    motion_correction_substraction(F, ops, speed)
 
     corrXY = ops.corrXY(:);   % force colonne
     speed  = speed(:);        % force colonne
@@ -39,9 +39,9 @@ function [deviation, bad_frames, bad_frames_no_movement, bad_frames_with_movemen
     fprintf('Bad frames AVEC mouvement (speed >= 1) : %d (%.2f%%)\n', ...
         sum(bad_frames_with_movement), 100*sum(bad_frames_with_movement)/N);
 
-    DF_sg_clean = DF_sg;
-    DF_sg_clean(:, bad_frames) = NaN;
-    DF_sg_clean = fillmissing(DF_sg_clean, 'linear', 2, 'EndValues', 'nearest'); %interpolation
-    DF_sg = DF_sg_clean;
+    F_clean = F;
+    F_clean(:, bad_frames) = NaN;
+    F_clean = fillmissing(F_clean, 'linear', 2, 'EndValues', 'nearest'); %interpolation
+    F = F_clean;
 
 end

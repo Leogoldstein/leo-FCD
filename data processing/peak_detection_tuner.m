@@ -1,4 +1,4 @@
-function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds, focus_segs, opts] = ...
+function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAct, thresholds, focus_segs, opts, has_new_outputs] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -6,7 +6,6 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
 %   F   : raw fluorescence (n_cells x T)
 %   fs  : sampling rate (Hz)
 %   synchronous_frames : fenêtre pour activité synchrone
-%   'nogui', true      : (optionnel) bypass GUI et lancer détection directe
 %
 % Outputs:
 %   DF, DF_sg, F0, noise_est, SNR : preprocessing
@@ -18,14 +17,12 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
-        'prominence_factor', 7.4, ...
+        'MinPeakDistance', 5, ...
+        'prominence_factor', 0.8, ...
         'refrac_fr', 3 ...
     );
 
     % Vérifie si mode batch/no-GUI
-    nogui = false;
-    fall_path = '';
-    corrXY = [];
     iscell_in = [];
     stat_in   = [];
     speed = [];  
@@ -62,10 +59,7 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             switch key
                 case 'viewer_mode'
                     viewer_mode = logical(val);
-    
-                case 'nogui'
-                    nogui = logical(val);
-    
+
                 case 'ops'
                     ops = val;
 
@@ -96,25 +90,20 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         end
     end
 
-
-    % --- Prétraitement ---
-    [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F, opts, fs);
-    
     if exist('speed','var') && ~isempty(speed)
-        [deviation, bad_frames, ~, ~, DF_sg] = ...
-            motion_correction_substraction(DF_sg, ops, speed);
+        [deviation, bad_frames, ~, ~, F] = ...
+            motion_correction_substraction(F, ops, speed);
     
         deviation = deviation(:).';  % force row
         bad_frames = bad_frames(:).'; 
         %%bad_frames_active = bad_frames_active(:)';
     
-        bad_segs  = badframes_to_segments(bad_frames, size(DF_sg,2)); % Nx2
+        bad_segs  = badframes_to_segments(bad_frames, size(F,2)); % Nx2
         segTable  = sort_segments_by_deviation(bad_segs, deviation);
         assignin('base', 'segTable', segTable);
     
-        T = size(DF_sg,2);
+        %T = size(F,2);
         user_focus_segs = [];
-
         % [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, T); %#ok<ASGLU>
 
         if ~isempty(user_focus_segs)
@@ -123,40 +112,19 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             focus_segs = bad_segs;
         end
     end
-                
+
+    % --- Prétraitement ---
+    window_size = 600;
+    [F0, Fdetrend] = F_processing(F, bad_frames, window_size);
+    noise_est = estimate_noise(Fdetrend);
+    DF_sg = DF_processing(Fdetrend, opts, window_size);
+
+    % --- Qualité / SNR ---
+    [A, SNR, score, quality_rank, quality_min, quality_max, quality_thr0] = ...
+    compute_snr_quality(DF_sg, noise_est);
+                      
     % focus_segs = segments bad confirmés comme focus change
     % focus_labels(k)=1 focus, 0 autre, NaN skip
-
-    % === MODE BATCH (pas de GUI) ===
-    if nogui
-        fig = figure('Visible','off'); % fig cachée pour utiliser appdata
-        setappdata(fig,'DF_sg',DF_sg);
-        setappdata(fig,'opts',opts);
-        setappdata(fig,'noise_est',noise_est);
-        setappdata(fig,'F0',F0);
-        setappdata(fig,'quality_rank',  quality_rank);    % pour tri + seuil
-        if exist('deviation','var'),  setappdata(fig,'deviation', deviation);  else, setappdata(fig,'deviation', []); end
-        if exist('bad_frames','var'), setappdata(fig,'bad_frames', bad_frames); else, setappdata(fig,'bad_frames', []); end
-        if exist('focus_segs','var'), setappdata(fig,'focus_segs', focus_segs); else, setappdata(fig,'focus_segs', []); end
-        setappdata(fig,'cell_status', zeros(size(F,1),1));
-        setappdata(fig,'iscell', iscell_in);
-        setappdata(fig,'stat',   stat_in);
-        setappdata(fig,'meta_tbl', meta_tbl);
-
-        [~, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, ~, summary] = ...
-            save_peak_matrix(fig, synchronous_frames);
-
-        % récapitulatif console
-        if ~isempty(summary)
-            fprintf('\n===== RÉCAPITULATIF SÉLECTION CELLULES =====\n');
-            fprintf('Total cellules             : %d\n', summary.n_total);
-            fprintf('Cellules finales (analysées): %d\n', summary.n_kept_final);
-            fprintf('===========================================\n\n');
-        end
-
-        if ishghandle(fig), delete(fig); end
-        return;
-    end
 
     % === MODE INTERACTIF (GUI) ===
     winTitle = '';
@@ -216,24 +184,17 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
             'Units','normalized','Position',[0.05 0.10 0.90 0.06], ...
             'BackgroundColor',[0.2 0.45 0.9], 'ForegroundColor','w','FontWeight','bold', ...
             'Callback',@(src,~) enter_selection_mode(fig));
-        
-        % --- Étape 2 : confirmer (crée réellement les matrices) ---
-        uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Confirmer sélection', ...
-            'Units','normalized','Position',[0.05 0.04 0.90 0.06], ...
-            'BackgroundColor',[0.1 0.6 0.35], 'ForegroundColor','w','FontWeight','bold', ...
-            'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
-    else
-        uicontrol('Parent',ctrl_panel,'Style','text', ...
-            'String','Viewer mode : navigation seulement', ...
-            'Units','normalized','Position',[0.05 0.04 0.90 0.08], ...
-            'BackgroundColor',[.97 .97 .98], ...
-            'ForegroundColor',[0.3 0.3 0.3], ...
-            'FontWeight','bold');
     end
+
+    % --- Étape 2 : confirmer (crée réellement les matrices) ---
+    uicontrol('Parent',ctrl_panel,'Style','pushbutton','String','Confirmer sélection', ...
+        'Units','normalized','Position',[0.05 0.04 0.90 0.06], ...
+        'BackgroundColor',[0.1 0.6 0.35], 'ForegroundColor','w','FontWeight','bold', ...
+        'Callback',@(src,~) finalize_and_close(fig, synchronous_frames));
 
     % --- Contrôles détection ---
     make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.70 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,10,opts.prominence_factor,[0.05 0.64 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.64 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Réfractaire (fr)','refrac_fr',0,10,opts.refrac_fr,[0.05 0.58 0.90 0.06]);
     make_slider(ctrl_panel,fig,'SavGol window','savgol_win',3,51,opts.savgol_win,[0.05 0.52 0.90 0.06]);
 
@@ -322,7 +283,6 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     % ---- Stocker données ----
     setappdata(fig,'fs',fs);
     setappdata(fig,'F_raw',F);
-    setappdata(fig,'DF',DF);
     setappdata(fig,'DF_sg',DF_sg);
     setappdata(fig,'F0',F0);
     setappdata(fig,'noise_est',noise_est);
@@ -353,11 +313,13 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
     update_peak_histogram(fig);      
 
     uiwait(fig);
+    has_new_outputs = false;
 
     % ---- Sorties GUI ----
     if ishghandle(fig) && isappdata(fig,'last_save_outputs')
         out = getappdata(fig,'last_save_outputs');
-
+        
+        has_new_outputs = true;
         valid_cells = out.valid_cells;
         DF_sg      = out.DF_sg;
         F0 = out.F0;
@@ -377,11 +339,11 @@ function [DF, F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd,
         end
     else
         % rien n'a été finalisé
-        Raster     = false(size(DF));
-        Acttmp2    = repmat({[]}, size(DF,1),1);
-        StartEnd   = repmat({[]}, size(DF,1),1);
+        Raster     = false(size(F));
+        Acttmp2    = repmat({[]}, size(F,1),1);
+        StartEnd   = repmat({[]}, size(F,1),1);
         MAct       = [];
-        thresholds = nan(size(DF,1),1);
+        thresholds = nan(size(F,1),1);
         valid_cells = [];
         DF_sg = [];
         F0 = [];
@@ -394,157 +356,178 @@ end
 
 
 %% ===================== DF PROCESSING (unique) =======================
-function [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = ...
-    DF_processing(F, opts, fs)
-
-% DF_processing — VERSION "NAÏVE" POUR TEST (SANS FENÊTRE GLISSANTE)
-% Tri basé uniquement sur une estimation de "bruit" via MAD globale sur la trace lissée (DF_sg),
-% puis score = A / noise_sigma (pas de bulk, pas de résidu).
-%
-% Objectif: vérifier que ce tri est effectivement "moyen" vs résidu+bulk.
+function DF_sg = DF_processing(Fdetrend, opts, window_size)
 
     % --------- Params ---------
     sg_win  = opts.savgol_win;
     sg_poly = opts.savgol_poly;
 
-    if nargin < 3 || isempty(fs) || ~isfinite(fs) || fs <= 0
-        fs = 20;
-    end
+    [NCell, Nz] = size(Fdetrend);
 
-    snr_min_cap = 1e-3;
-
-    % --- Step 1: baseline + dF/F ---
-    [F0, DF] = baseline_calculation(F);
-
-    [NCell, Nz] = size(DF);
-
-    DF_sg     = nan(NCell, Nz);
-    noise_est = nan(NCell, Nz);
-    noise_sigma = nan(NCell, 1);   % <--- IMPORTANT: préallocation
+    DF_sg          = nan(NCell, Nz);
+    DF_plate       = nan(NCell, Nz);
+    baseline_local = nan(NCell, Nz);
 
     % --- Fenêtre SavGol (impair, <= Nz, > sg_poly) ---
-    sgN = max(sg_poly+2, round(sg_win));
-    if mod(sgN,2)==0, sgN = sgN+1; end
+    sgN = max(sg_poly + 2, round(sg_win));
+    if mod(sgN,2) == 0
+        sgN = sgN + 1;
+    end
     if sgN > Nz
-        sgN = Nz - (mod(Nz,2)==0); % rend impair si Nz pair
+        sgN = Nz - (mod(Nz,2) == 0);
     end
     if sgN <= sg_poly
         sgN = sg_poly + 2;
-        if mod(sgN,2)==0, sgN = sgN+1; end
+        if mod(sgN,2) == 0
+            sgN = sgN + 1;
+        end
         if sgN > Nz
-            sgN = Nz - (mod(Nz,2)==0);
+            sgN = Nz - (mod(Nz,2) == 0);
         end
     end
 
-    % --- Step 2: SavGol + "bruit" MAD globale sur DF_sg ---
+    % --- Prétraitement cellule par cellule ---
     for n = 1:NCell
-        sig = DF(n,:);
+        % baseline locale
+        baseline_local(n,:) = movmedian(Fdetrend(n,:), window_size, 'omitnan');
+
+        % signal flatten
+        sig = Fdetrend(n,:) - baseline_local(n,:);
+        DF_plate(n,:) = sig;
 
         % SavGol
-        sig_sg = sig;
-        if all(isfinite(sig)) && sgN >= (sg_poly+2) && sgN <= Nz
+        if sum(isfinite(sig)) >= sgN
             try
-                sig_sg = sgolayfilt(sig, sg_poly, sgN);
+                DF_sg(n,:) = sgolayfilt(sig, sg_poly, sgN);
             catch
-                sig_sg = sig;
+                DF_sg(n,:) = sig;
             end
+        else
+            DF_sg(n,:) = sig;
         end
-        DF_sg(n,:) = sig_sg;
-
-        % ===== Bruit NAÏF : MAD globale sur la trace lissée =====
-        x = sig_sg;
-        m = median(x, 'omitnan');
-        ns = 1.4826 * median(abs(x - m), 'omitnan');
-
-        if ~isfinite(ns) || ns < snr_min_cap
-            ns = snr_min_cap;
-        end
-        noise_sigma(n,1) = ns;
-
-        % pour compat avec le reste du code : bruit constant dans le temps
-        noise_est(n,:) = ns;
     end
-
-    % --- Amplitude robuste des "pics" ---
-    A = prctile(DF_sg, 99.5, 2) - prctile(DF_sg, 50, 2);
-    A(~isfinite(A) | A < 0) = 0;
-
-    % --- Score NAÏF ---
-    SNR   = A ./ noise_sigma;
-    SNR(~isfinite(SNR)) = 0;
-
-    score = max(0, SNR);
-    score(~isfinite(score)) = 0;
-    
-    N = numel(score);
-    
-    % rang croissant : 1 = pire, N = meilleur
-    [~, idx_sort] = sort(score, 'ascend');
-    quality_rank = zeros(N,1);
-    quality_rank(idx_sort) = 1:N;
-    
-    % slider en "rang"
-    quality_min  = 1;
-    quality_max  = N;
-    quality_thr0 = round(0.5*N);
-
 end
 
-
-
-%% ===================== AUTO DETECT =======================
 function auto_detect_and_add(fig)
-    DF_sg   = getappdata(fig,'DF_sg');
-    cid     = getappdata(fig,'cell_id');
-    opts    = getappdata(fig,'opts');
+    % --- récup ---
+    if ~isappdata(fig,'DF_sg') || ~isappdata(fig,'cell_id') || ...
+       ~isappdata(fig,'opts')  || ~isappdata(fig,'noise_est')
+        return;
+    end
+
+    DF_sg     = getappdata(fig,'DF_sg');
+    cid       = getappdata(fig,'cell_id');
+    opts      = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
 
-    x  = DF_sg(cid,:).';
+    if isappdata(fig,'bad_frames')
+        bad_frames = getappdata(fig,'bad_frames');
+    else
+        bad_frames = [];
+    end
+
+    % sécurité
+    if isempty(cid) || ~isscalar(cid) || ~isfinite(cid)
+        return;
+    end
+    cid = round(cid);
+
+    if cid < 1 || cid > size(DF_sg,1)
+        return;
+    end
+
+    x = DF_sg(cid,:).';
     Nx = numel(x);
-    minithreshold = 0.1;
 
-    sigma = median(noise_est(cid,:), 'omitnan');
-    prominence = opts.prominence_factor * sigma;
-    thr_glo = max([3 * iqr(x), 3 * std(x), minithreshold]);
-    thr_glo = median(x, 'omitnan') + thr_glo;
-
-    minW = max(1, round(opts.min_width_fr));
-    [~, locs] = findpeaks(x, ...
-        'MinPeakProminence', prominence, ...
-        'MinPeakHeight',     thr_glo, ...
-        'MinPeakWidth',      minW);
-
-    if isempty(locs)
-        setappdata(fig,'auto_intervals',[]);
-        setappdata(fig,'auto_peaks',[]);
-        setappdata(fig,'thr_glo_last',thr_glo);
+    if isempty(x) || all(~isfinite(x))
+        setappdata(fig,'auto_intervals', []);
+        setappdata(fig,'auto_peaks', []);
+        setappdata(fig,'seuil_detection_last', NaN);
         refresh_data(fig);
         return;
     end
 
+    % --- RESET systématique ---
+    setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'auto_peaks', []);
+    if isappdata(fig,'seuil_detection_last')
+        rmappdata(fig,'seuil_detection_last');
+    end
+
+    % --- bad mask ---
+    bad_mask = make_bad_mask(bad_frames, Nx);
+
+    % --- signal pour détection : on interdit les bad frames ---
+    x_det = x;
+    x_det(bad_mask) = -Inf;
+
+    % --- seuil global ---
+    seuil_detection = 3.09 * noise_est(cid);
+    minW = max(1, round(opts.min_width_fr));
+    mpd  = max(1, round(opts.refrac_fr));
+
+    % --- détection brute ---
+    try
+        [~, locs] = findpeaks(x_det, ...
+            'MinPeakHeight', seuil_detection, ...
+            'MinPeakProminence', seuil_detection * opts.prominence_factor, ...
+            'MinPeakDistance', mpd);
+    catch
+        locs = [];
+    end
+
+    % sécurité supplémentaire
+    locs = locs(~bad_mask(locs));
+
+    if isempty(locs)
+        setappdata(fig,'auto_intervals', []);
+        setappdata(fig,'auto_peaks', []);
+        setappdata(fig,'seuil_detection_last', seuil_detection);
+        refresh_data(fig);
+        return;
+    end
+
+    % --- bornes d'événements autour de chaque pic ---
     intervals = zeros(numel(locs), 2);
+    keep_interval = true(numel(locs),1);
+
     local_win = 120;
     baseline_margin = 0.5;
 
     for i = 1:numel(locs)
         pk = locs(i);
 
-        left_win  = max(1, pk - local_win);
-        right_win = min(Nx, pk + local_win); %#ok<NASGU>
-
+        left_win = max(1, pk - local_win);
         local_segment = x(left_win:pk);
-        baseline_local = prctile(local_segment, 10);
+        local_segment = local_segment(isfinite(local_segment));
+
+        if isempty(local_segment)
+            keep_interval(i) = false;
+            continue;
+        end
+
+        baseline_local_i = prctile(local_segment, 10);
         noise_local = std(local_segment, 'omitnan');
-        thr_event = baseline_local + baseline_margin * noise_local; % pour déterminer quand l’événement commence et se termine
+        if ~isfinite(noise_local)
+            noise_local = 0;
+        end
+
+        thr_event = baseline_local_i + baseline_margin * noise_local;
 
         a = pk;
-        while a > 1 && x(a) > thr_event
+        while a > 1 && isfinite(x(a)) && x(a) > thr_event && ~bad_mask(a)
             a = a - 1;
+        end
+        if bad_mask(a) || x(a) <= thr_event
+            a = min(pk, a + 1);
         end
 
         b = pk;
-        while b < Nx && x(b) > thr_event
+        while b < Nx && isfinite(x(b)) && x(b) > thr_event && ~bad_mask(b)
             b = b + 1;
+        end
+        if bad_mask(b) || x(b) <= thr_event
+            b = max(pk, b - 1);
         end
 
         if (b - a + 1) < minW
@@ -553,14 +536,32 @@ function auto_detect_and_add(fig)
             b = min(Nx, b + d);
         end
 
-        intervals(i,:) = [a b];
+        % Rejeter si l'événement touche un bad frame
+        if any(bad_mask(a:b))
+            keep_interval(i) = false;
+        else
+            intervals(i,:) = [a b];
+        end
     end
 
-    % Fusion réfractaire
-    intervals = sortrows(intervals,1);
+    locs = locs(keep_interval);
+    intervals = intervals(keep_interval,:);
+
+    if isempty(locs)
+        setappdata(fig,'auto_intervals', []);
+        setappdata(fig,'auto_peaks', []);
+        setappdata(fig,'seuil_detection_last', seuil_detection);
+        refresh_data(fig);
+        return;
+    end
+
+    % --- fusion réfractaire ---
+    intervals = sortrows(intervals, 1);
     merged = [];
-    cur = intervals(1,:); gap = max(0, round(opts.refrac_fr));
-    for i=2:size(intervals,1)
+    cur = intervals(1,:);
+    gap = max(0, round(opts.refrac_fr));
+
+    for i = 2:size(intervals,1)
         if intervals(i,1) <= cur(2) + gap
             cur(2) = max(cur(2), intervals(i,2));
         else
@@ -570,25 +571,27 @@ function auto_detect_and_add(fig)
     end
     merged = [merged; cur];
 
-    % Un seul pic par intervalle fusionné
+    % --- un seul pic par intervalle fusionné ---
     locs_merged = [];
-    for r=1:size(merged,1)
+    for r = 1:size(merged,1)
         in_interval = locs(locs >= merged(r,1) & locs <= merged(r,2));
         if ~isempty(in_interval)
             [~, idx_max] = max(x(in_interval));
             pk = in_interval(idx_max);
-            if x(pk) >= thr_glo
+
+            if ~bad_mask(pk) && isfinite(x(pk)) && x(pk) >= seuil_detection
                 locs_merged(end+1) = pk; %#ok<AGROW>
             end
         end
     end
 
-    setappdata(fig,'auto_intervals',merged);
-    setappdata(fig,'auto_peaks',locs_merged);
-    setappdata(fig,'thr_glo_last',thr_glo);
+    % --- sauvegarde appdata ---
+    setappdata(fig,'auto_intervals', merged);
+    setappdata(fig,'auto_peaks', locs_merged);
+    setappdata(fig,'seuil_detection_last', seuil_detection);
+
     refresh_data(fig);
 end
-
 
 %% ===================== AFFICHAGE =======================
 function refresh_data(fig)
@@ -661,10 +664,10 @@ function refresh_data(fig)
     end
 
     % Ligne seuil bas
-    if isappdata(fig,'thr_glo_last')
-        thr_glo = getappdata(fig,'thr_glo_last');
-        if isfinite(thr_glo)
-            plot(ax,[1 max(1,T)],[thr_glo thr_glo],':','Color',[.7 .1 .1],'LineWidth',1);
+    if isappdata(fig,'seuil_detection_last')
+        seuil_detection = getappdata(fig,'seuil_detection_last');
+        if isfinite(seuil_detection)
+            plot(ax,[1 max(1,T)],[seuil_detection seuil_detection],':','Color',[.7 .1 .1],'LineWidth',1);
         end
     end
 
@@ -682,18 +685,23 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     noise_est = getappdata(fig,'noise_est');
     F0        = getappdata(fig,'F0');
 
+    if isappdata(fig,'bad_frames')
+        bad_frames = getappdata(fig,'bad_frames');
+    else
+        bad_frames = [];
+    end
+
     nCells = size(DF_sg,1);
     Nz     = size(DF_sg,2);
-    
+
     if isappdata(fig, 'quality_rank')
         quality_rank = getappdata(fig, 'quality_rank');
     else
-        quality_rank = (1:nCells).'; % fallback
+        quality_rank = (1:nCells).';
     end
 
-    % Statut manuel
     if isappdata(fig,'cell_status')
-        cell_status = getappdata(fig,'cell_status'); % 0 undecided, +1 keep, -1 exclude
+        cell_status = getappdata(fig,'cell_status');
     else
         cell_status = zeros(nCells,1);
     end
@@ -703,12 +711,11 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     thresholds = nan(nCells,1);
     StartEnd   = cell(nCells,1);
 
-    minithreshold = 0.1;
     n_kept = 0;
 
     for cid = 1:nCells
 
-        % 1) exclusion manuelle => skip
+        % 1) exclusion manuelle
         if cell_status(cid) == -1
             Acttmp2{cid} = [];
             thresholds(cid) = NaN;
@@ -717,83 +724,136 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
             continue;
         end
 
-        % 2) keep manuel => garde même si qualité faible
+        % 2) keep manuel
         force_keep = (cell_status(cid) == +1);
 
-        % 3) sinon, filtre qualité
+        % 3) filtre qualité
         if isappdata(fig,'quality_thr')
-            qthr = getappdata(fig,'quality_thr');   % valeur du slider
+            qthr = getappdata(fig,'quality_thr');
+        else
+            qthr = 1;
         end
-        if ~force_keep && quality_rank(cid) < qthr % le seuil utilisé pour extraire les pics est celui du slider.
+
+        if ~force_keep && quality_rank(cid) < qthr
             Acttmp2{cid} = [];
             thresholds(cid) = NaN;
             Raster(cid,:) = false;
             DF_sg(cid,:) = NaN;
-            %fprintf('Cellule %d ignorée (rank %d < %d)\n', cid, quality_rank(cid), qthr);
             continue;
         end
 
-        % cellule conservée
         n_kept = n_kept + 1;
 
         x  = DF_sg(cid,:).';
         Nx = numel(x);
 
-        sigma = median(noise_est(cid,:), 'omitnan');
-        prominence = opts.prominence_factor * sigma;
-        thr_glo = max([3 * iqr(x), 3 * std(x), minithreshold]);
+        if isempty(x) || all(~isfinite(x))
+            Acttmp2{cid} = [];
+            thresholds(cid) = NaN;
+            StartEnd{cid} = [];
+            Raster(cid,:) = false;
+            continue;
+        end
 
+        bad_mask = make_bad_mask(bad_frames, Nx);
+
+        x_det = x;
+        x_det(bad_mask) = -Inf;
+
+        seuil_detection = 3.09 * noise_est(cid);
         minW = max(1, round(opts.min_width_fr));
-        [~, locs] = findpeaks(x, ...
-            'MinPeakProminence', prominence, ...
-            'MinPeakHeight',     thr_glo, ...
-            'MinPeakWidth',      minW);
+        mpd  = max(1, round(opts.refrac_fr));
+
+        try
+            [~, locs] = findpeaks(x_det, ...
+                'MinPeakHeight', seuil_detection, ...
+                'MinPeakProminence', seuil_detection * opts.prominence_factor, ...
+                'MinPeakDistance', mpd);
+        catch
+            locs = [];
+        end
+
+        locs = locs(~bad_mask(locs));
 
         if isempty(locs)
             Acttmp2{cid} = [];
-            thresholds(cid) = thr_glo;
+            thresholds(cid) = seuil_detection;
             StartEnd{cid} = [];
             continue;
         end
 
         intervals = zeros(numel(locs), 2);
+        keep_interval = true(numel(locs),1);
+
         local_win = 120;
         baseline_margin = 0.5;
 
         for i = 1:numel(locs)
             pk = locs(i);
 
-            left_win  = max(1, pk - local_win);
+            left_win = max(1, pk - local_win);
             local_segment = x(left_win:pk);
+            local_segment = local_segment(isfinite(local_segment));
 
-            baseline_local = prctile(local_segment, 10);
+            if isempty(local_segment)
+                keep_interval(i) = false;
+                continue;
+            end
+
+            baseline_local_i = prctile(local_segment, 10);
             noise_local = std(local_segment,'omitnan');
-            thr_event = baseline_local + baseline_margin * noise_local;
+            if ~isfinite(noise_local)
+                noise_local = 0;
+            end
+
+            thr_event = baseline_local_i + baseline_margin * noise_local;
 
             a = pk;
-            while a > 1 && x(a) > thr_event
+            while a > 1 && isfinite(x(a)) && x(a) > thr_event && ~bad_mask(a)
                 a = a - 1;
+            end
+            if bad_mask(a) || x(a) <= thr_event
+                a = min(pk, a + 1);
             end
 
             b = pk;
-            while b < Nx && x(b) > thr_event
+            while b < Nx && isfinite(x(b)) && x(b) > thr_event && ~bad_mask(b)
                 b = b + 1;
+            end
+            if bad_mask(b) || x(b) <= thr_event
+                b = max(pk, b - 1);
             end
 
             if (b - a + 1) < minW
                 d = ceil((minW - (b - a + 1))/2);
-                a = max(1, a- d);
+                a = max(1, a - d);
                 b = min(Nx, b + d);
             end
 
-            intervals(i,:) = [a b];
+            if any(bad_mask(a:b))
+                keep_interval(i) = false;
+            else
+                intervals(i,:) = [a b];
+            end
+        end
+
+        locs = locs(keep_interval);
+        intervals = intervals(keep_interval,:);
+
+        if isempty(locs)
+            Acttmp2{cid} = [];
+            thresholds(cid) = seuil_detection;
+            StartEnd{cid} = [];
+            continue;
         end
 
         % fusion réfractaire
         intervals = sortrows(intervals,1);
         merged = [];
-        cur = intervals(1,:); gap = max(0, round(opts.refrac_fr));
-        for i=2:size(intervals,1)
+        cur = intervals(1,:);
+        gap = max(0, round(opts.refrac_fr));
+
+        for i = 2:size(intervals,1)
             if intervals(i,1) <= cur(2) + gap
                 cur(2) = max(cur(2), intervals(i,2));
             else
@@ -803,14 +863,15 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
         end
         merged = [merged; cur];
 
-        % un pic par intervalle
+        % un pic par intervalle fusionné
         locs_merged = [];
-        for r=1:size(merged,1)
+        for r = 1:size(merged,1)
             in_interval = locs(locs >= merged(r,1) & locs <= merged(r,2));
             if ~isempty(in_interval)
                 [~, idx_max] = max(x(in_interval));
                 pk = in_interval(idx_max);
-                if x(pk) >= thr_glo
+
+                if ~bad_mask(pk) && x(pk) >= seuil_detection
                     locs_merged(end+1) = pk; %#ok<AGROW>
                 end
             end
@@ -818,14 +879,13 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
 
         Acttmp2{cid} = locs_merged;
         Raster(cid, locs_merged) = true;
-        thresholds(cid) = thr_glo;
+        thresholds(cid) = seuil_detection;
         StartEnd{cid} = merged;
     end
 
     fprintf('\n=> %d cellules conservées sur %d (%.1f%%)\n', ...
         n_kept, nCells, 100 * n_kept / max(1,nCells));
 
-    % activité multi-cellules
     if Nz > synchronous_frames
         MAct = zeros(1, Nz - synchronous_frames);
         for i = 1:(Nz - synchronous_frames)
@@ -835,11 +895,9 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
         MAct = zeros(1,0);
     end
 
-    % valid/invalid
     invalid_cells = all(isnan(DF_sg), 2);
     valid_cells = find(~invalid_cells);
 
-    % ===== summary (avec qualité moyenne) =====
     summary = struct();
     summary.n_total       = nCells;
     summary.n_manual_keep = sum(cell_status == +1);
@@ -847,7 +905,6 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     summary.n_undecided   = sum(cell_status == 0);
     summary.n_kept_final  = numel(valid_cells);
 
-    % réduire aux valid_cells
     DF_sg      = DF_sg(valid_cells, :);
     F0         = F0(valid_cells, :);
     thresholds = thresholds(valid_cells, :);
@@ -855,6 +912,7 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     StartEnd   = StartEnd(valid_cells);
     Raster     = Raster(valid_cells, :);
 end
+
 
 function update_quality_threshold(fig, thr_slider)
 % update_quality_threshold
@@ -930,7 +988,7 @@ function update_quality_threshold(fig, thr_slider)
         end
 
         setappdata(fig,'auto_intervals', []);
-        if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
+        if isappdata(fig,'seuil_detection_last'), rmappdata(fig,'seuil_detection_last'); end
         auto_detect_and_add(fig);
         refresh_data(fig);
         update_peak_histogram(fig);
@@ -996,7 +1054,7 @@ function update_quality_threshold(fig, thr_slider)
 
     % reset détection auto
     setappdata(fig,'auto_intervals', []);
-    if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
+    if isappdata(fig,'seuil_detection_last'), rmappdata(fig,'seuil_detection_last'); end
 
     auto_detect_and_add(fig);
     refresh_data(fig);
@@ -1061,7 +1119,7 @@ function next_cell(fig)
 
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
-    if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
+    if isappdata(fig,'seuil_detection_last'),   rmappdata(fig,'seuil_detection_last'); end
 
     auto_detect_and_add(fig);
     refresh_data(fig);
@@ -1125,7 +1183,7 @@ function prev_cell(fig)
 
     setappdata(fig,'auto_intervals', []);
     if isappdata(fig,'thr_event_last'), rmappdata(fig,'thr_event_last'); end
-    if isappdata(fig,'thr_glo_last'),   rmappdata(fig,'thr_glo_last'); end
+    if isappdata(fig,'seuil_detection_last'),   rmappdata(fig,'seuil_detection_last'); end
 
     auto_detect_and_add(fig);
     refresh_data(fig);
@@ -1192,43 +1250,37 @@ end
 
 function finalize_and_close(fig, synchronous_frames)
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
-        if ishghandle(fig)
-            uiresume(fig);
-            close(fig);
-        end
-        return;
-    end
-
     [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
 
-    % === RASTER + FOCUS SEGS ===
-    if isappdata(fig,'focus_segs')
-        focus_segs = getappdata(fig,'focus_segs');
-    else
-        focus_segs = [];
+    orig2new = nan(max([valid_cells(:); 1]),1);
+    if ~isempty(valid_cells)
+        orig2new(valid_cells) = 1:numel(valid_cells);
     end
 
-    % plot_raster_window(Raster, focus_segs);
-
-    orig2new = nan(max(valid_cells),1);
-    orig2new(valid_cells) = 1:numel(valid_cells);
-
-    if iscell(Acttmp2) && size(Acttmp2,2) > 1, Acttmp2 = reshape(Acttmp2, [], 1); end
-    if iscell(StartEnd) && size(StartEnd,2) > 1, StartEnd = reshape(StartEnd, [], 1); end
+    if iscell(Acttmp2) && size(Acttmp2,2) > 1
+        Acttmp2 = reshape(Acttmp2, [], 1);
+    end
+    if iscell(StartEnd) && size(StartEnd,2) > 1
+        StartEnd = reshape(StartEnd, [], 1);
+    end
 
     setappdata(fig,'last_save_outputs', struct( ...
         'invalid_cells', invalid_cells, ...
         'valid_cells', valid_cells, ...
         'orig2new', orig2new, ...
-        'DF_sg', DF_sg, 'F0', F0, ...
-        'Raster', Raster, 'Acttmp2', {Acttmp2}, 'StartEnd', {StartEnd}, ...
-        'MAct', MAct, 'thresholds', thresholds, 'opts', opts, 'summary', summary));
+        'DF_sg', DF_sg, ...
+        'F0', F0, ...
+        'Raster', Raster, ...
+        'Acttmp2', {Acttmp2}, ...
+        'StartEnd', {StartEnd}, ...
+        'MAct', MAct, ...
+        'thresholds', thresholds, ...
+        'opts', opts, ...
+        'summary', summary));
 
     if ishghandle(fig)
         uiresume(fig);
-        close(fig);
     end
 end
 
@@ -1285,7 +1337,7 @@ function update_param(fig, field, value)
     if strcmp(field,'savgol_win')
         F_raw = getappdata(fig,'F_raw');
         fs = getappdata(fig,'fs');
-        [DF, DF_sg, F0, noise_est, SNR, quality_rank, quality_min, quality_max, quality_thr0] = DF_processing(F_raw, opts, fs);
+        DF_sg = DF_processing(Fdetrend, opts, window_size);
 
         setappdata(fig,'DF', DF);
         setappdata(fig,'DF_sg', DF_sg);
@@ -1329,12 +1381,18 @@ function recompute_n_peaks_all(fig)
 
     for cid = 1:nCells
         x = DF_sg(cid,:).';
-        sigma = median(noise_est(cid,:), 'omitnan');
+        sigma = noise_est(cid);
         if ~isfinite(sigma) || sigma<=0
             sigma = std(x,'omitnan');
         end
 
-        locs_merged = detect_peaks_cell_v1(x, sigma, opts);
+        if isappdata(fig,'bad_frames')
+            bad_frames = getappdata(fig,'bad_frames');
+        else
+            bad_frames = [];
+        end
+        
+        locs_merged = detect_peaks_cell_v1(x, sigma, opts, bad_frames);
         n_peaks_all(cid) = numel(locs_merged);
     end
 
@@ -1342,41 +1400,85 @@ function recompute_n_peaks_all(fig)
 end
 
 
-function locs_merged = detect_peaks_cell_v1(x, sigma, opts)
+function locs_merged = detect_peaks_cell_v1(x, sigma, opts, bad_frames)
+
+    if nargin < 4
+        bad_frames = [];
+    end
+
     Nx = numel(x);
-    minithreshold = 0.1;
 
-    prominence = opts.prominence_factor * max(sigma, eps);
-    thr_glo = max([3 * iqr(x), 3 * std(x), minithreshold]);
+    if isempty(x) || all(~isfinite(x))
+        locs_merged = [];
+        return;
+    end
 
+    bad_mask = make_bad_mask(bad_frames, Nx);
+
+    x_det = x;
+    x_det(bad_mask) = -Inf;
+
+    seuil_detection = 3.09 * sigma;
     minW = max(1, round(opts.min_width_fr));
-    [~, locs] = findpeaks(x, ...
-        'MinPeakProminence', prominence, ...
-        'MinPeakHeight',     thr_glo, ...
-        'MinPeakWidth',      minW);
+    mpd  = max(1, round(opts.refrac_fr));
+
+    try
+        [~, locs] = findpeaks(x_det, ...
+            'MinPeakHeight', seuil_detection, ...
+            'MinPeakProminence', seuil_detection * opts.prominence_factor, ...
+            'MinPeakDistance', mpd);
+    catch
+        locs = [];
+    end
+
+    locs = locs(~bad_mask(locs));
 
     if isempty(locs)
         locs_merged = [];
         return;
     end
 
-    % Intervalles autour de chaque pic (même logique que ton code)
     intervals = zeros(numel(locs), 2);
+    keep_interval = true(numel(locs),1);
+
     local_win = 120;
     baseline_margin = 0.5;
 
     for i = 1:numel(locs)
         pk = locs(i);
 
-        left_win  = max(1, pk - local_win);
+        left_win = max(1, pk - local_win);
         local_segment = x(left_win:pk);
+        local_segment = local_segment(isfinite(local_segment));
 
-        baseline_local = prctile(local_segment, 10);
+        if isempty(local_segment)
+            keep_interval(i) = false;
+            continue;
+        end
+
+        baseline_local_i = prctile(local_segment, 10);
         noise_local = std(local_segment,'omitnan');
-        thr_event = baseline_local + baseline_margin * noise_local;
+        if ~isfinite(noise_local)
+            noise_local = 0;
+        end
 
-        a = pk; while a > 1  && x(a) > thr_event, a = a - 1; end
-        b = pk; while b < Nx && x(b) > thr_event, b = b + 1; end
+        thr_event = baseline_local_i + baseline_margin * noise_local;
+
+        a = pk;
+        while a > 1 && isfinite(x(a)) && x(a) > thr_event && ~bad_mask(a)
+            a = a - 1;
+        end
+        if bad_mask(a) || x(a) <= thr_event
+            a = min(pk, a + 1);
+        end
+
+        b = pk;
+        while b < Nx && isfinite(x(b)) && x(b) > thr_event && ~bad_mask(b)
+            b = b + 1;
+        end
+        if bad_mask(b) || x(b) <= thr_event
+            b = max(pk, b - 1);
+        end
 
         if (b - a + 1) < minW
             d = ceil((minW - (b - a + 1))/2);
@@ -1384,16 +1486,27 @@ function locs_merged = detect_peaks_cell_v1(x, sigma, opts)
             b = min(Nx, b + d);
         end
 
-        intervals(i,:) = [a b];
+        if any(bad_mask(a:b))
+            keep_interval(i) = false;
+        else
+            intervals(i,:) = [a b];
+        end
     end
 
-    % Fusion réfractaire (refrac_fr)
+    locs = locs(keep_interval);
+    intervals = intervals(keep_interval,:);
+
+    if isempty(locs)
+        locs_merged = [];
+        return;
+    end
+
     intervals = sortrows(intervals,1);
     merged = [];
     cur = intervals(1,:);
     gap = max(0, round(opts.refrac_fr));
 
-    for i=2:size(intervals,1)
+    for i = 2:size(intervals,1)
         if intervals(i,1) <= cur(2) + gap
             cur(2) = max(cur(2), intervals(i,2));
         else
@@ -1403,13 +1516,16 @@ function locs_merged = detect_peaks_cell_v1(x, sigma, opts)
     end
     merged = [merged; cur];
 
-    % Un seul pic par intervalle fusionné (max amplitude)
     locs_merged = [];
-    for r=1:size(merged,1)
+    for r = 1:size(merged,1)
         in_interval = locs(locs >= merged(r,1) & locs <= merged(r,2));
         if ~isempty(in_interval)
             [~, idx] = max(x(in_interval));
-            locs_merged(end+1) = in_interval(idx); %#ok<AGROW>
+            pk = in_interval(idx);
+
+            if ~bad_mask(pk) && isfinite(x(pk)) && x(pk) >= seuil_detection
+                locs_merged(end+1) = pk; %#ok<AGROW>
+            end
         end
     end
 end
@@ -1689,7 +1805,7 @@ function refresh_selection_order(fig)
 
     % Refresh affichage
     setappdata(fig,'auto_intervals', []);
-    if isappdata(fig,'thr_glo_last'), rmappdata(fig,'thr_glo_last'); end
+    if isappdata(fig,'seuil_detection_last'), rmappdata(fig,'seuil_detection_last'); end
     auto_detect_and_add(fig);
     refresh_data(fig);
     update_peak_histogram(fig);
@@ -2248,4 +2364,123 @@ function add_scale_bar(ax, pixel_size_um)
         'Color','w', 'FontWeight','bold', 'HorizontalAlignment','center', ...
         'VerticalAlignment','bottom', 'Clipping','off', ...
         'BackgroundColor','k', 'Margin',1);
+end
+
+function [A, SNR, score, quality_rank, quality_min, quality_max, quality_thr0] = ...
+    compute_snr_quality(DF_sg, noise_est)
+% compute_snr_quality
+% Calcule amplitude robuste, SNR, score et rang de qualité par cellule.
+%
+% Inputs:
+%   DF_sg     : [NCell x Nz] signal lissé par cellule
+%   noise_est : [NCell x 1] ou [1 x NCell] estimation du bruit par cellule
+%
+% Outputs:
+%   A            : amplitude robuste par cellule
+%   SNR          : SNR par cellule
+%   score        : score final par cellule
+%   quality_rank : rang croissant (1 = pire, N = meilleur)
+%   quality_min  : borne min slider
+%   quality_max  : borne max slider
+%   quality_thr0 : seuil initial slider
+
+    if nargin < 2
+        error('compute_snr_quality requires DF_sg and noise_est.');
+    end
+
+    if isempty(DF_sg) || ndims(DF_sg) ~= 2
+        error('DF_sg must be a 2D matrix [NCell x Nz].');
+    end
+
+    [NCell, ~] = size(DF_sg);
+
+    noise_est = noise_est(:);
+    if numel(noise_est) ~= NCell
+        error('noise_est must have one value per cell (%d expected).', NCell);
+    end
+
+    % bruit sécurisé
+    noise_est(~isfinite(noise_est) | noise_est <= 0) = eps;
+
+    % amplitude robuste par cellule
+    p995 = prctile(DF_sg, 99.5, 2);
+    p50  = prctile(DF_sg, 50,   2);
+
+    A = p995 - p50;
+    A(~isfinite(A) | A < 0) = 0;
+
+    % SNR par cellule
+    SNR = A ./ noise_est;
+    SNR(~isfinite(SNR)) = 0;
+
+    % score final
+    score = SNR(:);
+
+    % tri des cellules
+    [~, idx_sort] = sort(score, 'ascend');   % pire -> meilleur
+
+    quality_rank = zeros(NCell, 1);
+    quality_rank(idx_sort) = 1:NCell;
+
+    quality_min  = 1;
+    quality_max  = NCell;
+    quality_thr0 = max(1, round(0.5 * NCell));
+
+    % forcer des scalaires doubles
+    quality_min  = double(quality_min);
+    quality_max  = double(quality_max);
+    quality_thr0 = double(quality_thr0);
+end
+
+function noise_est = estimate_noise(Fdetrend)
+% estimate_noise
+% Estimation robuste du bruit par cellule à partir de F0.
+
+    [NCell, ~] = size(Fdetrend);
+    noise_est = nan(NCell, 1);
+
+    for n = 1:NCell
+        d = diff(Fdetrend(n,:));
+        d = d(isfinite(d));
+
+        if ~isempty(d)
+            ne = 1.4826 * mad(d, 1) / sqrt(2);
+        else
+            ne = NaN;
+        end
+
+        if ~isfinite(ne) || ne <= 0
+            ne = std(Fdetrend(n,:), 'omitnan');
+        end
+        if ~isfinite(ne) || ne <= 0
+            ne = eps;
+        end
+
+        noise_est(n) = ne;
+    end
+end
+
+function bad_mask = make_bad_mask(bad_frames, Nx)
+% bad_frames peut être :
+% - un vecteur logique longueur Nx
+% - une liste d'indices de frames
+%
+% sortie :
+%   bad_mask : [Nx x 1] logical
+
+    bad_mask = false(Nx,1);
+
+    if isempty(bad_frames)
+        return;
+    end
+
+    if islogical(bad_frames)
+        bf = bad_frames(:);
+        L = min(Nx, numel(bf));
+        bad_mask(1:L) = bf(1:L);
+    else
+        bad_idx = round(bad_frames(:));
+        bad_idx = bad_idx(isfinite(bad_idx) & bad_idx >= 1 & bad_idx <= Nx);
+        bad_mask(bad_idx) = true;
+    end
 end

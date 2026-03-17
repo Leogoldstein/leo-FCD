@@ -8,25 +8,13 @@ function [data, fields] = process_gcamp_cells( ...
     current_gcamp_TSeries_path, speed_active_group)
 
 % PROCESS_GCAMP (version "par plan")
-%   Pour chaque groupe m :
-%     - initialise / complète data et fields pour les champs GCaMP
-%     - charge results.mat si présent
-%     - récupère sampling_rate et synchronous_frames
-%     - pour chaque plan p :
-%         * load_data(fall_path)
-%         * peak_detection_tuner(F_gcamp_plane)
-%         * masque & outlines (vrais et faux positifs)
-%         * (optionnel) isort / raster_processing par plan
-%     - sauvegarde toutes les variables GCaMP par plan dans results.mat
-%
-% Stockage :
-%   Tous les champs GCaMP sont de la forme field{m}{p} (par plan), sauf
-%   sampling_rate{m} et synchronous_frames{m}.
+% Sauvegarde uniquement s'il y a de nouvelles données renvoyées par
+% peak_detection_tuner, en viewer_mode ou non.
 
     numFolders = numel(gcamp_output_folders);
 
     % ==============================
-    % 0) Définition des champs GCaMP (version par plan)
+    % 0) Définition des champs GCaMP
     % ==============================
     fields_gcamp = { ...
         'F_gcamp_by_plane', 'F_deconv_gcamp_by_plane', ...
@@ -34,22 +22,18 @@ function [data, fields] = process_gcamp_cells( ...
         'DF_gcamp_by_plane', 'Raster_gcamp_by_plane', ...
         'Acttmp2_gcamp_by_plane', 'StartEnd_gcamp_by_plane', ...
         'MAct_gcamp_by_plane', 'thresholds_gcamp_by_plane', ...
-        ...
+        'bad_segs_gcamp_plane', ...
         'stat_by_plane', 'iscell_gcamp_by_plane', ...
         'stat_false_by_plane', 'iscell_false_by_plane', ...
-        ...
         'outlines_gcampx_by_plane', 'outlines_gcampy_by_plane', ...
         'gcamp_mask_by_plane', 'gcamp_props_by_plane', ...
         'imageHeight_by_plane', 'imageWidth_by_plane', ...
-        ...
         'outlines_gcampx_false_by_plane', 'outlines_gcampy_false_by_plane', ...
         'gcamp_mask_false_by_plane', 'gcamp_props_false_by_plane', ...
-        ...
         'isort1_gcamp_by_plane', 'isort2_gcamp_by_plane', ...
         'Sm_gcamp_by_plane', 'ops_detections_by_plane' ...
     };
 
-    % Compléter la liste globale "fields"
     if isempty(fields)
         fields = fields_gcamp;
     else
@@ -68,7 +52,7 @@ function [data, fields] = process_gcamp_cells( ...
 
         filePath = fullfile(gcamp_output_folders{m}, 'results.mat');
 
-        % Charger les données existantes si results.mat existe déjà
+        % Charger existant si présent
         if exist(filePath, 'file') == 2
             loaded = load(filePath);
             for f = 1:numel(fields)
@@ -77,12 +61,12 @@ function [data, fields] = process_gcamp_cells( ...
         end
 
         %------------------------------------------------------
-        % 2.b) Récupérer les chemins GCaMP plane par plane pour ce groupe m
+        % 2.b) chemins planes
         %------------------------------------------------------
         if isempty(current_gcamp_folders_group) || m > numel(current_gcamp_folders_group)
             gcamp_planes_for_session_m = {};
         else
-            gcamp_planes_for_session_m = current_gcamp_folders_group{m};  % cell 1×nPlanes
+            gcamp_planes_for_session_m = current_gcamp_folders_group{m};
         end
 
         nPlanes = numel(gcamp_planes_for_session_m);
@@ -90,253 +74,228 @@ function [data, fields] = process_gcamp_cells( ...
         meanImgs_m = meanImgs_gcamp{m};
         current_gcamp_TSeries_path_m = current_gcamp_TSeries_path{m};
 
-        % Si déjà calculé (par ex. F_gcamp_by_plane plein), on peut sauter
-        if ~isempty(data.DF_gcamp_by_plane{m})
+        % flag global : ne sauvegarder que si au moins un plan a changé
+        has_new_data_for_group = false;
 
-            for p = 1:nPlanes
-    
-                fall_path = gcamp_planes_for_session_m{p};
-                meanImg_plane = meanImgs_m{p};  % <-- matrix HxW
-                gcamp_TSeries_path_plane = fullfile( ...
-                        current_gcamp_TSeries_path_m, ...
-                        sprintf('plane%d', p-1), ...
-                        'Concatenated.tif' ...
-                    );
-    
-                if isempty(fall_path)
-                    fprintf('Group %d, plan %d: invalid fall_path, skipping.\n', m, p);
-                    continue;
-                end
-    
-                % load_data sur ce plan
-                [~, ~, ~, ops, stat, iscell, ~, ~] = load_data(fall_path);
+        %------------------------------------------------------
+        % 2.c) allocation si nécessaire
+        %------------------------------------------------------
+        alloc_if_empty = @(fieldName) ...
+            ( isempty(data.(fieldName){m}) || numel(data.(fieldName){m}) ~= nPlanes );
 
-                F_filt = data.F_gcamp_by_plane{m}{p}(data.valid_gcamp_cells_by_plane{m}{p}, :);
-                
-                % On suppose que tout est déjà calculé pour ce m
-                [~, F0_gcamp, noise_est_gcamp, SNR_gcamp, ...
-                     valid_gcamp_cells_plane, DF_gcamp_plane, Raster_gcamp_plane, ...
-                     Acttmp2_gcamp_plane, StartEnd_gcamp_plane, ...
-                     MAct_gcamp_plane, thresholds_gcamp_plane, bad_segs_gcamp_plane, ops_detection] = ...
-                        peak_detection_tuner(F_filt, ...
-                                             sampling_rate_group{m}, ...
-                                             synchronous_frames_group{m}, ...
-                                             'animal_group', current_animal_group, ...
-                                             'ages_group',   current_ages_group{m}, ...
-                                             'viewer_mode', true, ...
-                                             'nogui', false, ...
-                                             'ops', ops, ...
-                                             'iscell', iscell, ...
-                                             'stat', stat, ...
-                                             'meanImg', meanImg_plane, ...
-                                             'gcamp_TSeries_path', gcamp_TSeries_path_plane, ...
-                                             'speed', speed_active_group{m}, ...
-                                             'meta_tbl', meta_tbl(m,:));
+        if alloc_if_empty('F_gcamp_by_plane')
+            data.F_gcamp_by_plane{m}               = cell(nPlanes,1);
+            data.F_deconv_gcamp_by_plane{m}        = cell(nPlanes,1);
+            data.F0_gcamp_by_plane{m}              = cell(nPlanes,1);
+            data.noise_est_gcamp_by_plane{m}       = cell(nPlanes,1);
+            data.valid_gcamp_cells_by_plane{m}     = cell(nPlanes,1);
+            data.DF_gcamp_by_plane{m}              = cell(nPlanes,1);
+            data.Raster_gcamp_by_plane{m}          = cell(nPlanes,1);
+            data.Acttmp2_gcamp_by_plane{m}         = cell(nPlanes,1);
+            data.StartEnd_gcamp_by_plane{m}        = cell(nPlanes,1);
+            data.MAct_gcamp_by_plane{m}            = cell(nPlanes,1);
+            data.thresholds_gcamp_by_plane{m}      = cell(nPlanes,1);
+            data.bad_segs_gcamp_plane{m}           = cell(nPlanes,1);
+
+            data.stat_by_plane{m}                  = cell(nPlanes,1);
+            data.iscell_gcamp_by_plane{m}          = cell(nPlanes,1);
+            data.stat_false_by_plane{m}            = cell(nPlanes,1);
+            data.iscell_false_by_plane{m}          = cell(nPlanes,1);
+
+            data.outlines_gcampx_by_plane{m}       = cell(nPlanes,1);
+            data.outlines_gcampy_by_plane{m}       = cell(nPlanes,1);
+            data.gcamp_mask_by_plane{m}            = cell(nPlanes,1);
+            data.gcamp_props_by_plane{m}           = cell(nPlanes,1);
+            data.imageHeight_by_plane{m}           = cell(nPlanes,1);
+            data.imageWidth_by_plane{m}            = cell(nPlanes,1);
+
+            data.outlines_gcampx_false_by_plane{m} = cell(nPlanes,1);
+            data.outlines_gcampy_false_by_plane{m} = cell(nPlanes,1);
+            data.gcamp_mask_false_by_plane{m}      = cell(nPlanes,1);
+            data.gcamp_props_false_by_plane{m}     = cell(nPlanes,1);
+
+            data.isort1_gcamp_by_plane{m}          = cell(nPlanes,1);
+            data.isort2_gcamp_by_plane{m}          = cell(nPlanes,1);
+            data.Sm_gcamp_by_plane{m}              = cell(nPlanes,1);
+            data.ops_detections_by_plane{m}        = cell(nPlanes,1);
+        end
+
+        %------------------------------------------------------
+        % 2.d) boucle par plan
+        %------------------------------------------------------
+        for p = 1:nPlanes
+
+            fall_path = gcamp_planes_for_session_m{p};
+            meanImg_plane = meanImgs_m{p};
+            gcamp_TSeries_path_plane = fullfile( ...
+                current_gcamp_TSeries_path_m, ...
+                sprintf('plane%d', p-1), ...
+                'Concatenated.tif');
+
+            if isempty(fall_path)
+                fprintf('Group %d, plan %d: invalid fall_path, skipping.\n', m, p);
+                continue;
             end
 
-        else
-            % Préparer les cell(nPlanes,1) pour tous les champs par plan
-            alloc_if_empty = @(fieldName) ...
-                ( isempty(data.(fieldName){m}) || numel(data.(fieldName){m}) ~= nPlanes );
-    
-            if alloc_if_empty('F_gcamp_by_plane')
-                data.F_gcamp_by_plane{m}            = cell(nPlanes,1);
-                data.F_deconv_gcamp_by_plane{m}     = cell(nPlanes,1);
-                data.F0_gcamp_by_plane{m}     = cell(nPlanes,1);
-                data.noise_est_gcamp_by_plane{m}    = cell(nPlanes,1);
-                data.valid_gcamp_cells_by_plane{m}  = cell(nPlanes,1);
-                data.DF_gcamp_by_plane{m}           = cell(nPlanes,1);
-                data.Raster_gcamp_by_plane{m}       = cell(nPlanes,1);
-                data.Acttmp2_gcamp_by_plane{m}      = cell(nPlanes,1);
-                data.StartEnd_gcamp_by_plane{m}     = cell(nPlanes,1);
-                data.MAct_gcamp_by_plane{m}         = cell(nPlanes,1);
-                data.thresholds_gcamp_by_plane{m}   = cell(nPlanes,1);
-                data.bad_segs_gcamp_plane{m}        = cell(nPlanes,1);
-    
-                data.stat_by_plane{m}               = cell(nPlanes,1);
-                data.iscell_gcamp_by_plane{m}       = cell(nPlanes,1);
-                data.stat_false_by_plane{m}         = cell(nPlanes,1);
-                data.iscell_false_by_plane{m}       = cell(nPlanes,1);
-    
-                data.outlines_gcampx_by_plane{m}    = cell(nPlanes,1);
-                data.outlines_gcampy_by_plane{m}    = cell(nPlanes,1);
-                data.gcamp_mask_by_plane{m}         = cell(nPlanes,1);
-                data.gcamp_props_by_plane{m}        = cell(nPlanes,1);
-                data.imageHeight_by_plane{m}        = cell(nPlanes,1);
-                data.imageWidth_by_plane{m}         = cell(nPlanes,1);
-    
-                data.outlines_gcampx_false_by_plane{m} = cell(nPlanes,1);
-                data.outlines_gcampy_false_by_plane{m} = cell(nPlanes,1);
-                data.gcamp_mask_false_by_plane{m}      = cell(nPlanes,1);
-                data.gcamp_props_false_by_plane{m}     = cell(nPlanes,1);
-    
-                data.isort1_gcamp_by_plane{m}       = cell(nPlanes,1);
-                data.isort2_gcamp_by_plane{m}       = cell(nPlanes,1);
-                data.Sm_gcamp_by_plane{m}           = cell(nPlanes,1);
-                data.ops_detections_by_plane{m}     = cell(nPlanes,1);
+            % load_data sur ce plan
+            [~, F_gcamp, F_deconv_gcamp, ops, stat, iscell, stat_false, iscell_false] = ...
+                load_data(fall_path);
+
+            if isempty(F_gcamp)
+                fprintf('Group %d, plan %d: empty F_gcamp, skipping.\n', m, p);
+                continue;
             end
-    
-            %===============================
-            % 2.c) Boucle par PLAN
-            %===============================
-            for p = 1:nPlanes
-    
-                fall_path = gcamp_planes_for_session_m{p};
-                meanImg_plane = meanImgs_m{p};  % <-- matrix HxW
-                gcamp_TSeries_path_plane = fullfile( ...
-                        current_gcamp_TSeries_path_m, ...
-                        sprintf('plane%d', p-1), ...
-                        'Concatenated.tif' ...
-                    );
-    
-                if isempty(fall_path)
-                    fprintf('Group %d, plan %d: invalid fall_path, skipping.\n', m, p);
-                    continue;
-                end
-    
-                % load_data sur ce plan
-                [~, F_gcamp, F_deconv_gcamp, ops, stat, iscell, stat_false, iscell_false] = ...
-                    load_data(fall_path);
-                
-                if isempty(F_gcamp)
-                    fprintf('Group %d, plan %d: empty F_gcamp, skipping.\n', m, p);
-                    continue;
-                end
-    
-                % Sauvegarde brute
-                data.F_gcamp_by_plane{m}{p}        = F_gcamp;
-                data.F_deconv_gcamp_by_plane{m}{p} = F_deconv_gcamp;
-                data.stat_by_plane{m}{p}           = stat;
-                data.iscell_gcamp_by_plane{m}{p}   = iscell;
-                data.stat_false_by_plane{m}{p}     = stat_false;
-                data.iscell_false_by_plane{m}{p}   = iscell_false;
-    
-                %---------------------------------------
-                % 2.c.1 Peak detection par plan
-                %---------------------------------------
-                [~, F0_gcamp, noise_est_gcamp, SNR_gcamp, ...
-                 valid_gcamp_cells_plane, DF_gcamp_plane, Raster_gcamp_plane, ...
-                 Acttmp2_gcamp_plane, StartEnd_gcamp_plane, ...
-                 MAct_gcamp_plane, thresholds_gcamp_plane, bad_segs_gcamp_plane, ops_detection] = ...
-                    peak_detection_tuner(F_gcamp, ...
-                                         sampling_rate_group{m}, ...
-                                         synchronous_frames_group{m}, ...
-                                         'animal_group', current_animal_group, ...
-                                         'ages_group',   current_ages_group{m}, ...
-                                         'viewer_mode', false, ...
-                                         'nogui', false, ...             
-                                         'ops', ops, ...
-                                         'iscell', iscell, ...
-                                         'stat', stat, ...
-                                         'meanImg', meanImg_plane, ...
-                                         'gcamp_TSeries_path', gcamp_TSeries_path_plane, ...
-                                         'speed', speed_active_group{m}, ...
-                                         'meta_tbl', meta_tbl(m,:));
-    
-                data.F0_gcamp_by_plane{m}{p}          = F0_gcamp;
-                data.noise_est_gcamp_by_plane{m}{p}   = noise_est_gcamp;
-                data.valid_gcamp_cells_by_plane{m}{p} = valid_gcamp_cells_plane;
-                data.DF_gcamp_by_plane{m}{p}          = DF_gcamp_plane;
-                data.Raster_gcamp_by_plane{m}{p}      = Raster_gcamp_plane;
-                data.Acttmp2_gcamp_by_plane{m}{p}     = Acttmp2_gcamp_plane;
-                data.StartEnd_gcamp_by_plane{m}{p}    = StartEnd_gcamp_plane;
-                data.MAct_gcamp_by_plane{m}{p}        = MAct_gcamp_plane;
-                data.thresholds_gcamp_by_plane{m}{p}  = thresholds_gcamp_plane;
-                data.bad_segs_gcamp_plane{m}{p}       = bad_segs_gcamp_plane;
-                data.ops_detections_by_plane{m}       = ops_detection;
-    
-                %---------------------------------------
-                % 2.c.2 Masques & outlines VRAIES cellules
-                %---------------------------------------
-                [~, outlines_gcampx_plane, outlines_gcampy_plane, ~, ~, ~] = ...
-                    load_calcium_mask(iscell, stat, valid_gcamp_cells_plane);
-    
-                [gcamp_mask_plane, gcamp_props_plane, imageHeight_plane, imageWidth_plane] = ...
-                    process_poly2mask(stat, valid_gcamp_cells_plane, ...
-                                      outlines_gcampx_plane, outlines_gcampy_plane);
-    
-                data.outlines_gcampx_by_plane{m}{p} = outlines_gcampx_plane;
-                data.outlines_gcampy_by_plane{m}{p} = outlines_gcampy_plane;
-                data.gcamp_mask_by_plane{m}{p}      = gcamp_mask_plane;
-                data.gcamp_props_by_plane{m}{p}     = gcamp_props_plane;
-                data.imageHeight_by_plane{m}{p}     = imageHeight_plane;
-                data.imageWidth_by_plane{m}{p}      = imageWidth_plane;
-    
-                %---------------------------------------
-                % 2.c.3 Masques & outlines FAUX positifs
-                %---------------------------------------
-                [NCell_false, outlines_gcampx_false_plane, outlines_gcampy_false_plane, ~, ~, ~] = ...
-                    load_calcium_mask(iscell_false, stat_false);
-    
-                [gcamp_mask_false_plane, gcamp_props_false_plane, ~, ~] = ...
-                    process_poly2mask(stat_false, NCell_false, ...
-                                      outlines_gcampx_false_plane, outlines_gcampy_false_plane);
-    
-                data.outlines_gcampx_false_by_plane{m}{p} = outlines_gcampx_false_plane;
-                data.outlines_gcampy_false_by_plane{m}{p} = outlines_gcampy_false_plane;
-                data.gcamp_mask_false_by_plane{m}{p}      = gcamp_mask_false_plane;
-                data.gcamp_props_false_by_plane{m}{p}     = gcamp_props_false_plane;
-    
-                %---------------------------------------
-                % 2.c.4 Tri (isort) par plan (optionnel)
-                %---------------------------------------
-                if ~isempty(DF_gcamp_plane)
-                    if ~isempty(Raster_gcamp_plane)
-                        Raster_for_sort = double(Raster_gcamp_plane);  % <-- clé : single/double
-                    else
-                        Raster_for_sort = [];
-                    end
-                    
-                    [isort1_gcamp_plane, isort2_gcamp_plane, Sm_gcamp_plane] = ...
-                        raster_processing(Raster_for_sort, fall_path, ops);
-                                    
-                    Raster_sorted = Raster_gcamp_plane(isort1_gcamp_plane, :);
-                
-                    % (optionnel) aussi trier DF pour cohérence visuelle
-                    % DF_sorted = DF_gcamp_plane(isort1_gcamp_plane, :);
-    
-                    plot_raster_sorted(Raster_sorted, sprintf('Raster trié isort1 — m=%d p=%d', m, p));
-    
-                    data.isort1_gcamp_by_plane{m}{p} = isort1_gcamp_plane;
-                    data.isort2_gcamp_by_plane{m}{p} = isort2_gcamp_plane;
-                    data.Sm_gcamp_by_plane{m}{p}     = Sm_gcamp_plane;
-                else
-                    data.isort1_gcamp_by_plane{m}{p} = [];
-                    data.isort2_gcamp_by_plane{m}{p} = [];
-                    data.Sm_gcamp_by_plane{m}{p}     = [];
-                end
-    
-            end % for p = 1:nPlanes
-    
-            %==========================================
-            % 2.d) Sauvegarder tous les champs GCaMP pour ce m
-            %==========================================
+
+            % brute toujours gardée en mémoire
+            data.F_gcamp_by_plane{m}{p}        = F_gcamp;
+            data.F_deconv_gcamp_by_plane{m}{p} = F_deconv_gcamp;
+            data.stat_by_plane{m}{p}           = stat;
+            data.iscell_gcamp_by_plane{m}{p}   = iscell;
+            data.stat_false_by_plane{m}{p}     = stat_false;
+            data.iscell_false_by_plane{m}{p}   = iscell_false;
+
+            % Déterminer le mode : viewer si DF déjà présent, sinon édition
+            viewer_mode_this_plane = ~isempty(data.DF_gcamp_by_plane{m}) && ...
+                                     numel(data.DF_gcamp_by_plane{m}) >= p && ...
+                                     ~isempty(data.DF_gcamp_by_plane{m}{p});
+
+            if viewer_mode_this_plane
+                F_for_view = F_gcamp;
+            else
+                F_for_view = F_gcamp;
+            end
+
+            %---------------------------------------
+            % Peak detection par plan
+            %---------------------------------------
+            [F0_gcamp, noise_est_gcamp, SNR_gcamp, ...
+             valid_gcamp_cells_plane, DF_gcamp_plane, Raster_gcamp_plane, ...
+             Acttmp2_gcamp_plane, StartEnd_gcamp_plane, ...
+             MAct_gcamp_plane, thresholds_gcamp_plane, bad_segs_gcamp_plane, ...
+             ops_detection, has_new_outputs] = ...
+                peak_detection_tuner(F_for_view, ...
+                                     sampling_rate_group{m}, ...
+                                     synchronous_frames_group{m}, ...
+                                     'animal_group', current_animal_group, ...
+                                     'ages_group',   current_ages_group{m}, ...
+                                     'viewer_mode', viewer_mode_this_plane, ...
+                                     'ops', ops, ...
+                                     'iscell', iscell, ...
+                                     'stat', stat, ...
+                                     'meanImg', meanImg_plane, ...
+                                     'gcamp_TSeries_path', gcamp_TSeries_path_plane, ...
+                                     'speed', speed_active_group{m}, ...
+                                     'meta_tbl', meta_tbl(m,:));
+
+            % Si aucune nouvelle sortie -> ne rien écraser
+            if ~has_new_outputs
+                fprintf('Group %d, plane %d: no new outputs from peak_detection_tuner, skipping save/update.\n', m, p);
+                continue;
+            end
+
+            has_new_data_for_group = true;
+
+            %---------------------------------------
+            % Stockage détection
+            %---------------------------------------
+            data.F0_gcamp_by_plane{m}{p}          = F0_gcamp;
+            data.noise_est_gcamp_by_plane{m}{p}   = noise_est_gcamp;
+            data.valid_gcamp_cells_by_plane{m}{p} = valid_gcamp_cells_plane;
+            data.DF_gcamp_by_plane{m}{p}          = DF_gcamp_plane;
+            data.Raster_gcamp_by_plane{m}{p}      = Raster_gcamp_plane;
+            data.Acttmp2_gcamp_by_plane{m}{p}     = Acttmp2_gcamp_plane;
+            data.StartEnd_gcamp_by_plane{m}{p}    = StartEnd_gcamp_plane;
+            data.MAct_gcamp_by_plane{m}{p}        = MAct_gcamp_plane;
+            data.thresholds_gcamp_by_plane{m}{p}  = thresholds_gcamp_plane;
+            data.bad_segs_gcamp_plane{m}{p}       = bad_segs_gcamp_plane;
+            data.ops_detections_by_plane{m}       = ops_detection;
+
+            %---------------------------------------
+            % Masques & outlines vraies cellules
+            %---------------------------------------
+            [~, outlines_gcampx_plane, outlines_gcampy_plane, ~, ~, ~] = ...
+                load_calcium_mask(iscell, stat, valid_gcamp_cells_plane);
+
+            [gcamp_mask_plane, gcamp_props_plane, imageHeight_plane, imageWidth_plane] = ...
+                process_poly2mask(stat, valid_gcamp_cells_plane, ...
+                                  outlines_gcampx_plane, outlines_gcampy_plane);
+
+            data.outlines_gcampx_by_plane{m}{p} = outlines_gcampx_plane;
+            data.outlines_gcampy_by_plane{m}{p} = outlines_gcampy_plane;
+            data.gcamp_mask_by_plane{m}{p}      = gcamp_mask_plane;
+            data.gcamp_props_by_plane{m}{p}     = gcamp_props_plane;
+            data.imageHeight_by_plane{m}{p}     = imageHeight_plane;
+            data.imageWidth_by_plane{m}{p}      = imageWidth_plane;
+
+            %---------------------------------------
+            % Masques & outlines faux positifs
+            %---------------------------------------
+            [NCell_false, outlines_gcampx_false_plane, outlines_gcampy_false_plane, ~, ~, ~] = ...
+                load_calcium_mask(iscell_false, stat_false);
+
+            [gcamp_mask_false_plane, gcamp_props_false_plane, ~, ~] = ...
+                process_poly2mask(stat_false, NCell_false, ...
+                                  outlines_gcampx_false_plane, outlines_gcampy_false_plane);
+
+            data.outlines_gcampx_false_by_plane{m}{p} = outlines_gcampx_false_plane;
+            data.outlines_gcampy_false_by_plane{m}{p} = outlines_gcampy_false_plane;
+            data.gcamp_mask_false_by_plane{m}{p}      = gcamp_mask_false_plane;
+            data.gcamp_props_false_by_plane{m}{p}     = gcamp_props_false_plane;
+
+            %---------------------------------------
+            % Tri raster
+            %---------------------------------------
+            if ~isempty(DF_gcamp_plane) && ~isempty(Raster_gcamp_plane)
+                Raster_for_sort = double(Raster_gcamp_plane);
+
+                [isort1_gcamp_plane, isort2_gcamp_plane, Sm_gcamp_plane] = ...
+                    raster_processing(Raster_for_sort, fall_path, ops);
+
+                Raster_sorted = Raster_gcamp_plane(isort1_gcamp_plane, :);
+                plot_raster_sorted(Raster_sorted, sprintf('Raster trié isort1 — m=%d p=%d', m, p));
+
+                data.isort1_gcamp_by_plane{m}{p} = isort1_gcamp_plane;
+                data.isort2_gcamp_by_plane{m}{p} = isort2_gcamp_plane;
+                data.Sm_gcamp_by_plane{m}{p}     = Sm_gcamp_plane;
+            else
+                data.isort1_gcamp_by_plane{m}{p} = [];
+                data.isort2_gcamp_by_plane{m}{p} = [];
+                data.Sm_gcamp_by_plane{m}{p}     = [];
+            end
+
+        end % for p
+
+        %==========================================
+        % 2.e) Sauvegarde disque seulement si nouveauté
+        %==========================================
+        if has_new_data_for_group
             saveStruct = struct();
-    
+
             for k = 1:numel(fields_gcamp)
                 fieldName = fields_gcamp{k};
                 if isfield(data, fieldName)
                     saveStruct.(fieldName) = data.(fieldName){m};
                 end
             end
-    
-            % Créer le dossier parent si nécessaire
+
             outdir = fileparts(filePath);
             if ~exist(outdir, 'dir')
                 mkdir(outdir);
             end
-    
+
             if exist(filePath, 'file') == 2
                 save(filePath, '-struct', 'saveStruct', '-append');
             else
                 save(filePath, '-struct', 'saveStruct');
             end
-    
-        end % for m = 1:numFolders
-    
-    end % function process_gcamp_cells
-end
 
+            fprintf('Group %d: results.mat updated.\n', m);
+        else
+            fprintf('Group %d: no new data, results.mat not modified.\n', m);
+        end
+
+    end % for m
+end
 
 % ==========================================
 % =========== FONCTIONS UTILITAIRES ========
