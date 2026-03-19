@@ -1,4 +1,4 @@
-%% Preprocessing
+%% Initialization
 
 clear
 setup_python_env()
@@ -11,18 +11,11 @@ else
     processing_choice2 = [];
 end        
 
+%% Preprocessing
+
 [animal_date_list, selected_groups, metadata_results] = pipeline_for_data_preprocessing(processing_choice1, processing_choice2);
 
-%%
 
-F = selected_groups.data.F_gcamp_by_plane{1,1}{1,1};
-
-figure;
-plot(F(1,:), 'k', 'LineWidth', 1.5);
-xlabel('Frames');
-ylabel('Fluorescence');
-title('Cellule 1');
-grid on;
 %%
 
 %checking_choice1 = input('Do you want to check your data? (1/2): ', 's');

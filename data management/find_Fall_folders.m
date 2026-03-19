@@ -219,7 +219,6 @@ end
 function dataFolders = process_TSeries(TSeriesPath)
     suite2pFolder = fullfile(TSeriesPath, 'suite2p');
     if ~isfolder(suite2pFolder)
-        disp(['Error: No ''suite2p'' folder found in ', TSeriesPath, '. Skipping processing.']);
         dataFolders = {};
         return;
     end
