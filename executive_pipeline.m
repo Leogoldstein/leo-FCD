@@ -17,7 +17,6 @@ end
 
 
 %%
-
 %checking_choice1 = input('Do you want to check your data? (1/2): ', 's');
 checking_choice1 = '2';
 if strcmp(checking_choice1, '1')
@@ -36,8 +35,8 @@ include_blue_cells = '2';
 PathSave = 'D:\Imaging\Outputs\';
 all_results = [];  % tableau de structures vide
 
-
-%% Perform analyses 
+%%
+% Perform analyses 
 % (in the loop = one recording per animal at a time, out of the loop =
 % all the recordings of an animal at a time)
 % selected_indices = select_animal_groups(selected_groups);
@@ -70,51 +69,8 @@ for k = 1:length(selected_groups)
 % 
         results_analysis = compute_export_basic_metrics(selected_groups, k, sampling_rate_group);
         
-        numFolders = length(gcamp_output_folders);
+        plot_gcamp_histograms(results_analysis, gcamp_output_folders)
 
-        for m = 1:numFolders
-            
-            freq = results_analysis(m).FrequencyPerCell_gcamp;
-            freq = freq(isfinite(freq));
-            
-            figure;
-            histogram(freq, 'BinMethod','fd');  % fd = Freedman–Diaconis (robuste)
-            xlabel('Frequency (events / min)');
-            ylabel('Number of cells');
-            title(sprintf('GCaMP frequency – %s %s', ...
-                results_analysis(m).current_animal_group, ...
-                results_analysis(m).Age));
-            grid on;
-    
-            %---------------------------------------------------------
-            dur = results_analysis(m).DurationPerCell_gcamp_s;
-            dur = dur(isfinite(dur));
-            
-            figure;
-            histogram(dur, 'BinMethod','fd');
-            xlabel('Transient duration (s)');
-            ylabel('Number of cells');
-            title(sprintf('GCaMP transient duration – %s %s', ...
-                results_analysis(m).current_animal_group, ...
-                results_analysis(m).Age));
-            grid on;
-
-            %--------------------------------------------------------------
-            iei = results_analysis(m).IEImeanPerCell_gcamp_s;
-            iei = iei(isfinite(iei));
-            
-            figure;
-            histogram(iei, 'BinMethod','fd');
-            xlabel('Mean inter-event interval (s)');
-            ylabel('Number of cells');
-            title(sprintf('GCaMP IEI – %s %s', ...
-                results_analysis(m).current_animal_group, ...
-                results_analysis(m).Age));
-            grid on;
-
-            mean_gcamp_freq = mean(freq);
-
-        end
 %         % Cluster analysis
 %      % data = load_or_process_clusters_data(current_animal_group, current_dates_group, gcamp_output_folders, current_xml_group, data);
 %      % selected_groups(k).data = data;

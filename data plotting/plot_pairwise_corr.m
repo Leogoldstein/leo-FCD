@@ -19,13 +19,29 @@ function plot_pairwise_corr(current_ages_group, max_corr_gcamp_gcamp_by_plane, g
                 ageLabel = sprintf('sess%d', m);
             end
 
-            % ---- corr planes pour cette session ----
             corr_planes = max_corr_gcamp_gcamp_by_plane{m};
             if ~iscell(corr_planes)
-                % si jamais c'est une matrice directement => un seul plan
                 corr_planes = {corr_planes};
             end
             nPlanes = numel(corr_planes);
+            
+            % ---- vérifier données non vides ----
+            hasData = false;
+            for p = 1:nPlanes
+                V = corr_planes{p};
+                if ~isempty(V)
+                    if ismatrix(V) && size(V,1)==size(V,2) && size(V,1)>1
+                        hasData = true; break;
+                    elseif ~isempty(V(:))
+                        hasData = true; break;
+                    end
+                end
+            end
+            
+            if ~hasData
+                fprintf('m=%d: toutes les données sont vides. Skip.\n', m);
+                continue;
+            end
 
             % ---- output ----
             file_name = sprintf('Corr_%s_%s_%s_m%d.png', ...

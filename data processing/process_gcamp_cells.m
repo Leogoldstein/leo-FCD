@@ -252,7 +252,7 @@ function [data, fields] = process_gcamp_cells( ...
                     raster_processing(Raster_for_sort, fall_path, ops);
 
                 Raster_sorted = Raster_gcamp_plane(isort1_gcamp_plane, :);
-                plot_raster_sorted(Raster_sorted, sprintf('Raster trié isort1 — m=%d p=%d', m, p));
+                %plot_raster_sorted(Raster_sorted, sprintf('Raster trié isort1 — m=%d p=%d', m, p));
 
                 data.isort1_gcamp_by_plane{m}{p} = isort1_gcamp_plane;
                 data.isort2_gcamp_by_plane{m}{p} = isort2_gcamp_plane;

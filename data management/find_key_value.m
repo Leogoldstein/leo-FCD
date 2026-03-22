@@ -197,21 +197,9 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
             end
         end
 
+
         %% === Nombre de plans Z (n_plans) + positions par plan pour ZSeries ===
-        % Gère aussi le cas où certains frames n'ont pas de positionCurrent explicite
-        % (ex. 3e plan non décrit dans le XML Prairie).
-        %
-        % Stratégie :
-        % 1) On lit les frames du premier Sequence contenant "ZSeries"
-        % 2) On extrait pour chaque frame :
-        %       - index
-        %       - page
-        %       - z_focus / etl_raw si disponibles
-        % 3) On essaie d'identifier le motif de pages/frames dans un cycle
-        % 4) Si certaines positions Z manquent, on conserve quand même les frames
-        % 5) n_plans = nombre de frames par cycle (ou pages uniques), pas seulement
-        %    le nombre de frames avec Z explicite
-        
+
         seqNodes = xmlDoc.getElementsByTagName('Sequence');
         
         position = [];
@@ -225,7 +213,7 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
             end
         
             seqType = char(seqNode.getAttribute('type'));
-            if ~contains(seqType, 'ZSeries')   % ex: "TSeries ZSeries Element"
+            if ~contains(seqType, 'ZSeries')
                 continue;
             end
         
@@ -236,9 +224,7 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
                 continue;
             end
         
-            % Stockage par frame
             frame_index = nan(1, nFramesInSeq);
-            frame_page  = nan(1, nFramesInSeq);
             z_focus_all = nan(1, nFramesInSeq);
             etl_raw_all = nan(1, nFramesInSeq);
             z_pos_all   = nan(1, nFramesInSeq);
@@ -247,21 +233,12 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
                 frameNode = frameNodes.item(f);
                 ii = f + 1;
         
-                % -------- Frame index --------
                 if frameNode.hasAttribute('index')
                     frame_index(ii) = str2double(char(frameNode.getAttribute('index')));
+                else
+                    frame_index(ii) = ii;
                 end
         
-                % -------- Page depuis <File ... page="x"> --------
-                fileNodes = frameNode.getElementsByTagName('File');
-                if fileNodes.getLength > 0
-                    fileNode = fileNodes.item(0);
-                    if fileNode.hasAttribute('page')
-                        frame_page(ii) = str2double(char(fileNode.getAttribute('page')));
-                    end
-                end
-        
-                % -------- Chercher PVStateShard utile --------
                 shardNodes = frameNode.getElementsByTagName('PVStateShard');
                 shardNode = [];
         
@@ -313,16 +290,17 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
                                 subidx = char(svNode.getAttribute('subindex'));
                             end
         
-                            % Priorité à description, sinon fallback subindex
-                            if (~isempty(descr) && contains(descr, 'Z Focus')) || ...
-                               (isempty(descr) && strcmp(subidx, '0'))
+                            if (~isempty(descr) && contains(descr, 'Z Focus')) || strcmp(subidx, '0')
                                 z_focus = val;
-                            elseif (~isempty(descr) && contains(descr, 'Optotune')) || ...
-                                   (isempty(descr) && strcmp(subidx, '1'))
+                            elseif (~isempty(descr) && contains(descr, 'Optotune')) || strcmp(subidx, '1')
                                 etl_raw = val;
                             end
                         end
                     end
+                end
+        
+                if ~isnan(etl_raw) && abs(etl_raw) < 1e-6
+                    etl_raw = 0;
                 end
         
                 z_focus_all(ii) = z_focus;
@@ -332,82 +310,23 @@ function [recording_time, sampling_rate, optical_zoom, position, time_minutes, p
                     if isnan(etl_raw)
                         etl_raw = 0;
                     end
-                    % 1000 ETL = 1 µm
                     z_pos_all(ii) = z_focus + etl_raw/1000;
                 end
             end
         
-            % ============================================================
-            % Détermination robuste du nombre de plans
-            % ============================================================
+            % Le vrai nombre de plans = nombre de frames dans la séquence ZSeries
+            n_plans = nFramesInSeq;
         
-            % 1) Si les pages existent, c'est souvent le plus robuste
-            valid_pages = frame_page(~isnan(frame_page));
-            unique_pages = unique(valid_pages, 'stable');
+            % Une position par frame/plan
+            position = z_pos_all;
         
-            if ~isempty(unique_pages)
-                n_plans = numel(unique_pages);
-            else
-                % 2) Sinon fallback sur l'index des frames
-                valid_idx = frame_index(~isnan(frame_index));
-                unique_idx = unique(valid_idx, 'stable');
-                n_plans = numel(unique_idx);
-            end
-        
-            % ============================================================
-            % Reconstruction des positions de plan
-            % ============================================================
-            %
-            % On veut un vecteur position de longueur n_plans.
-            % Si certains plans n'ont pas de Z explicite, on met NaN.
-            %
-        
-            position = nan(1, n_plans);
-        
-            if ~isempty(unique_pages)
-                % Associer chaque page à une position moyenne si dispo
-                for ip = 1:n_plans
-                    pg = unique_pages(ip);
-                    mask = (frame_page == pg);
-        
-                    vals = z_pos_all(mask & ~isnan(z_pos_all));
-                    if ~isempty(vals)
-                        position(ip) = mean(vals);
-                    end
-                end
-            else
-                % Fallback sur index
-                for ip = 1:n_plans
-                    idxv = unique_idx(ip);
-                    mask = (frame_index == idxv);
-        
-                    vals = z_pos_all(mask & ~isnan(z_pos_all));
-                    if ~isempty(vals)
-                        position(ip) = mean(vals);
-                    end
-                end
-            end
-        
-            % ============================================================
-            % Cas particulier : un plan sans Z explicite
-            % ============================================================
-            % Exemple XML montré :
-            %   page 1 -> Z explicite
-            %   page 2 -> Z explicite
-            %   page 3 -> pas de positionCurrent
-            %
-            % Ici n_plans=3 mais position(3)=NaN, ce qui est correct.
-            % On conserve le plan comme existant, même si sa Z n'est pas décodable.
-            %
-        
-            % Petit affichage debug
             fprintf('ZSeries detecte : %d plans\n', n_plans);
-            if ~isempty(unique_pages)
-                fprintf('Pages detectees : %s\n', mat2str(unique_pages));
-            end
+            fprintf('Frame index detectes : %s\n', mat2str(frame_index));
+            fprintf('Z focus : %s\n', mat2str(z_focus_all));
+            fprintf('ETL raw : %s\n', mat2str(etl_raw_all));
             fprintf('Positions Z estimees : %s\n', mat2str(position));
         
-            break; % on s'arrête au premier ZSeries
+            break;
         end
 
         %% === Pixel size final (uniquement depuis micronsPerPixel) ===
