@@ -1,41 +1,95 @@
-function [motion_energy_group, motion_energy_smooth_group, ...
-          avg_active_motion_onsets_group, avg_active_motion_offsets_group, ...
-          active_motion_onsets_group, active_motion_offsets_group, ...
-          speed_active_group] = ...
-    load_or_process_movie(current_gcamp_TSeries_path, gcamp_output_folders, avg_block, sampling_rate_group, current_animal_group)
-    
+function movie = load_or_process_movie( ...
+    current_gcamp_TSeries_path, gcamp_output_folders, avg_block, ...
+    sampling_rate_group, current_animal_group, data)
 
-%LOAD_OR_PROCESS_MOVIE
-    % - Load existing results_movie.mat fields if present
-    % - Otherwise compute ONLY missing parts (field-by-field)
-    % - Compute motion energy if missing (with Fiji prompt)
-    % - Average, smooth, threshold, binarise
-    % - Detect active periods (avg + frame level)
-    % - Build speed_active directly from bin_sig
-    % - Save everything in results_movie.mat
-    % - Plot active periods
+% LOAD_OR_PROCESS_MOVIE
+% - recharge results_movie.mat si présent
+% - complète uniquement les champs absents dans data.movie
+% - ne réécrit pas les données déjà présentes en mémoire
+% - pose les questions de calcul de motion_energy une seule fois
+% - seulement si nécessaire
+% - stocke dans data.movie.<field>{m}
+% - utilise movie.motion_energy_status{m} pour distinguer :
+%       'done' / 'skipped' / 'no_camera' / 'no_movie'
+% - retourne uniquement data.movie
 
     numFolders = numel(current_gcamp_TSeries_path);
 
-    motion_energy_group        = cell(numFolders,1);
-    motion_energy_smooth_group = cell(numFolders,1);
+    fields_movie = { ...
+        'motion_energy_group', ...
+        'motion_energy_smooth_group', ...
+        'avg_active_motion_onsets_group', ...
+        'avg_active_motion_offsets_group', ...
+        'active_motion_onsets_group', ...
+        'active_motion_offsets_group', ...
+        'speed_active_group', ...
+        'motion_energy_status' ...
+    };
 
-    avg_active_motion_onsets_group  = cell(numFolders,1);
-    avg_active_motion_offsets_group = cell(numFolders,1);
-
-    active_motion_onsets_group  = cell(numFolders,1);
-    active_motion_offsets_group = cell(numFolders,1);
-
-    speed_active_group = cell(numFolders,1);
+    data = init_movie_data_struct_if_needed(data, numFolders, fields_movie);
 
     camFolders = cell(numFolders,1);
     fijiPath = 'C:\Users\goldstein\Fiji.app\fiji-windows-x64.exe';
 
+    % Poser les questions seulement si nécessaire
+    motion_strategy = [];
+    motion_strategy_initialized = false;
+
     for m = 1:numFolders
 
-        % ------- Locate camera folder -------
-        camPath    = fullfile(current_gcamp_TSeries_path{m}, 'cam',    'Concatenated');
-        cameraPath = fullfile(current_gcamp_TSeries_path{m}, 'camera', 'Concatenated');
+        data = ensure_movie_entry_exists(data, fields_movie, numFolders, m);
+
+        root_folder_m = extract_movie_root_folder(gcamp_output_folders, m);
+        if isempty(root_folder_m)
+            warning('load_or_process_movie:noOutputFolder', ...
+                'Impossible de déterminer le dossier de sortie pour m=%d.', m);
+            continue;
+        end
+
+        savePath = fullfile(root_folder_m, 'results_movie.mat');
+
+        % Reload .mat sans écraser ce qui existe déjà en mémoire
+        if exist(savePath, 'file') == 2
+            loaded = load(savePath);
+            data = merge_loaded_movie_into_data(data, loaded, fields_movie, m);
+        end
+
+        has_new_data_for_group = false;
+
+        %-----------------------------------------
+        % Vérifier si tout existe vraiment déjà
+        %-----------------------------------------
+        already_has_all = ...
+            movie_field_has_value(data, 'motion_energy_group', m) && ...
+            movie_field_has_value(data, 'motion_energy_smooth_group', m) && ...
+            movie_field_has_value(data, 'avg_active_motion_onsets_group', m) && ...
+            movie_field_has_value(data, 'avg_active_motion_offsets_group', m) && ...
+            movie_field_has_value(data, 'active_motion_onsets_group', m) && ...
+            movie_field_has_value(data, 'active_motion_offsets_group', m) && ...
+            movie_field_has_value(data, 'speed_active_group', m);
+
+        if already_has_all
+            fprintf('Movie folder %d: motion data already processed, skipping.\n', m);
+            continue;
+        end
+
+        % Si explicitement "skipped/no_camera/no_movie", ne pas redemander
+        if movie_status_already_final(data, m)
+            fprintf('Movie folder %d: motion previously marked as %s, skipping recomputation.\n', ...
+                m, string(data.movie.motion_energy_status{m}));
+
+            data = assign_empty_movie_fields_if_missing(data, m);
+            save_movie_fields_if_needed(savePath, data, fields_movie, m, false);
+            continue;
+        end
+
+        %-----------------------------------------
+        % Localiser dossier caméra
+        %-----------------------------------------
+        tseries_path_m = current_gcamp_TSeries_path{m};
+
+        camPath    = fullfile(tseries_path_m, 'cam',    'Concatenated');
+        cameraPath = fullfile(tseries_path_m, 'camera', 'Concatenated');
 
         if isfolder(camPath)
             camFolders{m} = camPath;
@@ -44,82 +98,94 @@ function [motion_energy_group, motion_energy_smooth_group, ...
             camFolders{m} = cameraPath;
             fprintf('Found camera folder: %s\n', cameraPath);
         else
-            fprintf('No Camera images found in %s.\n', current_gcamp_TSeries_path{m});
-            % Fill empties and continue
-            motion_energy_group{m} = [];
-            motion_energy_smooth_group{m} = [];
-            avg_active_motion_onsets_group{m} = [];
-            avg_active_motion_offsets_group{m} = [];
-            active_motion_onsets_group{m} = [];
-            active_motion_offsets_group{m} = [];
-            speed_active_group{m} = [];
+            fprintf('No Camera images found in %s.\n', tseries_path_m);
+
+            data = assign_empty_movie_fields_if_missing(data, m);
+            data.movie.motion_energy_status{m} = 'no_camera';
+            has_new_data_for_group = true;
+            save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group);
             continue;
         end
 
         filepath = fullfile(camFolders{m}, 'cam_crop.tif');
         if exist(filepath, 'file') ~= 2
             fprintf('No movie found at %s.\n', filepath);
-            motion_energy_group{m} = [];
-            motion_energy_smooth_group{m} = [];
-            avg_active_motion_onsets_group{m} = [];
-            avg_active_motion_offsets_group{m} = [];
-            active_motion_onsets_group{m} = [];
-            active_motion_offsets_group{m} = [];
-            speed_active_group{m} = [];
+
+            data = assign_empty_movie_fields_if_missing(data, m);
+            data.movie.motion_energy_status{m} = 'no_movie';
+            has_new_data_for_group = true;
+            save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group);
             continue;
         end
 
-        savePath = fullfile(gcamp_output_folders{m}, 'results_movie.mat');
+        %-----------------------------------------
+        % 1) motion_energy
+        %-----------------------------------------
+        if ~movie_field_has_value(data, 'motion_energy_group', m)
 
-        % ------- Load previous data if exists -------
-        data = [];
-        if exist(savePath,'file') == 2
-            data = load(savePath);
+            if ~motion_strategy_initialized
+                motion_strategy = ask_motion_energy_strategy_once();
+                motion_strategy_initialized = true;
+            end
+
+            motion_energy = compute_motion_energy_with_strategy(filepath, fijiPath, motion_strategy);
+            data.movie.motion_energy_group{m} = motion_energy;
+
+            if isempty(motion_energy)
+                data.movie.motion_energy_status{m} = 'skipped';
+            else
+                data.movie.motion_energy_status{m} = 'done';
+            end
+
+            has_new_data_for_group = true;
+        else
+            motion_energy = data.movie.motion_energy_group{m};
+
+            if ~movie_status_exists(data, m) || isempty(data.movie.motion_energy_status{m})
+                data.movie.motion_energy_status{m} = 'done';
+                has_new_data_for_group = true;
+            end
         end
-
-        % ============================================================
-        % 1) motion_energy (load if exists, else compute/prompt)
-        % ============================================================
-        motion_energy = load_field_or_default(data, 'motion_energy', ...
-            @() compute_or_prompt_motion_energy(filepath, fijiPath));
-
-        motion_energy_group{m} = motion_energy;
 
         if isempty(motion_energy)
-            % Nothing else to do
-            motion_energy_smooth_group{m} = [];
-            avg_active_motion_onsets_group{m} = [];
-            avg_active_motion_offsets_group{m} = [];
-            active_motion_onsets_group{m} = [];
-            active_motion_offsets_group{m} = [];
-            speed_active_group{m} = [];
+            data = assign_empty_movie_fields_if_missing(data, m);
+            has_new_data_for_group = true;
+            save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group);
             continue;
         end
 
-        % ============================================================
-        % 2) avg_motion_energy (load if exists, else compute)
-        % ============================================================
-        avg_motion_energy = load_field_or_default(data, 'avg_motion_energy', ...
-            @() average_frames(motion_energy, avg_block));
+        %-----------------------------------------
+        % 2) avg_motion_energy
+        %-----------------------------------------
+        avg_motion_energy = average_frames(motion_energy, avg_block);
 
-        % ============================================================
-        % 3) motion_energy_smooth (load if exists, else compute)
-        % ============================================================
-        motion_energy_smooth = load_field_or_default(data, 'motion_energy_smooth', ...
-            @() smooth_savgol(avg_motion_energy, 3, 11));
+        %-----------------------------------------
+        % 3) motion_energy_smooth
+        %-----------------------------------------
+        if ~movie_field_has_value(data, 'motion_energy_smooth_group', m)
+            motion_energy_smooth = smooth_savgol(avg_motion_energy, 3, 11);
+            data.movie.motion_energy_smooth_group{m} = motion_energy_smooth;
+            has_new_data_for_group = true;
+        else
+            motion_energy_smooth = data.movie.motion_energy_smooth_group{m};
+        end
 
-        motion_energy_smooth_group{m} = motion_energy_smooth;
+        if isempty(motion_energy_smooth)
+            data = assign_empty_binary_movie_fields_if_missing(data, m);
+            has_new_data_for_group = true;
+            save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group);
+            continue;
+        end
 
-        % ============================================================
-        % 4) Dependent outputs (onsets/offsets/speed_active)
-        %    If ANY missing => recompute from motion_energy_smooth
-        % ============================================================
-        need_bin = isempty(data) || ...
-                   ~isfield(data,'avg_active_motion_onsets') || ...
-                   ~isfield(data,'avg_active_motion_offsets') || ...
-                   ~isfield(data,'active_motion_onsets') || ...
-                   ~isfield(data,'active_motion_offsets') || ...
-                   ~isfield(data,'speed_active');
+        %-----------------------------------------
+        % 4) Onsets / offsets / speed_active
+        %-----------------------------------------
+        need_bin = ...
+            ~movie_field_has_value(data, 'avg_active_motion_onsets_group', m) || ...
+            ~movie_field_has_value(data, 'avg_active_motion_offsets_group', m) || ...
+            ~movie_field_has_value(data, 'active_motion_onsets_group', m) || ...
+            ~movie_field_has_value(data, 'active_motion_offsets_group', m) || ...
+            ~movie_field_has_value(data, 'speed_active_group', m);
 
         thr_li = [];
         bin_sig = [];
@@ -135,7 +201,6 @@ function [motion_energy_group, motion_energy_smooth_group, ...
                 3.0, ...
                 5);
 
-            % ---- avg onsets/offsets (in averaged samples) ----
             avg_onsets  = get_onsets(bin_sig);
             avg_offsets = get_offsets(bin_sig);
 
@@ -148,7 +213,6 @@ function [motion_energy_group, motion_energy_smooth_group, ...
                 end
             end
 
-            % ---- convert to frames ----
             N_frames = numel(motion_energy);
             onsets_frames  = (avg_onsets  - 1) * avg_block + 1;
             offsets_frames =  avg_offsets * avg_block;
@@ -156,93 +220,57 @@ function [motion_energy_group, motion_energy_smooth_group, ...
             onsets_frames  = max(1, onsets_frames);
             offsets_frames = min(N_frames, offsets_frames);
 
-            % ---- speed_active per camera frame (0/1) ----
             speed_active = repelem(bin_sig(:), avg_block);
 
-            if numel(speed_active) < N_frames
+            if isempty(speed_active)
+                speed_active = zeros(N_frames,1);
+            elseif numel(speed_active) < N_frames
                 speed_active(end+1:N_frames) = speed_active(end);
             else
                 speed_active = speed_active(1:N_frames);
             end
 
-        else
-            % Load everything
-            avg_onsets     = data.avg_active_motion_onsets;
-            avg_offsets    = data.avg_active_motion_offsets;
-            onsets_frames  = data.active_motion_onsets;
-            offsets_frames = data.active_motion_offsets;
-            speed_active   = data.speed_active;
+            data.movie.avg_active_motion_onsets_group{m}  = avg_onsets;
+            data.movie.avg_active_motion_offsets_group{m} = avg_offsets;
+            data.movie.active_motion_onsets_group{m}      = onsets_frames;
+            data.movie.active_motion_offsets_group{m}     = offsets_frames;
+            data.movie.speed_active_group{m}              = speed_active;
 
-            % Optional: try to load thr_li / bin_sig if saved previously
-            if isfield(data,'thr_li'), thr_li = data.thr_li; end
-            if isfield(data,'bin_sig'), bin_sig = data.bin_sig; end
+            has_new_data_for_group = true;
+
+        else
+            avg_onsets  = data.movie.avg_active_motion_onsets_group{m};
+            avg_offsets = data.movie.avg_active_motion_offsets_group{m};
         end
 
-        avg_active_motion_onsets_group{m}  = avg_onsets;
-        avg_active_motion_offsets_group{m} = avg_offsets;
-        active_motion_onsets_group{m}      = onsets_frames;
-        active_motion_offsets_group{m}     = offsets_frames;
-        speed_active_group{m}              = speed_active;
+        save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group);
 
-        % ============================================================
-        % 5) Save (always overwrite to ensure consistency)
-        % ============================================================
-        avg_active_motion_onsets  = avg_onsets;
-        avg_active_motion_offsets = avg_offsets;
-        active_motion_onsets      = onsets_frames;
-        active_motion_offsets     = offsets_frames;
+        png_filename = fullfile(root_folder_m, 'binary_motion_energy.png');
 
-        % If you want, you can also save bin_sig & thr_li to avoid recomputing:
-        % (uncomment these two lines if you want them stored)
-        % bin_sig_to_save = bin_sig;
-        % thr_li_to_save  = thr_li;
-
-        save(savePath, ...
-            'motion_energy', ...
-            'avg_motion_energy', ...
-            'motion_energy_smooth', ...
-            'avg_active_motion_onsets', ...
-            'avg_active_motion_offsets', ...
-            'active_motion_onsets', ...
-            'active_motion_offsets', ...
-            'speed_active', ...
-            'avg_block', ...
-            '-v7.3');
-
-       % ---- Sauvegarde image PNG ----
-        png_filename = fullfile(gcamp_output_folders{m}, ...
-            sprintf('binary_motion_energy.png'));
-        
-        if ~isfile(png_filename)
-        
+        if ~isfile(png_filename) && ~isempty(motion_energy_smooth)
             fig = figure('Visible','off', 'Color','w');
             hold on;
-        
-            % ============================================================
-            % 6) Plot (only if we have thr/bin; otherwise skip threshold line)
-            % ============================================================
+
             dt = avg_block / sampling_rate_group{m};
             time_axis = (0:numel(motion_energy_smooth)-1) * dt;
-        
+
             yl = [min(motion_energy_smooth) max(motion_energy_smooth)];
             if yl(1) == yl(2)
                 yl = yl + [-1 1]*eps;
             end
-        
-            for k = 1:min(numel(avg_onsets), numel(avg_offsets))
-                patch([time_axis(avg_onsets(k)) time_axis(avg_offsets(k)) ...
-                       time_axis(avg_offsets(k)) time_axis(avg_onsets(k))], ...
+
+            for kk = 1:min(numel(avg_onsets), numel(avg_offsets))
+                patch([time_axis(avg_onsets(kk)) time_axis(avg_offsets(kk)) ...
+                       time_axis(avg_offsets(kk)) time_axis(avg_onsets(kk))], ...
                       [yl(1) yl(1) yl(2) yl(2)], ...
                       [1 0.8 0.8], 'EdgeColor','none', 'FaceAlpha',0.4);
             end
-        
-            % Plot bin if available (otherwise compute a quick one for display)
+
             if isempty(bin_sig)
-                % just for plotting (does not affect saved results)
                 [~, thr_tmp, ~] = compute_thresholds_for_bin_state_detection(motion_energy_smooth, false);
-                [bin_tmp, ~, ~, ~] = binarise_motion(motion_energy_smooth, thr_tmp, ...
-                    sampling_rate_group{m}, avg_block, 3.0, 5);
-        
+                [bin_tmp, ~, ~, ~] = binarise_motion( ...
+                    motion_energy_smooth, thr_tmp, sampling_rate_group{m}, avg_block, 3.0, 5);
+
                 plot(time_axis, bin_tmp(:)' * yl(2), 'Color',[1 0.5 0], 'LineWidth',2);
                 yline(thr_tmp, '--r', 'LineWidth',1);
             else
@@ -251,62 +279,213 @@ function [motion_energy_group, motion_energy_smooth_group, ...
                     yline(thr_li, '--r', 'LineWidth',1);
                 end
             end
-        
+
             plot(time_axis, motion_energy_smooth, 'Color',[0 0 1], 'LineWidth',2);
-        
-            title(sprintf('binary motion_energy – %s', ...
-                current_animal_group));
+            title(sprintf('binary motion\\_energy - %s', current_animal_group));
             xlabel('Time (s)');
             ylabel('Motion energy');
             grid on;
             hold off;
-        
+
             saveas(fig, png_filename);
             close(fig);
         end
+    end
 
-    end % for m
-end % main
+    movie = data.movie;
+end
 
 
 % =====================================================================
 % Helpers
 % =====================================================================
 
-function val = load_field_or_default(S, fieldname, default_fun)
-%LOAD_FIELD_OR_DEFAULT Return S.(fieldname) if exists, else default_fun()
-    if ~isempty(S) && isfield(S, fieldname)
-        val = S.(fieldname);
-    else
-        val = default_fun();
-    end
-end
+function strategy = ask_motion_energy_strategy_once()
+    strategy = struct();
+    strategy.open_in_fiji = false;
+    strategy.compute_direct = false;
+    strategy.skip = false;
 
-function motion_energy = compute_or_prompt_motion_energy(filepath, fijiPath)
-%COMPUTE_OR_PROMPT_MOTION_ENERGY Ask user and compute motion energy.
     choice = input('Voulez-vous ouvrir le film dans Fiji pour cropper ? (1/2) ', 's');
 
     if strcmpi(choice, '1')
+        strategy.open_in_fiji = true;
+        return;
+    end
+
+    subchoice = input('Voulez-vous calculer la motion_energy sur le film tel quel ou passer ? (1/2) ', 's');
+
+    if strcmpi(subchoice, '1')
+        strategy.compute_direct = true;
+    else
+        strategy.skip = true;
+    end
+end
+
+function motion_energy = compute_motion_energy_with_strategy(filepath, fijiPath, strategy)
+    if strategy.open_in_fiji
         fprintf('Ouverture de %s dans Fiji...\n', filepath);
         system(sprintf('"%s" "%s"', fijiPath, filepath));
         motion_energy = compute_motion_energy(filepath);
-
-    elseif strcmpi(choice, '2')
-        subchoice = input('Voulez-vous calculer la motion_energy sur le film tel quel ou passer ? (1/2) ', 's');
-        if strcmpi(subchoice, '1')
-            motion_energy = compute_motion_energy(filepath);
-        else
-            motion_energy = [];
-        end
+    elseif strategy.compute_direct
+        motion_energy = compute_motion_energy(filepath);
     else
-        fprintf('Motion energy non calculée.\n');
+        fprintf('Motion energy non calculée pour %s.\n', filepath);
         motion_energy = [];
     end
 end
 
+function data = init_movie_data_struct_if_needed(data, numFolders, fieldNames)
+    if nargin < 1 || isempty(data)
+        data = struct();
+    end
+
+    if ~isfield(data, 'movie') || ~isstruct(data.movie) || isempty(data.movie)
+        data.movie = struct();
+    end
+
+    for i = 1:numel(fieldNames)
+        fn = fieldNames{i};
+        if ~isfield(data.movie, fn) || ~iscell(data.movie.(fn))
+            data.movie.(fn) = cell(numFolders,1);
+        elseif numel(data.movie.(fn)) < numFolders
+            oldv = data.movie.(fn);
+            tmp = cell(numFolders,1);
+            tmp(1:numel(oldv)) = oldv(:);
+            data.movie.(fn) = tmp;
+        end
+    end
+end
+
+function data = ensure_movie_entry_exists(data, fieldNames, numFolders, m)
+    data = init_movie_data_struct_if_needed(data, numFolders, fieldNames);
+
+    for i = 1:numel(fieldNames)
+        fn = fieldNames{i};
+        if numel(data.movie.(fn)) < m
+            tmp = cell(numFolders,1);
+            tmp(1:numel(data.movie.(fn))) = data.movie.(fn)(:);
+            data.movie.(fn) = tmp;
+        end
+    end
+end
+
+function tf = movie_field_slot_exists(data, fieldName, m)
+    tf = isfield(data, 'movie') && ...
+         isfield(data.movie, fieldName) && ...
+         iscell(data.movie.(fieldName)) && ...
+         numel(data.movie.(fieldName)) >= m;
+end
+
+function tf = movie_field_has_value(data, fieldName, m)
+    tf = movie_field_slot_exists(data, fieldName, m) && ...
+         ~isempty(data.movie.(fieldName){m});
+end
+
+function tf = movie_status_exists(data, m)
+    tf = movie_field_slot_exists(data, 'motion_energy_status', m);
+end
+
+function tf = movie_status_already_final(data, m)
+    tf = false;
+    if movie_status_exists(data, m) && ~isempty(data.movie.motion_energy_status{m})
+        status = string(data.movie.motion_energy_status{m});
+        tf = any(status == ["skipped","no_camera","no_movie"]);
+    end
+end
+
+function data = merge_loaded_movie_into_data(data, loaded, fields_movie, m)
+    for f = 1:numel(fields_movie)
+        fieldName = fields_movie{f};
+
+        if ~isfield(loaded, fieldName)
+            continue;
+        end
+
+        if ~movie_field_slot_exists(data, fieldName, m) || isempty(data.movie.(fieldName){m})
+            data.movie.(fieldName){m} = loaded.(fieldName);
+        end
+    end
+end
+
+function root_folder_m = extract_movie_root_folder(gcamp_output_folders, m)
+    root_folder_m = '';
+
+    if isempty(gcamp_output_folders) || m > numel(gcamp_output_folders) || isempty(gcamp_output_folders{m})
+        return;
+    end
+
+    this_entry = gcamp_output_folders{m};
+
+    if iscell(this_entry)
+        if ~isempty(this_entry{1})
+            root_folder_m = fileparts(this_entry{1});
+        end
+    elseif ischar(this_entry) || isstring(this_entry)
+        root_folder_m = char(this_entry);
+    end
+end
+
+function data = assign_empty_movie_fields_if_missing(data, m)
+    movie_fields = { ...
+        'motion_energy_group', ...
+        'motion_energy_smooth_group', ...
+        'avg_active_motion_onsets_group', ...
+        'avg_active_motion_offsets_group', ...
+        'active_motion_onsets_group', ...
+        'active_motion_offsets_group', ...
+        'speed_active_group' ...
+    };
+
+    for i = 1:numel(movie_fields)
+        fn = movie_fields{i};
+        if ~movie_field_slot_exists(data, fn, m)
+            data.movie.(fn){m} = [];
+        end
+    end
+end
+
+function data = assign_empty_binary_movie_fields_if_missing(data, m)
+    movie_fields = { ...
+        'avg_active_motion_onsets_group', ...
+        'avg_active_motion_offsets_group', ...
+        'active_motion_onsets_group', ...
+        'active_motion_offsets_group', ...
+        'speed_active_group' ...
+    };
+
+    for i = 1:numel(movie_fields)
+        fn = movie_fields{i};
+        if ~movie_field_slot_exists(data, fn, m)
+            data.movie.(fn){m} = [];
+        end
+    end
+end
+
+function save_movie_fields_if_needed(savePath, data, fields_movie, m, has_new_data_for_group)
+    if ~has_new_data_for_group
+        fprintf('Movie folder %d: no new movie data, results_movie.mat not modified.\n', m);
+        return;
+    end
+
+    saveStruct = struct();
+    for f = 1:numel(fields_movie)
+        fieldName = fields_movie{f};
+        if isfield(data, 'movie') && isfield(data.movie, fieldName) && numel(data.movie.(fieldName)) >= m
+            saveStruct.(fieldName) = data.movie.(fieldName){m};
+        end
+    end
+
+    if exist(savePath, 'file') == 2
+        save(savePath, '-struct', 'saveStruct', '-append');
+    else
+        save(savePath, '-struct', 'saveStruct');
+    end
+
+    fprintf('Movie folder %d: movie fields updated in results_movie.mat.\n', m);
+end
+
 function y = smooth_savgol(x, order, framelen_target)
-%SMOOTH_SAVGOL Robust Savitzky-Golay smoothing.
-% Ensures framelen is odd and > order; falls back to no-op if too short.
     x = x(:);
     N = numel(x);
 
@@ -332,13 +511,11 @@ function y = smooth_savgol(x, order, framelen_target)
 end
 
 function onsets = get_onsets(bin_motion)
-%GET_ONSETS Indices where signal goes from 0 to 1
     bin_motion = bin_motion(:);
     onsets = find(bin_motion(2:end) == 1 & bin_motion(1:end-1) == 0) + 1;
 end
 
 function offsets = get_offsets(bin_motion)
-%GET_OFFSETS Indices where signal goes from 1 to 0
     bin_motion = bin_motion(:);
     offsets = find(bin_motion(2:end) == 0 & bin_motion(1:end-1) == 1) + 1;
 end

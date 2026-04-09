@@ -13,12 +13,14 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     % ---- Options détection (valeurs initiales) ----
     opts = struct( ...
-        'window_size', 600, ...
+        'window_size', 800, ... 
         'savgol_win', 9, ...
         'savgol_poly', 3, ...
         'min_width_fr', 6, ...
         'prominence_factor', 0.8, ...
-        'refrac_fr', 3 ...
+        'refrac_fr', 3, ...
+        'min_n_peaks_cutoff', 10, ...
+        'min_mask_pixels', 10 ...
     );
 
     % ---- Inputs optionnels ----
@@ -29,10 +31,14 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     bad_frames = [];
     focus_segs = [];
     gcamp_TSeries_path = '';
+    gcamp_output_folder = '';
     meanImg = [];
     ops = [];
     meta_tbl = [];
     viewer_mode = false;
+    cell_type = '';
+    masks = [];
+    blue_indices = [];
 
     if ~isempty(varargin)
 
@@ -57,6 +63,9 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
                 case 'viewer_mode'
                     viewer_mode = logical(val);
 
+                case 'cell_type'
+                    cell_type = char(val);
+
                 case 'ops'
                     ops = val;
 
@@ -72,6 +81,12 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
                 case 'stat'
                     stat_in = val;
 
+                 case 'masks'
+                    masks = val;
+
+                case 'blue_indices'
+                    blue_indices = val;
+
                 case 'meanImg'
                     meanImg = val;
 
@@ -83,6 +98,9 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
                 case 'meta_tbl'
                     meta_tbl = val;
+                 
+                case 'gcamp_output_folder'
+                    gcamp_output_folder = val;
             end
         end
     end
@@ -111,21 +129,33 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     % ---- Prétraitement ----
     window_size = opts.window_size;
-    [F0, Fdetrend] = F_processing(F, bad_frames, window_size);
+    [Fdetrend, F0] = F_processing(F, bad_frames, fs, window_size);
     noise_est = estimate_noise(Fdetrend);
-    DF_sg = DF_processing(Fdetrend, opts, window_size);
+    DF_sg = DF_processing(Fdetrend, opts);
 
     % ---- Qualité / SNR ----
-    [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = compute_snr_quality(DF_sg, noise_est);
+    [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+        compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
 
     % ---- Titre fenêtre ----
     winTitle = '';
+    
     if viewer_mode
-        winTitle = [winTitle '  [VIEWER MODE]'];
+        winTitle = '[VIEWER MODE]';
     elseif ~isempty(gcamp_TSeries_path)
         planePath = fileparts(gcamp_TSeries_path);
         nCells = size(F,1);
         winTitle = sprintf('%s | nCells=%d', planePath, nCells);
+    else
+        winTitle = sprintf('nCells=%d', size(F,1));
+    end
+    
+    if ~isempty(cell_type)
+        if isempty(winTitle)
+            winTitle = sprintf('cell type: %s', cell_type);
+        else
+            winTitle = sprintf('%s | %s', winTitle, cell_type);
+        end
     end
     
     % ===================== GUI =====================
@@ -146,27 +176,28 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     % ---- Callbacks selon mode ----
     if viewer_mode
-        cutoff_cb   = @(~,~) [];
         validate_cb = @(~,~) [];
         keep_cb     = @(~,~) [];
         exclude_cb  = @(~,~) [];
     else
-        cutoff_cb   = @(~,~) define_cutoff(fig);
         validate_cb = @(~,~) validate_selection_filter(fig);
         keep_cb     = @(~,~) keep_cell(fig);
         exclude_cb  = @(~,~) exclude_cell(fig);
     end
     
     finalize_cb = @(~,~) finalize_and_close(fig, synchronous_frames);
-
+    
+    % ---- Navigation ----
     uicontrol('Parent',ctrl_panel,'Style','text', ...
         'String', sprintf('Navigation cellule (1 / %d)', size(F,1)), ...
-        'Units','normalized','Position',[0.05 0.93 0.90 0.035], ...
+        'Units','normalized', ...
+        'Position',[0.05 0.935 0.90 0.03], ...
         'Tag','lbl_quality_thr', ...
         'HorizontalAlignment','left', ...
-        'BackgroundColor',[.97 .97 .98]);
-
-        if size(F,1) > 1
+        'BackgroundColor',[.97 .97 .98], ...
+        'FontWeight','bold');
+    
+    if size(F,1) > 1
         step_small = 1 / (size(F,1) - 1);
         step_big   = min(1, 10 / (size(F,1) - 1));
     else
@@ -180,31 +211,42 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
         'Value', 1, ...
         'SliderStep', [step_small step_big], ...
         'Units','normalized', ...
-        'Position',[0.05 0.84 0.90 0.06], ...
+        'Position',[0.05 0.865 0.90 0.055], ...
         'Tag','sldr_quality_thr', ...
         'Callback', @(src,~) update_quality_threshold(fig, round(get(src,'Value'))));
-        
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Définir cutoff', ...
-        'Units','normalized','Position',[0.05 0.24 0.90 0.06], ...
-        'BackgroundColor',[0.75 0.75 0.85], ...
-        'ForegroundColor','k', ...
-        'FontWeight','bold', ...
-        'FontSize',11, ...
-        'Callback', cutoff_cb);
+    
+    % ---- Cutoff ----
+    uicontrol('Parent',ctrl_panel,'Style','text', ...
+        'String','Cutoff', ...
+        'Units','normalized', ...
+        'Position',[0.05 0.315 0.50 0.03], ...
+        'HorizontalAlignment','left', ...
+        'BackgroundColor',[.97 .97 .98], ...
+        'FontWeight','bold');
+    
+    uicontrol('Parent',ctrl_panel,'Style','edit', ...
+        'String', '1', ...
+        'Units','normalized', ...
+        'Position',[0.58 0.305 0.17 0.045], ...
+        'Tag','edit_nav_rank', ...
+        'BackgroundColor','w', ...
+        'Callback', @(src,~) goto_navigation_index(fig, src));
     
     uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Valider sélection', ...
-        'Units','normalized','Position',[0.05 0.17 0.90 0.06], ...
+        'String','Appliquer cutoff', ...
+        'Units','normalized', ...
+        'Position',[0.05 0.17 0.90 0.055], ...
         'BackgroundColor',[0.20 0.45 0.90], ...
         'ForegroundColor','w', ...
         'FontWeight','bold', ...
         'FontSize',12, ...
         'Callback', validate_cb);
     
+    % ---- Manuel ----
     uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
         'String','Garder cellule', ...
-        'Units','normalized','Position',[0.05 0.11 0.42 0.07], ...
+        'Units','normalized', ...
+        'Position',[0.05 0.095 0.42 0.055], ...
         'BackgroundColor',[0.10 0.60 0.10], ...
         'ForegroundColor','w', ...
         'FontWeight','bold', ...
@@ -213,45 +255,57 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     
     uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
         'String','Exclure cellule', ...
-        'Units','normalized','Position',[0.53 0.11 0.42 0.07], ...
+        'Units','normalized', ...
+        'Position',[0.53 0.095 0.42 0.055], ...
         'BackgroundColor',[0.80 0.15 0.15], ...
         'ForegroundColor','w', ...
         'FontWeight','bold', ...
         'FontSize',11, ...
         'Callback', exclude_cb);
     
+    % ---- Final ----
     uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
         'String','Confirmer sélection', ...
-        'Units','normalized','Position',[0.05 0.02 0.90 0.08], ...
+        'Units','normalized', ...
+        'Position',[0.05 0.02 0.90 0.06], ...
         'BackgroundColor',[0.1 0.6 0.35], ...
         'ForegroundColor','w', ...
         'FontWeight','bold', ...
         'FontSize',12, ...
         'Callback', finalize_cb);
-
+    
     if viewer_mode
-        set(findobj(ctrl_panel,'String','Définir cutoff'),'Enable','off');
-        set(findobj(ctrl_panel,'String','Valider sélection'),'Enable','off');
-        set(findobj(ctrl_panel,'String','Garder cellule'),'Enable','off');
-        set(findobj(ctrl_panel,'String','Exclure cellule'),'Enable','off');
+        set(findobj(ctrl_panel,'String','Définir cutoff'),    'Enable','off');
+        set(findobj(ctrl_panel,'String','Valider sélection'), 'Enable','off');
+        set(findobj(ctrl_panel,'String','Garder cellule'),    'Enable','off');
+        set(findobj(ctrl_panel,'String','Exclure cellule'),   'Enable','off');
     end
 
     % ---- Contrôles détection ----
-    make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.70 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.64 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Réfractaire (fr)','refrac_fr',0,10,opts.refrac_fr,[0.05 0.58 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'SavGol window','savgol_win',3,51,opts.savgol_win,[0.05 0.52 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Window size (fr)','window_size',round(fs*5),round(fs*300),opts.window_size,[0.05 0.76 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.68 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.60 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Réfractaire (fr)','refrac_fr',0,10,opts.refrac_fr,[0.05 0.52 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'SavGol window','savgol_win',3,51,opts.savgol_win,[0.05 0.44 0.90 0.06]);
 
     % ---- Axe principal ----
-    ax1 = axes('Parent',fig,'Position',[0.28 0.60 0.70 0.33]);
+    ax1 = axes('Parent',fig,'Position',[0.28 0.63 0.70 0.30]);
     box(ax1,'on');
     xlabel(ax1,'Frames');
     ylabel(ax1,'\DeltaF/F (SavGol)');
     plot(ax1,NaN,NaN,'k-');
     hold(ax1,'on');
-
+    
+    % ---- Axe F0 ----
+    axF0 = axes('Parent',fig,'Position',[0.28 0.55 0.70 0.06]);
+    box(axF0,'on');
+    ylabel(axF0,'F0');
+    set(axF0,'XTickLabel',[]);
+    cla(axF0);
+    hold(axF0,'on');
+    
     % ---- Axe déviation ----
-    axDev = axes('Parent',fig,'Position',[0.28 0.52 0.70 0.07]);
+    axDev = axes('Parent',fig,'Position',[0.28 0.47 0.70 0.06]);
     box(axDev,'on');
     ylabel(axDev,'Dev');
     set(axDev,'XTickLabel',[]);
@@ -281,6 +335,7 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     setappdata(fig,'opts',opts);
     
     setappdata(fig,'ax1',ax1);
+    setappdata(fig,'axF0',axF0);
     setappdata(fig,'axDev',axDev);
     setappdata(fig,'axROI',axROI);
     setappdata(fig,'axH',axH);
@@ -295,9 +350,30 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     setappdata(fig,'meanImg', meanImg);
     setappdata(fig,'meta_tbl', meta_tbl);
     setappdata(fig,'viewer_mode', viewer_mode);
+    setappdata(fig,'blue_indices', blue_indices);
     
     % cell_status: 0 undecided, +1 keep, -1 exclude
     setappdata(fig,'cell_status', zeros(size(F,1),1));
+
+    setappdata(fig,'gcamp_output_folder', gcamp_output_folder);
+
+    setappdata(fig,'masks', masks);
+    
+    mask_sizes = [];
+
+    if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
+        nCells_masks = size(masks,1);
+        mask_sizes = zeros(nCells_masks,1);
+    
+        for i = 1:nCells_masks
+            m = squeeze(masks(i,:,:));
+            if ~isempty(m)
+                mask_sizes(i) = sum(m(:) > 0);
+            end
+        end
+    end
+    
+    setappdata(fig,'mask_sizes', mask_sizes);
     
     if viewer_mode
         % en mode viewer : toutes les cellules sont visibles directement
@@ -365,15 +441,19 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     if ~isempty(focus_segs)
         hBad1 = create_badframe_patch(ax1, focus_segs);
         setappdata(fig,'hBadPatch_ax1', hBad1);
-
+    
+        hBadF0 = create_badframe_patch(axF0, focus_segs);
+        setappdata(fig,'hBadPatch_axF0', hBadF0);
+    
         hBadDev = create_badframe_patch(axDev, focus_segs);
         setappdata(fig,'hBadPatch_axDev', hBadDev);
     end
-
-    linkaxes([ax1 axDev],'x');
+    
+    linkaxes([ax1 axF0 axDev],'x');
 
     % ---- Recompute pics ----
     recompute_n_peaks_all(fig);
+    apply_auto_cutoff(fig);
 
     n_peaks_all = getappdata(fig,'n_peaks_all');
     cell_status = getappdata(fig,'cell_status');
@@ -404,15 +484,26 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
         if isfield(out,'summary')
             s = out.summary;
-
+        
             fprintf('\n===== RÉCAPITULATIF SÉLECTION CELLULES =====\n');
-            fprintf('Total cellules                  : %d\n', s.n_total);
+            fprintf('Total cellules                   : %d\n', s.n_total);
             fprintf('Cellules sans pics (auto exclues): %d\n', s.n_zero_peaks);
-            fprintf('Manuelles KEEP                  : %d\n', s.n_manual_keep);
-            fprintf('Manuelles EXCLUES               : %d\n', s.n_manual_excl);
-            fprintf('Validées par cutoff             : %d\n', s.n_kept_by_cutoff);
+            fprintf('Manuelles KEEP                   : %d\n', s.n_manual_keep);
+            fprintf('Manuelles EXCLUES                : %d\n', s.n_manual_excl);
+            fprintf('Validées par cutoff              : %d\n', s.n_kept_by_cutoff);
+        
+            if isfield(s,'n_blue_total')
+                fprintf('Cellules électroporées total     : %d\n', s.n_blue_total);
+            end
+            if isfield(s,'n_blue_pass_cutoff')
+                fprintf('Électroporées passant cutoff     : %d\n', s.n_blue_pass_cutoff);
+            end
+            if isfield(s,'n_blue_kept_final')
+                fprintf('Électroporées gardées final      : %d\n', s.n_blue_kept_final);
+            end
+        
             fprintf('---------------------------------------------\n');
-            fprintf('Cellules finales gardées        : %d\n', s.n_kept_final);
+            fprintf('Cellules finales gardées         : %d\n', s.n_kept_final);
             fprintf('=============================================\n\n');
         end
     else
@@ -433,7 +524,7 @@ end
 
 %% ===================== PIPELINE CORE =====================
 
-function DF_sg = DF_processing(Fdetrend, opts, window_size)
+function DF_sg = DF_processing(Fdetrend, opts)
 
     sg_win  = opts.savgol_win;
     sg_poly = opts.savgol_poly;
@@ -442,7 +533,6 @@ function DF_sg = DF_processing(Fdetrend, opts, window_size)
 
     DF_sg          = nan(NCell, Nz);
     DF_plate       = nan(NCell, Nz); %#ok<NASGU>
-    baseline_local = nan(NCell, Nz);
 
     sgN = max(sg_poly + 2, round(sg_win));
     if mod(sgN,2) == 0
@@ -462,9 +552,7 @@ function DF_sg = DF_processing(Fdetrend, opts, window_size)
     end
 
     for n = 1:NCell
-        baseline_local(n,:) = movmedian(Fdetrend(n,:), window_size, 'omitnan');
-        sig = Fdetrend(n,:) - baseline_local(n,:);
-        DF_plate(n,:) = sig;
+        sig = Fdetrend(n,:);
 
         if sum(isfinite(sig)) >= sgN
             try
@@ -653,10 +741,30 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
 end
 
 function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, quality_thr0] = ...
-    compute_snr_quality(DF_sg, noise_est)
+    compute_snr_quality(DF_sg, noise_est, opts, bad_frames)
+% compute_snr_quality
+% Classe les cellules selon une amplitude robuste des pics détectés
+% directement avec detect_peaks_cell_core.
+%
+% Inputs:
+%   DF_sg      : [NCell x Nz]
+%   noise_est  : [NCell x 1]
+%   opts       : struct de détection
+%   bad_frames : indices/logical des frames à exclure (optionnel)
+%
+% Outputs:
+%   A                     : amplitude robuste des pics par cellule
+%   SNR                   : A / bruit
+%   score                 : score final
+%   cells_sorted_by_quality : ids triés du pire au meilleur
+%   quality_min/max/thr0  : bornes UI
 
-    if nargin < 2
-        error('compute_snr_quality requires DF_sg and noise_est.');
+    if nargin < 3 || isempty(opts)
+        error('compute_snr_quality requires DF_sg, noise_est, and opts.');
+    end
+
+    if nargin < 4
+        bad_frames = [];
     end
 
     if isempty(DF_sg) || ndims(DF_sg) ~= 2
@@ -672,16 +780,55 @@ function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, qual
 
     noise_est(~isfinite(noise_est) | noise_est <= 0) = eps;
 
-    p995 = prctile(DF_sg, 99.5, 2);
-    p50  = prctile(DF_sg, 50, 2);
+    A   = zeros(NCell,1);
+    SNR = zeros(NCell,1);
+    score = zeros(NCell,1);
 
-    A = p995 - p50;
-    A(~isfinite(A) | A < 0) = 0;
+    for cid = 1:NCell
+        x = DF_sg(cid,:).';
+        sigma = noise_est(cid);
 
-    SNR = A ./ noise_est;
-    SNR(~isfinite(SNR)) = 0;
+        if isempty(x) || all(~isfinite(x))
+            A(cid) = 0;
+            SNR(cid) = 0;
+            score(cid) = 0;
+            continue;
+        end
+        out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
 
-    score = SNR(:);
+        if isempty(out.locs_merged)
+            A(cid) = 0;
+            SNR(cid) = 0;
+            score(cid) = 0;
+            continue;
+        end
+
+        peak_vals = x(out.locs_merged);
+        peak_vals = peak_vals(isfinite(peak_vals));
+
+        if isempty(peak_vals)
+            A(cid) = 0;
+            SNR(cid) = 0;
+            score(cid) = 0;
+            continue;
+        end
+
+        % amplitude robuste des événements détectés
+        A(cid) = median(peak_vals);
+
+        if ~isfinite(A(cid)) || A(cid) < 0
+            A(cid) = 0;
+        end
+
+        SNR(cid) = A(cid) / sigma;
+        if ~isfinite(SNR(cid)) || SNR(cid) < 0
+            SNR(cid) = 0;
+        end
+
+        % score final
+        % on peut ensuite enrichir ce score avec d'autres critères si besoin
+        score(cid) = SNR(cid);
+    end
 
     [~, cells_sorted_by_quality] = sort(score, 'ascend');
     cells_sorted_by_quality = cells_sorted_by_quality(:);
@@ -850,16 +997,23 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
 
     cutoff_validated = isappdata(fig,'cutoff_validated') && getappdata(fig,'cutoff_validated');
 
-    if isappdata(fig,'order_cells_all')
-        order_cells_all = getappdata(fig,'order_cells_all');
-    else
-        order_cells_all = [];
-    end
-    
-    if cutoff_validated && isappdata(fig,'cutoff_rank') && ~isempty(order_cells_all)
-        nav_cutoff = round(getappdata(fig,'cutoff_rank'));
-        nav_cutoff = max(1, min(numel(order_cells_all), nav_cutoff));
-        selected_cells_from_cutoff = order_cells_all(nav_cutoff:end);
+    if isappdata(fig,'n_peaks_all') && isappdata(fig,'opts')
+        n_peaks_all = getappdata(fig,'n_peaks_all');
+        opts = getappdata(fig,'opts');
+        mask_sizes = [];
+        if isappdata(fig,'mask_sizes')
+            mask_sizes = getappdata(fig,'mask_sizes');
+        end
+        
+        good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
+        
+        if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
+            good_by_mask = mask_sizes >= opts.min_mask_pixels;
+        else
+            good_by_mask = true(size(n_peaks_all));
+        end
+        
+        selected_cells_from_cutoff = find(good_by_peaks & good_by_mask);
     else
         selected_cells_from_cutoff = [];
     end
@@ -896,7 +1050,15 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
             continue;
         end
 
-        out = detect_peaks_cell_core(x, noise_est(cid), opts, bad_frames);
+        sigma = noise_est(cid);
+        if ~isfinite(sigma) || sigma <= 0
+            sigma = std(x,'omitnan');
+        end
+        if ~isfinite(sigma) || sigma <= 0
+            sigma = eps;
+        end
+
+        out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
 
         Acttmp2{cid}    = out.locs_merged;
         thresholds(cid) = out.threshold;
@@ -925,6 +1087,30 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     invalid_cells = ~keep_mask;
     valid_cells   = find(keep_mask);
 
+    % -------------------------------------------------
+    % Résumé final, incluant cellules électroporées
+    % -------------------------------------------------
+    blue_indices = [];
+    if isappdata(fig,'blue_indices')
+        blue_indices = getappdata(fig,'blue_indices');
+    end
+
+    if isempty(blue_indices)
+        blue_indices = [];
+    else
+        blue_indices = round(blue_indices(:));
+        blue_indices = blue_indices(isfinite(blue_indices) & blue_indices >= 1 & blue_indices <= nCells);
+        blue_indices = unique(blue_indices);
+    end
+
+    if cutoff_validated
+        blue_pass_cutoff = intersect(blue_indices, selected_cells_from_cutoff);
+    else
+        blue_pass_cutoff = [];
+    end
+
+    blue_kept_final = intersect(blue_indices, valid_cells);
+
     summary = struct();
     summary.n_total          = nCells;
     summary.n_zero_peaks     = sum(n_peaks_all == 0);
@@ -939,6 +1125,13 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
     else
         summary.n_kept_by_cutoff = 0;
     end
+
+    summary.n_blue_total         = numel(blue_indices);
+    summary.n_blue_pass_cutoff   = numel(blue_pass_cutoff);
+    summary.blue_pass_cutoff_ids = blue_pass_cutoff;
+
+    summary.n_blue_kept_final    = numel(blue_kept_final);
+    summary.blue_kept_final_ids  = blue_kept_final;
 
     summary.n_kept_final = numel(valid_cells);
 
@@ -973,12 +1166,6 @@ function update_quality_threshold(fig, idx_slider)
     setappdata(fig,'current_rank', idx);
     setappdata(fig,'nav_rank', idx);
     setappdata(fig,'cell_id', cid);
-
-    if ~viewer_mode
-        if isappdata(fig,'cutoff_locked') && ~getappdata(fig,'cutoff_locked')
-            setappdata(fig,'cutoff_rank', idx);
-        end
-    end
 
     sldr = findobj(fig,'Tag','sldr_quality_thr');
     if ~isempty(sldr) && isgraphics(sldr)
@@ -1040,30 +1227,23 @@ function prev_cell(fig)
     update_quality_threshold(fig, idx);
 end
 
-function define_cutoff(fig)
+function goto_navigation_index(fig, hEdit)
 
-    if ~ishghandle(fig)
+    if ~isappdata(fig,'order_cells')
         return;
     end
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+    order_cells = getappdata(fig,'order_cells');
+    if isempty(order_cells)
         return;
     end
 
-    if ~isappdata(fig,'order_cells_all')
+    if numel(hEdit) > 1
+        hEdit = hEdit(1);
+    end
+    if isempty(hEdit) || ~isgraphics(hEdit)
         return;
     end
-
-    order_cells_all = getappdata(fig,'order_cells_all');
-    if isempty(order_cells_all)
-        return;
-    end
-
-    hEdit = findobj(fig,'Tag','edit_nav_rank');
-    if isempty(hEdit) || ~isgraphics(hEdit(1))
-        return;
-    end
-    hEdit = hEdit(1);
 
     txt = get(hEdit, 'String');
     idx = str2double(txt);
@@ -1073,35 +1253,24 @@ function define_cutoff(fig)
     end
 
     idx = round(idx);
-    idx = max(1, min(numel(order_cells_all), idx));
+    idx = max(1, min(numel(order_cells), idx));
 
-    setappdata(fig,'cutoff_rank', idx);
-    setappdata(fig,'cutoff_locked', true);
+    setappdata(fig,'nav_rank', idx);
 
-    % IMPORTANT:
-    % cutoff défini pour affichage GOOD/BAD, mais pas encore filtré
-    setappdata(fig,'cutoff_validated', true);
+    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+    locked = isappdata(fig,'cutoff_locked') && getappdata(fig,'cutoff_locked');
+
+    if ~viewer_mode && ~locked
+        setappdata(fig,'cutoff_rank', idx);
+    end
 
     set(hEdit, 'String', num2str(idx));
-
-    refresh_data(fig);
-    update_peak_histogram(fig);
-
-    fprintf('Cutoff défini à %d. Labels GOOD/BAD (cutoff) affichés. Filtrage non encore appliqué.\n', idx);
+    update_quality_threshold(fig, idx);
 end
 
-function validate_selection_filter(fig)
+function apply_auto_cutoff(fig)
 
-    if ~isappdata(fig,'order_cells_all')
-        return;
-    end
-
-    order_cells_all = getappdata(fig,'order_cells_all');
-    if isempty(order_cells_all)
-        return;
-    end
-
-    if ~isappdata(fig,'cutoff_rank')
+    if ~ishghandle(fig)
         return;
     end
 
@@ -1109,8 +1278,64 @@ function validate_selection_filter(fig)
         return;
     end
 
-    cutoff_rank = round(getappdata(fig,'cutoff_rank'));
-    cutoff_rank = max(1, min(numel(order_cells_all), cutoff_rank));
+    if ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
+        return;
+    end
+
+    n_peaks_all = getappdata(fig,'n_peaks_all');
+    opts = getappdata(fig,'opts');
+
+    if isempty(n_peaks_all)
+        return;
+    end
+
+    mask_sizes = [];
+    if isappdata(fig,'mask_sizes')
+        mask_sizes = getappdata(fig,'mask_sizes');
+    end
+
+    good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
+
+    if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
+        good_by_mask = mask_sizes >= opts.min_mask_pixels;
+    else
+        good_by_mask = true(size(n_peaks_all));
+    end
+
+    selected_cells_from_cutoff = find(good_by_peaks & good_by_mask);
+
+    setappdata(fig,'selected_cells_from_cutoff', selected_cells_from_cutoff);
+    setappdata(fig,'cutoff_validated', true);
+    setappdata(fig,'cutoff_locked', true);
+
+    fprintf('Cutoff auto : >= %d pics ET masque >= %d pixels.\n', ...
+        opts.min_n_peaks_cutoff, opts.min_mask_pixels);
+end
+
+function validate_selection_filter(fig)
+
+    if ~isappdata(fig,'cells_sorted_by_quality') || ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
+        return;
+    end
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        return;
+    end
+
+    order_cells_all = getappdata(fig,'cells_sorted_by_quality');
+    n_peaks_all = getappdata(fig,'n_peaks_all');
+    opts = getappdata(fig,'opts');
+
+    if isempty(order_cells_all) || isempty(n_peaks_all)
+        return;
+    end
+
+    order_cells_all = order_cells_all(n_peaks_all(order_cells_all) > 0);
+    setappdata(fig,'order_cells_all', order_cells_all);
+
+    if isempty(order_cells_all)
+        return;
+    end
 
     if isappdata(fig,'cell_status')
         st = getappdata(fig,'cell_status');
@@ -1118,33 +1343,41 @@ function validate_selection_filter(fig)
         st = zeros(max(order_cells_all),1);
     end
 
-    % cellules gardées par cutoff
-    cutoff_cells = order_cells_all(cutoff_rank:end);
+    min_n_peaks = opts.min_n_peaks_cutoff;
+    min_mask_pixels = opts.min_mask_pixels;
 
-    % cellules gardées manuellement
+    mask_sizes = [];
+    if isappdata(fig,'mask_sizes')
+        mask_sizes = getappdata(fig,'mask_sizes');
+    end
+
+    good_by_peaks = n_peaks_all >= min_n_peaks;
+
+    if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
+        good_by_mask = mask_sizes >= min_mask_pixels;
+    else
+        good_by_mask = true(size(n_peaks_all));
+    end
+
+    auto_keep   = find(good_by_peaks & good_by_mask);
     manual_keep = find(st == +1);
-
-    % exclusions manuelles
     manual_excl = find(st == -1);
 
-    kept_cells = unique([manual_keep(:); cutoff_cells(:)], 'stable');
+    kept_cells = unique([auto_keep(:); manual_keep(:)], 'stable');
     kept_cells = setdiff(kept_cells, manual_excl, 'stable');
-
-    if isempty(kept_cells)
-        warning('Aucune cellule retenue après validation.');
-        return;
-    end
 
     keep_mask = ismember(order_cells_all, kept_cells);
     order_cells = order_cells_all(keep_mask);
 
+    if isempty(order_cells)
+        warning('Aucune cellule retenue après validation.');
+        return;
+    end
+
     setappdata(fig,'order_cells', order_cells);
-
-    % cutoff toujours actif
-    setappdata(fig,'cutoff_locked', true);
     setappdata(fig,'cutoff_validated', true);
+    setappdata(fig,'cutoff_locked', true);
 
-    % repositionnement sur la première cellule visible
     setappdata(fig,'current_rank', 1);
     setappdata(fig,'nav_rank', 1);
     setappdata(fig,'cell_id', order_cells(1));
@@ -1162,10 +1395,16 @@ function validate_selection_filter(fig)
         lbl.String = sprintf('Navigation cellule (%d / %d)', 1, numel(order_cells));
     end
 
-    refresh_data(fig);
-    update_peak_histogram(fig);
+    setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'auto_peaks', []);
+    if isappdata(fig,'seuil_detection_last')
+        rmappdata(fig,'seuil_detection_last');
+    end
 
-    fprintf('Validation appliquée : %d cellules affichées (manual keep + cutoff).\n', numel(order_cells));
+    update_quality_threshold(fig, 1);
+
+    fprintf('Validation appliquée : %d cellules affichées (manual keep + >= %d pics + masque >= %d px).\n', ...
+        numel(order_cells), min_n_peaks, min_mask_pixels);
 end
 
 function refresh_selection_order(fig)
@@ -1203,9 +1442,7 @@ function refresh_selection_order(fig)
         return;
     end
 
-    % avant validation visuelle finale, on affiche tout l’ordre complet
     order_cells = order_cells_all;
-
     setappdata(fig,'order_cells', order_cells);
 
     old_cid = [];
@@ -1226,9 +1463,11 @@ function refresh_selection_order(fig)
     setappdata(fig,'nav_rank', idx);
     setappdata(fig,'cell_id', order_cells(idx));
 
-    % si le cutoff n’est pas verrouillé, il suit la navigation
+    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
     locked = isappdata(fig,'cutoff_locked') && getappdata(fig,'cutoff_locked');
-    if ~locked
+
+    % Tant que le cutoff n'est pas verrouillé, il suit la navigation
+    if ~viewer_mode && ~locked
         setappdata(fig,'cutoff_rank', idx);
     end
 
@@ -1240,6 +1479,16 @@ function refresh_selection_order(fig)
         set(sldr,'SliderStep',[step min(1,10*step)]);
     end
 
+    hEdit = findobj(fig,'Tag','edit_nav_rank');
+    if ~isempty(hEdit) && isgraphics(hEdit(1))
+        if ~viewer_mode && ~locked
+            set(hEdit(1), 'String', num2str(idx));
+        else
+            cutoff_rank = getappdata(fig,'cutoff_rank');
+            set(hEdit(1), 'String', num2str(cutoff_rank));
+        end
+    end
+
     lbl = findobj(fig,'Tag','lbl_quality_thr');
     if ~isempty(lbl)
         lbl.String = sprintf('Navigation cellule (%d / %d)', idx, numel(order_cells));
@@ -1247,134 +1496,6 @@ function refresh_selection_order(fig)
 
     auto_detect_and_add(fig);
 end
-
-function set_cutoff_from_edit(fig)
-
-    if ~ishghandle(fig)
-        return;
-    end
-
-    if ~isappdata(fig,'order_cells')
-        return;
-    end
-
-    order_cells = getappdata(fig,'order_cells');
-    if isempty(order_cells)
-        return;
-    end
-
-    hEdit = findobj(fig,'Tag','edit_nav_rank');
-    if isempty(hEdit) || ~isgraphics(hEdit(1))
-        return;
-    end
-    hEdit = hEdit(1);
-
-    txt = get(hEdit, 'String');
-    idx = str2double(txt);
-
-    if ~isfinite(idx)
-        idx = 1;
-    end
-
-    idx = round(idx);
-    idx = max(1, min(numel(order_cells), idx));
-
-    setappdata(fig,'cutoff_rank', idx);
-    setappdata(fig,'nav_rank', idx);
-
-    % Le cutoff est défini mais pas encore validé
-    setappdata(fig,'cutoff_validated', false);
-    setappdata(fig,'cutoff_locked', false);
-
-    set(hEdit, 'String', num2str(idx));
-
-    fprintf('Cutoff défini à %d (non validé).\n', idx);
-end
-
-function validate_cutoff_and_filter(fig)
-
-    if ~isappdata(fig,'order_cells_all')
-        return;
-    end
-
-    order_cells_all = getappdata(fig,'order_cells_all');
-    if isempty(order_cells_all)
-        return;
-    end
-
-    % récup cutoff depuis l'edit
-    set_cutoff_from_edit(fig);
-
-    cutoff_rank = getappdata(fig,'cutoff_rank');
-    cutoff_rank = max(1, min(numel(order_cells_all), cutoff_rank));
-
-    if isappdata(fig,'cell_status')
-        st = getappdata(fig,'cell_status');
-    else
-        st = zeros(max(order_cells_all),1);
-    end
-
-    % cellules retenues par cutoff parmi l'ordre global visible initial
-    cutoff_cells = order_cells_all(cutoff_rank:end);
-
-    % manual keep toujours gardées
-    manual_keep = find(st == +1);
-
-    % union manual + cutoff
-    kept_cells = unique([manual_keep(:); cutoff_cells(:)], 'stable');
-
-    % retirer exclusions manuelles
-    manual_excl = find(st == -1);
-    kept_cells = setdiff(kept_cells, manual_excl, 'stable');
-
-    if isempty(kept_cells)
-        warning('Aucune cellule retenue après validation du cutoff.');
-        return;
-    end
-
-    % garder l'ordre qualité initial
-    kept_mask = ismember(order_cells_all, kept_cells);
-    order_cells_filtered = order_cells_all(kept_mask);
-
-    setappdata(fig,'order_cells', order_cells_filtered);
-    setappdata(fig,'cutoff_validated', true);
-    setappdata(fig,'cutoff_locked', true);
-
-    % se replacer sur la première cellule retenue
-    setappdata(fig,'current_rank', 1);
-    setappdata(fig,'nav_rank', 1);
-    setappdata(fig,'cell_id', order_cells_filtered(1));
-
-    % sync UI
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
-    if ~isempty(sldr) && isgraphics(sldr)
-        n = numel(order_cells_filtered);
-        set(sldr,'Min',1,'Max',max(1,n),'Value',1);
-        step = 1/max(1,n-1);
-        set(sldr,'SliderStep',[step min(1,10*step)]);
-    end
-
-    lbl = findobj(fig,'Tag','lbl_quality_thr');
-    if ~isempty(lbl)
-        lbl.String = sprintf('Navigation cellule (%d / %d)', 1, numel(order_cells_filtered));
-    end
-
-    hEdit = findobj(fig,'Tag','edit_nav_rank');
-    if ~isempty(hEdit) && isgraphics(hEdit(1))
-        set(hEdit(1), 'String', num2str(cutoff_rank));
-    end
-
-    setappdata(fig,'auto_intervals', []);
-    if isappdata(fig,'seuil_detection_last')
-        rmappdata(fig,'seuil_detection_last');
-    end
-
-    auto_detect_and_add(fig);
-
-    fprintf('Cutoff validé à %d. %d cellules affichées (manual keep + cutoff).\n', ...
-        cutoff_rank, numel(order_cells_filtered));
-end
-
 
 function navigate_cells(fig, evnt)
 
@@ -1453,11 +1574,12 @@ end
 
 function finalize_and_close(fig, synchronous_frames)
 
-    if isappdata(fig,'order_cells_all') && isappdata(fig,'order_cells')
+    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+
+    if ~viewer_mode && isappdata(fig,'order_cells_all') && isappdata(fig,'order_cells')
         order_cells_all = getappdata(fig,'order_cells_all');
         order_cells     = getappdata(fig,'order_cells');
-
-        % si on n'a pas encore filtré, on filtre maintenant
+    
         if numel(order_cells) == numel(order_cells_all)
             validate_selection_filter(fig);
         end
@@ -1465,6 +1587,19 @@ function finalize_and_close(fig, synchronous_frames)
 
     [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
+
+    % Aperçu aléatoire de 10 traces sauvegardées avec pics
+    try
+        if isappdata(fig,'gcamp_output_folder')
+            outdir_preview = getappdata(fig,'gcamp_output_folder');
+        else
+            outdir_preview = '';
+        end
+    
+        create_random_peak_preview(valid_cells, DF_sg, Acttmp2, thresholds, outdir_preview);
+    catch ME
+        warning('Impossible de créer la figure preview des pics : %s', ME.message);
+    end
 
     orig2new = nan(max([valid_cells(:); 1]),1);
     if ~isempty(valid_cells)
@@ -1500,20 +1635,34 @@ end
 
 function refresh_data(fig)
     DF_sg   = getappdata(fig,'DF_sg');
+    F0      = getappdata(fig,'F0');
     cell_id = getappdata(fig,'cell_id');
-
+    
     ax = getappdata(fig,'ax1');
-
+    axF0 = getappdata(fig,'axF0');
+    
     hBad = [];
     if isappdata(fig,'hBadPatch_ax1')
         hBad = getappdata(fig,'hBadPatch_ax1');
     end
-
+    
     kids = allchild(ax);
     if ~isempty(hBad) && isgraphics(hBad)
         delete(kids(kids ~= hBad));
     else
         delete(kids);
+    end
+    
+    hBadF0 = [];
+    if isappdata(fig,'hBadPatch_axF0')
+        hBadF0 = getappdata(fig,'hBadPatch_axF0');
+    end
+    
+    kidsF0 = allchild(axF0);
+    if ~isempty(hBadF0) && isgraphics(hBadF0)
+        delete(kidsF0(kidsF0 ~= hBadF0));
+    else
+        delete(kidsF0);
     end
 
     x = DF_sg(cell_id,:);
@@ -1524,6 +1673,30 @@ function refresh_data(fig)
     xlim(ax,[1 max(1,T)]);
     plot(ax,t,x,'k-');
     hold(ax,'on');
+
+    % ---- Trace F0 ----
+    if ~isempty(F0) && cell_id >= 1 && cell_id <= size(F0,1)
+        f0 = F0(cell_id,:);
+        f0 = f0(:).';
+    
+        xlim(axF0,[1 max(1,T)]);
+        plot(axF0, t, f0, 'b-');
+        hold(axF0,'on');
+    
+        if ~isempty(hBadF0) && isgraphics(hBadF0) && isappdata(fig,'focus_segs')
+            focus_segs = getappdata(fig,'focus_segs');
+            update_badframe_patch(hBadF0, focus_segs, ylim(axF0));
+            uistack(hBadF0,'bottom');
+        end
+    
+        ylabel(axF0,'F0');
+    else
+        cla(axF0);
+        text(axF0,0.5,0.5,'F0 indisponible', ...
+            'Units','normalized', ...
+            'HorizontalAlignment','center');
+        set(axF0,'XTickLabel',[]);
+    end
 
     if ~isempty(hBad) && isgraphics(hBad) && isappdata(fig,'focus_segs')
         focus_segs = getappdata(fig,'focus_segs');
@@ -1537,30 +1710,30 @@ function refresh_data(fig)
     % ---- Pics / intervalles auto ----
     if isappdata(fig,'auto_peaks') && isappdata(fig,'auto_intervals')
         auto_peaks = getappdata(fig,'auto_peaks');
-        intervals  = getappdata(fig,'auto_intervals');
+        %intervals  = getappdata(fig,'auto_intervals');
 
         auto_peaks = auto_peaks(auto_peaks>=1 & auto_peaks<=T);
-        intervals  = intervals(all(intervals>0,2) & all(intervals<=T,2), :);
-
-        if ~isempty(intervals)
-            for i = 1:size(intervals,1)
-                a = intervals(i,1);
-                b = intervals(i,2);
-
-                plot(ax, a, x(a), 'g^', ...
-                    'MarkerFaceColor',[0.2 0.8 0.2], ...
-                    'MarkerEdgeColor',[0 0.6 0], ...
-                    'MarkerSize',6, 'LineWidth',1);
-
-                plot(ax, b, x(b), 'rv', ...
-                    'MarkerFaceColor',[1 0.5 0.5], ...
-                    'MarkerEdgeColor','r', ...
-                    'MarkerSize',6, 'LineWidth',1);
-
-                plot(ax, [a b], [x(a) x(b)], '-', ...
-                    'Color',[1 0.6 0.6 0.35], 'LineWidth',0.8);
-            end
-        end
+        % intervals  = intervals(all(intervals>0,2) & all(intervals<=T,2), :);
+        % 
+        % if ~isempty(intervals)
+        %     for i = 1:size(intervals,1)
+        %         a = intervals(i,1);
+        %         b = intervals(i,2);
+        % 
+        %         plot(ax, a, x(a), 'g^', ...
+        %             'MarkerFaceColor',[0.2 0.8 0.2], ...
+        %             'MarkerEdgeColor',[0 0.6 0], ...
+        %             'MarkerSize',6, 'LineWidth',1);
+        % 
+        %         plot(ax, b, x(b), 'rv', ...
+        %             'MarkerFaceColor',[1 0.5 0.5], ...
+        %             'MarkerEdgeColor','r', ...
+        %             'MarkerSize',6, 'LineWidth',1);
+        % 
+        %         plot(ax, [a b], [x(a) x(b)], '-', ...
+        %             'Color',[1 0.6 0.6 0.35], 'LineWidth',0.8);
+        %     end
+        % end
 
         if ~isempty(auto_peaks)
             plot(ax, auto_peaks, x(auto_peaks), 'r*', ...
@@ -1579,6 +1752,28 @@ function refresh_data(fig)
 
     % ---- Labels GOOD/BAD (désactivés en viewer_mode) ----
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+
+    % ---- Label électroporée si cellule courante dans blue_indices ----
+    is_blue_cell = false;
+    if isappdata(fig,'blue_indices')
+        blue_indices = getappdata(fig,'blue_indices');
+        if ~isempty(blue_indices)
+            blue_indices = blue_indices(:);
+            blue_indices = blue_indices(isfinite(blue_indices));
+            is_blue_cell = any(round(blue_indices) == round(cell_id));
+        end
+    end
+
+    if is_blue_cell
+        text(ax, 0.72, 0.95, 'ÉLECTROPORÉE', ...
+            'Units','normalized', ...
+            'Color',[0.1 0.2 0.9], ...
+            'FontWeight','bold', ...
+            'FontSize',12, ...
+            'VerticalAlignment','top', ...
+            'BackgroundColor',[1 1 1 0.6], ...
+            'Margin',4);
+    end
 
     if ~viewer_mode
         label_txt   = '';
@@ -1611,19 +1806,27 @@ function refresh_data(fig)
                     label_color = [0.1 0.6 0.1];
 
                 else
-                    if cutoff_validated && isappdata(fig,'cutoff_rank') && isappdata(fig,'order_cells_all')
-                        cutoff_rank = round(getappdata(fig,'cutoff_rank'));
-                        order_cells_all = getappdata(fig,'order_cells_all');
+                    if cutoff_validated && ~isempty(n_peaks_all) && isappdata(fig,'opts')
+                        opts = getappdata(fig,'opts');
+                        min_n_peaks = opts.min_n_peaks_cutoff;
+                    
+                        if cell_id <= numel(n_peaks_all)
 
-                        if ~isempty(order_cells_all)
-                            cutoff_rank = max(1, min(numel(order_cells_all), cutoff_rank));
-                            selected_cells_from_cutoff = order_cells_all(cutoff_rank:end);
-
-                            if ismember(cell_id, selected_cells_from_cutoff)
-                                label_txt   = 'GOOD (cutoff)';
+                            cond_peaks = n_peaks_all(cell_id) >= min_n_peaks;
+                        
+                            cond_mask = true;
+                            if isappdata(fig,'mask_sizes')
+                                mask_sizes = getappdata(fig,'mask_sizes');
+                                if cell_id <= numel(mask_sizes)
+                                    cond_mask = mask_sizes(cell_id) >= opts.min_mask_pixels;
+                                end
+                            end
+                        
+                            if cond_peaks && cond_mask
+                                label_txt   = sprintf('GOOD (peaks+mask)');
                                 label_color = [0.1 0.6 0.1];
                             else
-                                label_txt   = 'BAD (cutoff)';
+                                label_txt   = sprintf('BAD (peaks/mask)');
                                 label_color = [0.85 0.1 0.1];
                             end
                         end
@@ -1756,58 +1959,47 @@ end
 
 function update_roi_zoom(fig)
 
-    if ~isappdata(fig,'axROI'), return; end
+    if ~isappdata(fig,'axROI')
+        return;
+    end
     ax = getappdata(fig,'axROI');
-    if isempty(ax) || ~ishghandle(ax), return; end
+    if isempty(ax) || ~ishghandle(ax)
+        return;
+    end
 
+    % ----------------------------
+    % Image moyenne
+    % ----------------------------
     meanImg = [];
     if isappdata(fig,'meanImg')
         meanImg = getappdata(fig,'meanImg');
     end
+
     if isempty(meanImg) || ~(isnumeric(meanImg) || islogical(meanImg))
         cla(ax);
-        title(ax,'P(cellule)=NaN');
-        text(ax,0.5,0.5,'meanImg non disponible/numérique', ...
-            'Units','normalized','HorizontalAlignment','center');
+        title(ax,'ROI indisponible');
         return;
     end
     meanImg = double(meanImg);
 
+    % ----------------------------
+    % Cellule courante
+    % ----------------------------
     if ~isappdata(fig,'cell_id')
         cla(ax);
         imagesc(ax, meanImg);
-        colormap(ax,gray);
-        axis(ax,'image');
+        colormap(ax, gray);
+        axis(ax, 'image');
         set(ax,'YDir','reverse');
-        title(ax,'P(cellule)=NaN');
+        title(ax,'ROI indisponible');
         return;
     end
+
     cid = round(getappdata(fig,'cell_id'));
 
-    prob_cell = NaN;
-    if isappdata(fig,'iscell')
-        iscell_in = getappdata(fig,'iscell');
-        try
-            if isnumeric(iscell_in) || islogical(iscell_in)
-                if size(iscell_in,1) >= cid && size(iscell_in,2) >= 2
-                    prob_cell = double(iscell_in(cid,2));
-                end
-            elseif iscell(iscell_in)
-                if size(iscell_in,1) >= cid && size(iscell_in,2) >= 2
-                    prob_cell = double(iscell_in{cid,2});
-                end
-            end
-        catch
-            prob_cell = NaN;
-        end
-    end
-
-    if isfinite(prob_cell)
-        ttl = sprintf('Cellule %d — P(cellule)=%.3f', cid, prob_cell);
-    else
-        ttl = sprintf('Cellule %d — P(cellule)=NaN', cid);
-    end
-
+    % ----------------------------
+    % Pixel size depuis meta_tbl
+    % ----------------------------
     pixel_size_um = NaN;
     if isappdata(fig,'meta_tbl')
         meta_tbl = getappdata(fig,'meta_tbl');
@@ -1828,54 +2020,78 @@ function update_roi_zoom(fig)
         end
     end
 
-    if ~isappdata(fig,'stat')
+    % ----------------------------
+    % Récupération masque (stack N x H x W)
+    % ----------------------------
+    mask = [];
+    if isappdata(fig,'masks')
+        masks = getappdata(fig,'masks');
+
+        if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
+            if cid >= 1 && cid <= size(masks,1)
+                mask = squeeze(masks(cid,:,:));
+            end
+        end
+    end
+
+    if isempty(mask)
         cla(ax);
         imagesc(ax, meanImg);
-        colormap(ax,gray);
-        axis(ax,'image');
+        colormap(ax, gray);
+        axis(ax, 'image');
         set(ax,'YDir','reverse');
-        title(ax, ttl);
+        title(ax, sprintf('Cellule %d (masque indisponible)', cid));
         add_scale_bar(ax, pixel_size_um);
         return;
     end
-    stat_in = getappdata(fig,'stat');
 
-    [xext, yext] = get_xext_yext(stat_in, cid, size(meanImg));
+    mask = logical(mask);
 
-    cla(ax);
-    hold(ax,'on');
-
-    if isempty(xext) || isempty(yext) || numel(xext) < 3
+    if ~ismatrix(mask) || ~any(mask(:))
+        cla(ax);
         imagesc(ax, meanImg);
-        colormap(ax,gray);
-        axis(ax,'image');
+        colormap(ax, gray);
+        axis(ax, 'image');
         set(ax,'YDir','reverse');
-        title(ax, ttl);
+        title(ax, sprintf('Cellule %d (masque vide)', cid));
         add_scale_bar(ax, pixel_size_um);
-        hold(ax,'off');
         return;
     end
 
-    xext = xext(:);
-    yext = yext(:);
-    if xext(1) ~= xext(end) || yext(1) ~= yext(end)
-        xext(end+1) = xext(1);
-        yext(end+1) = yext(1);
+    % ----------------------------
+    % Vérif dimensions
+    % ----------------------------
+    [Himg, Wimg] = size(meanImg);
+    [Hm, Wm] = size(mask);
+
+    if Himg ~= Hm || Wimg ~= Wm
+        cla(ax);
+        imagesc(ax, meanImg);
+        colormap(ax, gray);
+        axis(ax, 'image');
+        set(ax,'YDir','reverse');
+        title(ax, sprintf('Cellule %d (taille masque/image incompatible)', cid));
+        add_scale_bar(ax, pixel_size_um);
+        return;
     end
 
+    % ----------------------------
+    % Bounding box auto
+    % ----------------------------
+    [y, x] = find(mask);
     pad = 12;
 
-    xmin = floor(min(xext)) - pad;
-    xmax = ceil(max(xext)) + pad;
-    ymin = floor(min(yext)) - pad;
-    ymax = ceil(max(yext)) + pad;
+    xmin = max(1, floor(min(x)) - pad);
+    xmax = min(size(meanImg,2), ceil(max(x)) + pad);
+    ymin = max(1, floor(min(y)) - pad);
+    ymax = min(size(meanImg,1), ceil(max(y)) + pad);
 
-    [Himg,Wimg] = size(meanImg);
-    xmin = max(1, xmin); xmax = min(Wimg, xmax);
-    ymin = max(1, ymin); ymax = min(Himg, ymax);
+    cropImg  = meanImg(ymin:ymax, xmin:xmax);
+    cropMask = mask(ymin:ymax, xmin:xmax);
 
-    cropImg = meanImg(ymin:ymax, xmin:xmax);
-
+    % ----------------------------
+    % Contraste auto
+    % ----------------------------
     v = cropImg(isfinite(cropImg));
     if isempty(v)
         lo = min(cropImg(:));
@@ -1889,124 +2105,37 @@ function update_roi_zoom(fig)
         end
     end
 
+    % ----------------------------
+    % Affichage image
+    % ----------------------------
+    cla(ax);
     imagesc(ax, cropImg);
     colormap(ax, gray);
     axis(ax, 'image');
     set(ax,'YDir','reverse');
     clim(ax, [lo hi]);
+    hold(ax,'on');
 
-    H = ymax - ymin + 1;
-    W = xmax - xmin + 1;
-    mask = false(H, W);
+    % ----------------------------
+    % Overlay masque (sans contour)
+    % ----------------------------
+    redOverlay = zeros([size(cropMask), 3]);
+    redOverlay(:,:,1) = 1;
 
-    xloc = round(xext - (xmin - 1));
-    yloc = round(yext - (ymin - 1));
+    hMask = imshow(redOverlay, 'Parent', ax);
+    set(hMask, 'AlphaData', 0.30 * double(cropMask));
 
-    valid = xloc>=1 & xloc<=W & yloc>=1 & yloc<=H;
-    idx = sub2ind([H W], yloc(valid), xloc(valid));
-    mask(idx) = true;
-
-    mask = imclose(mask, strel('disk',1));
-    mask = bwareaopen(mask, 10);
-
-    B = bwboundaries(mask, 'noholes');
-
-    if ~isempty(B)
-        boundary = B{1};
-        yb = boundary(:,1);
-        xb = boundary(:,2);
-
-        plot(ax, xb, yb, 'k-', 'LineWidth', 4);
-        plot(ax, xb, yb, 'r-', 'LineWidth', 2.5);
-    end
-
+    % ----------------------------
+    % Scale bar
+    % ----------------------------
     add_scale_bar(ax, pixel_size_um);
 
-    title(ax, ttl);
+    % ----------------------------
+    % Titre
+    % ----------------------------
+    title(ax, sprintf('Cellule %d', cid));
+
     hold(ax,'off');
-end
-
-function [x, y] = get_xext_yext(stat_in, cid, imgSize)
-
-    x = [];
-    y = [];
-
-    if nargin < 3, imgSize = []; end
-    if ~(isnumeric(cid)&&isscalar(cid)&&isfinite(cid)&&cid>=1), return; end
-    cid = round(cid);
-
-    s = [];
-    if iscell(stat_in)
-        if cid > numel(stat_in), return; end
-        s = stat_in{cid};
-    elseif isstruct(stat_in)
-        if cid > numel(stat_in), return; end
-        s = stat_in(cid);
-    else
-        return;
-    end
-    if ~isstruct(s), return; end
-
-    if isfield(s,'xext') && isfield(s,'yext') && isnumeric(s.xext) && isnumeric(s.yext) ...
-            && ~isempty(s.xext) && ~isempty(s.yext)
-        x = double(s.xext(:)) + 1;
-        y = double(s.yext(:)) + 1;
-        return;
-    end
-
-    if ~(isfield(s,'xpix') && isfield(s,'ypix') && isnumeric(s.xpix) && isnumeric(s.ypix))
-        return;
-    end
-
-    xp = double(s.xpix(:)) + 1;
-    yp = double(s.ypix(:)) + 1;
-
-    good = isfinite(xp) & isfinite(yp);
-    xp = xp(good); yp = yp(good);
-    if numel(xp) < 3, return; end
-
-    if ~isempty(imgSize) && numel(imgSize)==2
-        H = imgSize(1); W = imgSize(2);
-        in = xp>=1 & xp<=W & yp>=1 & yp<=H;
-        xp = xp(in); yp = yp(in);
-        if numel(xp) < 3, return; end
-    end
-
-    pad = 2;
-    xmin = floor(min(xp))-pad; xmax = ceil(max(xp))+pad;
-    ymin = floor(min(yp))-pad; ymax = ceil(max(yp))+pad;
-
-    if ~isempty(imgSize) && numel(imgSize)==2
-        H = imgSize(1); W = imgSize(2);
-        xmin = max(1,xmin); xmax = min(W,xmax);
-        ymin = max(1,ymin); ymax = min(H,ymax);
-    end
-
-    w = xmax - xmin + 1;
-    h = ymax - ymin + 1;
-    if w<=2 || h<=2, return; end
-
-    mask = false(h,w);
-    xloc = round(xp - xmin + 1);
-    yloc = round(yp - ymin + 1);
-
-    ok = xloc>=1 & xloc<=w & yloc>=1 & yloc<=h;
-    if nnz(ok) < 3, return; end
-    mask(sub2ind([h w], yloc(ok), xloc(ok))) = true;
-
-    mask = imclose(mask, strel('disk',1));
-    mask = imfill(mask,'holes');
-
-    B = bwboundaries(mask, 'noholes');
-    if isempty(B), return; end
-
-    [~, imax] = max(cellfun(@(b) size(b,1), B));
-    b = B{imax};
-    yb = b(:,1);
-    xb = b(:,2);
-
-    x = xb + (xmin - 1);
-    y = yb + (ymin - 1);
 end
 
 function add_scale_bar(ax, pixel_size_um)
@@ -2046,51 +2175,6 @@ function add_scale_bar(ax, pixel_size_um)
         'BackgroundColor','k', 'Margin',1);
 end
 
-function plot_raster_window(Raster, focus_segs)
-
-    if nargin < 2
-        focus_segs = [];
-    end
-
-    if isempty(Raster) || ~islogical(Raster)
-        warning('Raster vide ou invalide.');
-        return;
-    end
-
-    [nC, T] = size(Raster);
-
-    fR = figure('Name','Raster (pics détectés)','Color','w');
-    ax = axes('Parent', fR);
-    hold(ax,'on');
-    box(ax,'on');
-
-    [cells, frames] = find(Raster);
-    scatter(ax, frames, cells, 8, 'k', 'filled');
-
-    xlim(ax,[1 T]);
-    ylim(ax,[0.5 nC+0.5]);
-    xlabel(ax,'Frames');
-    ylabel(ax,'Cellules (valid\_cells)');
-    title(ax, sprintf('Raster (%d cellules)', nC));
-
-    if ~isempty(focus_segs)
-        yl = ylim(ax);
-        for k = 1:size(focus_segs,1)
-            a = focus_segs(k,1);
-            b = focus_segs(k,2);
-
-            patch(ax, ...
-                [a b b a], ...
-                [yl(1) yl(1) yl(2) yl(2)], ...
-                [1 0 0], ...
-                'FaceAlpha',0.18, ...
-                'EdgeColor','none', ...
-                'HitTest','off');
-        end
-        uistack(findobj(ax,'Type','patch'),'bottom');
-    end
-end
-
 %% ===================== SLIDERS / PARAMS =====================
 
 function make_slider(parent,fig,label,field,minv,maxv,val,pos)
@@ -2122,7 +2206,7 @@ function update_param(fig, field, value)
             if value < 3, value = 3; end
             if mod(value,2)==0, value = value+1; end
         else
-            value = round(max(0, value));
+            value = round(max(1, value));
         end
     else
         value = max(0, value);
@@ -2147,14 +2231,41 @@ function update_param(fig, field, value)
         end
     end
 
+    % Recalcul si window_size ou SavGol changent
+    if ismember(field, {'window_size','savgol_win'})
+        F_raw = getappdata(fig,'F_raw');
+        fs    = getappdata(fig,'fs');
+
+        bad_frames = [];
+        if isappdata(fig,'bad_frames')
+            bad_frames = getappdata(fig,'bad_frames');
+        end
+
+        [Fdetrend, F0] = F_processing(F_raw, bad_frames, fs, opts.window_size);
+        DF_sg = DF_processing(Fdetrend, opts);
+        noise_est = estimate_noise(Fdetrend);
+
+        setappdata(fig,'F0', F0);
+        setappdata(fig,'DF_sg', DF_sg);
+        setappdata(fig,'noise_est', noise_est);
+
+        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+
+        setappdata(fig,'SNR', SNR);
+        setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
+    end
+
     setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'auto_peaks', []);
     if isappdata(fig,'seuil_detection_last')
         rmappdata(fig,'seuil_detection_last');
     end
 
-    auto_detect_and_add(fig);
     recompute_n_peaks_all(fig);
+    apply_auto_cutoff(fig);
     refresh_selection_order(fig);
+    auto_detect_and_add(fig);
 end
 
 %% ===================== UTILITIES =====================
@@ -2319,4 +2430,118 @@ function segTable = sort_segments_by_deviation(bad_segs, deviation)
         'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
 
     segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
+end
+
+function create_random_peak_preview(valid_cells, DF_sg, Acttmp2, thresholds, outdir_preview)
+% Crée une figure avec jusqu'à 10 cellules tirées au hasard parmi
+% les cellules gardées, affiche leurs traces + pics détectés,
+% et sauvegarde automatiquement un PNG si absent.
+
+    if nargin < 4
+        thresholds = [];
+    end
+    if nargin < 5
+        outdir_preview = '';
+    end
+
+    if isempty(valid_cells) || isempty(DF_sg)
+        warning('Aucune cellule valide à afficher dans la preview.');
+        return;
+    end
+
+    nCellsFinal = size(DF_sg, 1);
+    if nCellsFinal == 0
+        warning('DF_sg final vide, preview non générée.');
+        return;
+    end
+
+    % ----------------------------
+    % Nom du fichier de sauvegarde
+    % ----------------------------
+    png_path = '';
+    if ~isempty(outdir_preview) && (ischar(outdir_preview) || isstring(outdir_preview))
+        outdir_preview = char(outdir_preview);
+
+        if ~exist(outdir_preview, 'dir')
+            mkdir(outdir_preview);
+        end
+
+        png_path = fullfile(outdir_preview, 'random_peak_preview.png');
+
+        % if exist(png_path, 'file') == 2
+        %     fprintf('Preview PNG déjà existante, pas de nouvelle sauvegarde : %s\n', png_path);
+        %     return;
+        % end
+    end
+
+    % ----------------------------
+    % Tirage aléatoire
+    % ----------------------------
+    nShow = min(10, nCellsFinal);
+    rng('shuffle');
+    idx_show = randperm(nCellsFinal, nShow);
+
+    figPrev = figure( ...
+        'Name', sprintf('Preview aléatoire de %d traces avec pics', nShow), ...
+        'NumberTitle', 'off', ...
+        'Color', 'w', ...
+        'Position', [150 80 1200 900], ...
+        'Visible', 'on');
+
+    tiledlayout(figPrev, 5, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+    for k = 1:nShow
+        ii = idx_show(k);
+        cid_orig = valid_cells(ii);
+        x = DF_sg(ii, :);
+        t = 1:numel(x);
+
+        nexttile;
+        hold on;
+        box on;
+
+        plot(t, x, 'k-', 'LineWidth', 1);
+
+        pk = [];
+        if iscell(Acttmp2) && numel(Acttmp2) >= ii && ~isempty(Acttmp2{ii})
+            pk = Acttmp2{ii};
+            pk = pk(:)';
+            pk = pk(isfinite(pk) & pk >= 1 & pk <= numel(x));
+        end
+
+        if ~isempty(pk)
+            plot(pk, x(pk), 'r*', 'MarkerSize', 6, 'LineWidth', 1);
+        end
+
+        if ~isempty(thresholds) && numel(thresholds) >= ii && isfinite(thresholds(ii))
+            yline(thresholds(ii), '--', 'LineWidth', 1);
+        end
+
+        title(sprintf('Cellule orig %d | final %d | n=%d pics', ...
+            cid_orig, ii, numel(pk)), ...
+            'FontWeight', 'bold', 'Interpreter', 'none');
+
+        xlabel('Frames');
+        ylabel('\DeltaF/F');
+        xlim([1 numel(x)]);
+
+        hold off;
+    end
+
+    % ----------------------------
+    % Sauvegarde PNG si demandé
+    % ----------------------------
+    %if ~isempty(png_path)
+        try
+            exportgraphics(figPrev, png_path, 'Resolution', 200);
+            fprintf('Preview PNG sauvegardée : %s\n', png_path);
+        catch
+            saveas(figPrev, png_path);
+            fprintf('Preview PNG sauvegardée (saveas) : %s\n', png_path);
+        end
+
+        if ishghandle(figPrev)
+            close(figPrev);
+        end
+    %end
 end

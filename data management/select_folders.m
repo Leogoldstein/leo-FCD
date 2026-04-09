@@ -147,7 +147,7 @@ function processedFolders = process_folder(folderPath)
         subFolderName = subFolders(j).name;
         if subFolders(j).isdir && ~ismember(subFolderName, {'.','..'})
             subFolderPath = fullfile(folderPath, subFolderName);
-            if contains(folderName, 'mTor')
+            if contains(folderName, 'mTor') || contains(folderName, 'mtor') 
                 secondLevelSubFolders = dir(subFolderPath);
                 for k = 1:length(secondLevelSubFolders)
                     if secondLevelSubFolders(k).isdir && ~ismember(secondLevelSubFolders(k).name, {'.','..'}) && is_date_format(secondLevelSubFolders(k).name)

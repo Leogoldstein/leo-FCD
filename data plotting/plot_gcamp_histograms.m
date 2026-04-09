@@ -1,4 +1,4 @@
-function plot_gcamp_histograms(results_analysis, gcamp_output_folders)
+function plot_gcamp_histograms(results_analysis, gcamp_output_folders, current_animal_group, current_ages_group)
 
 numFolders = length(results_analysis);
 
@@ -28,8 +28,8 @@ for m = 1:numFolders
     end
     
     filename = fullfile(output_folder, sprintf('GCaMP_histograms_%s_%s.png', ...
-        results_analysis(m).current_animal_group, ...
-        results_analysis(m).Age));
+        current_animal_group, ...
+        current_ages_group{m}));
     
     if exist(filename, 'file')
         fprintf('La figure "%s" existe déjà. Passage au suivant.\n', filename);
@@ -40,8 +40,8 @@ for m = 1:numFolders
     fig = figure('Position',[100 100 1200 400]);
     
     sgtitle(sprintf('GCaMP – %s %s', ...
-        results_analysis(m).current_animal_group, ...
-        results_analysis(m).Age));
+        current_animal_group, ...
+        current_ages_group{m}));
     
     %----------- SUBPLOT 1 : FREQUENCY -----------%
     subplot(1,3,1)

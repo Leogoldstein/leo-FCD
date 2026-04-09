@@ -1,13 +1,14 @@
-function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_mtor_mtor_by_plane, data] = ...
-    load_or_process_corr_data(gcamp_output_folders, data)
+function data = load_or_process_corr_data(gcamp_output_folders, data, current_ages_group, animal_name)
 % load_or_process_corr_data
-% - Sorties au format "par session" -> {m} = cell(1,nPlanes), chaque {p} = vecteur/matrice
-% - Lit/écrit results_corrs.mat dans chaque dossier session
-% - Supporte anciens fichiers (variables sans suffixe) ET nouveau format (_by_plane)
+% - Sorties au format "par session" -> {m} = cell(1,nPlanes), chaque {p} = matrice/vecteur
+% - Lit/écrit results_corr.mat dans chaque dossier session
+% - compute_pairwise_corr est utilisé uniquement comme fonction de calcul brut
+% - Trace directement les figures combinées des corrélations
+% - Remplit aussi data.max_corr_gcamp_gcamp_by_plane, data.max_corr_gcamp_mtor_by_plane,
+%   data.max_corr_mtor_mtor_by_plane
 
     numFolders = numel(gcamp_output_folders);
 
-    % Outputs (session-level): each cell is {1 x nPlanes}
     max_corr_gcamp_gcamp_by_plane = cell(numFolders, 1);
     max_corr_gcamp_mtor_by_plane  = cell(numFolders, 1);
     max_corr_mtor_mtor_by_plane   = cell(numFolders, 1);
@@ -16,20 +17,18 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
         filePath = fullfile(gcamp_output_folders{m}, 'results_corr.mat');
         disp(filePath);
 
-        % --- combined? (BY-PLANE ONLY) ---
         has_combined_by_plane = isfield(data,'DF_combined_by_plane') && ...
                                 numel(data.DF_combined_by_plane) >= m && ...
                                 ~isempty(data.DF_combined_by_plane{m});
         use_combined = has_combined_by_plane;
 
-        % --- DF gcamp by plane required ---
         DFg_planes = get_planes_or_error(data, m, 'DF_gcamp_by_plane');
         nPlanes = numel(DFg_planes);
+
         if nPlanes < 1
             error('Session %d: aucun plan dans DF_gcamp_by_plane{%d}.', m, m);
         end
 
-        % --- combined requires DFc + blue idx by plane ---
         DFc_planes = [];
         blue_idx_planes = [];
         if use_combined
@@ -38,49 +37,63 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
             if ~isfield(data,'blue_indices_combined_by_plane') || ...
                numel(data.blue_indices_combined_by_plane) < m || ...
                isempty(data.blue_indices_combined_by_plane{m})
-                error('Session %d: blue_indices_combined_by_plane{%d} manquant/vide (COMBINED).', m, m);
+                error('Session %d: blue_indices_combined_by_plane{%d} manquant/vide.', m, m);
             end
+
             blue_idx_planes = data.blue_indices_combined_by_plane{m};
+
             if ~iscell(blue_idx_planes)
                 error('Session %d: blue_indices_combined_by_plane{%d} doit être une cell par plan.', m, m);
             end
 
             if numel(DFc_planes) ~= nPlanes
                 error('Session %d: mismatch #plans DF_gcamp(%d) vs DF_combined(%d).', ...
-                      m, nPlanes, numel(DFc_planes));
+                    m, nPlanes, numel(DFc_planes));
             end
+
             if numel(blue_idx_planes) ~= nPlanes
                 error('Session %d: mismatch #plans DF_gcamp(%d) vs blue_indices(%d).', ...
-                      m, nPlanes, numel(blue_idx_planes));
+                    m, nPlanes, numel(blue_idx_planes));
             end
         end
 
-        % Prepare per-plane containers for this session
         mc_gg_planes = cell(1, nPlanes);
         mc_gm_planes = cell(1, nPlanes);
         mc_mm_planes = cell(1, nPlanes);
 
-        % --- load if exists ---
+        % ==================================================
+        % 1) Chargement si déjà présent
+        % ==================================================
         if exist(filePath, 'file') == 2
             loaded = load(filePath);
 
-            % Compat: d'abord nouveau nom (si tu décides de changer), sinon ancien
-            mc_gg_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_gcamp_by_plane', cell(1,nPlanes));
-            mc_gm_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_mtor_by_plane',  cell(1,nPlanes));
-            mc_mm_planes = getFieldOrDefault(loaded, 'max_corr_mtor_mtor_by_plane',   cell(1,nPlanes));
+            mc_gg_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_gcamp_by_plane', mc_gg_planes);
+            mc_gm_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_mtor_by_plane',  mc_gm_planes);
+            mc_mm_planes = getFieldOrDefault(loaded, 'max_corr_mtor_mtor_by_plane',   mc_mm_planes);
 
-            % Si l'ancien fichier a stocké au mauvais format (non cell), on reset
+            % fallback ancien format
+            mc_gg_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_gcamp_by_plane_file', mc_gg_planes);
+            mc_gm_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_mtor_by_plane_file',  mc_gm_planes);
+            mc_mm_planes = getFieldOrDefault(loaded, 'max_corr_mtor_mtor_by_plane_file',   mc_mm_planes);
+
+            % fallback encore plus ancien
+            mc_gg_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_gcamp_by_plane_s', mc_gg_planes);
+            mc_gm_planes = getFieldOrDefault(loaded, 'max_corr_gcamp_mtor_by_plane_s',  mc_gm_planes);
+            mc_mm_planes = getFieldOrDefault(loaded, 'max_corr_mtor_mtor_by_plane_s',   mc_mm_planes);
+
             if ~iscell(mc_gg_planes), mc_gg_planes = cell(1,nPlanes); end
             if ~iscell(mc_gm_planes), mc_gm_planes = cell(1,nPlanes); end
             if ~iscell(mc_mm_planes), mc_mm_planes = cell(1,nPlanes); end
 
-            % Si la taille n’est pas 1xnPlanes, on tente de réparer
             mc_gg_planes = ensure_plane_cell(mc_gg_planes, nPlanes);
             mc_gm_planes = ensure_plane_cell(mc_gm_planes, nPlanes);
             mc_mm_planes = ensure_plane_cell(mc_mm_planes, nPlanes);
 
         else
-            disp(['Computing and saving pairwise correlations (BY PLANE) for folder ', num2str(m)]);
+            % ==================================================
+            % 2) Calcul brut par plan
+            % ==================================================
+            disp(['Computing pairwise correlations (BY PLANE) for folder ', num2str(m)]);
 
             for p = 1:nPlanes
                 DFg = DFg_planes{p};
@@ -98,66 +111,52 @@ function [max_corr_gcamp_gcamp_by_plane, max_corr_gcamp_mtor_by_plane, max_corr_
 
                     [mc_gg, mc_gm, mc_mm] = compute_pairwise_corr( ...
                         DFg, gcamp_output_folders{m}, DFc, blue_idx);
-
-                    mc_gg_planes{p} = mc_gg;
-                    mc_gm_planes{p} = mc_gm;
-                    mc_mm_planes{p} = mc_mm;
                 else
-                    [mc_gg, ~, ~] = compute_pairwise_corr(DFg, gcamp_output_folders{m});
-                    mc_gg_planes{p} = mc_gg;
-                    mc_gm_planes{p} = [];
-                    mc_mm_planes{p} = [];
+                    [mc_gg, mc_gm, mc_mm] = compute_pairwise_corr( ...
+                        DFg, gcamp_output_folders{m});
                 end
+
+                mc_gg_planes{p} = mc_gg;
+                mc_gm_planes{p} = mc_gm;
+                mc_mm_planes{p} = mc_mm;
             end
 
-            % IMPORTANT: on sauve seulement les variables "par plan"
-            max_corr_gcamp_gcamp_by_plane_file = mc_gg_planes;
-            max_corr_gcamp_mtor_by_plane_file  = mc_gm_planes;
-            max_corr_mtor_mtor_by_plane_file   = mc_mm_planes;
+            % ==================================================
+            % 3) Sauvegarde avec noms cohérents
+            % ==================================================
+            saveStruct = struct();
+            saveStruct.max_corr_gcamp_gcamp_by_plane = mc_gg_planes;
+            saveStruct.max_corr_gcamp_mtor_by_plane  = mc_gm_planes;
+            saveStruct.max_corr_mtor_mtor_by_plane   = mc_mm_planes;
 
-            save(filePath, ...
-                'max_corr_gcamp_gcamp_by_plane_file', ...
-                'max_corr_gcamp_mtor_by_plane_file', ...
-                'max_corr_mtor_mtor_by_plane_file');
-
-            % Pour downstream: on reste sur mc_*_planes
+            save(filePath, '-struct', 'saveStruct');
         end
 
-        % Si on a sauvé avec *_file dans un fichier, et qu’on relit plus tard,
-        % on peut vouloir aussi charger ces champs. Donc: fallback ici aussi.
-        % (utile si tu as créé des fichiers avec *_file seulement)
-        if exist(filePath, 'file') == 2
-            loaded2 = load(filePath);
-            mc_gg_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_gcamp_by_plane', mc_gg_planes);
-            mc_gm_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_mtor_by_plane',  mc_gm_planes);
-            mc_mm_planes = getFieldOrDefault(loaded2, 'max_corr_mtor_mtor_by_plane',   mc_mm_planes);
-
-            mc_gg_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_gcamp_by_plane_file', mc_gg_planes);
-            mc_gm_planes = getFieldOrDefault(loaded2, 'max_corr_gcamp_mtor_by_plane_file',  mc_gm_planes);
-            mc_mm_planes = getFieldOrDefault(loaded2, 'max_corr_mtor_mtor_by_plane_file',   mc_mm_planes);
-
-            if ~iscell(mc_gg_planes), mc_gg_planes = cell(1,nPlanes); end
-            if ~iscell(mc_gm_planes), mc_gm_planes = cell(1,nPlanes); end
-            if ~iscell(mc_mm_planes), mc_mm_planes = cell(1,nPlanes); end
-
-            mc_gg_planes = ensure_plane_cell(mc_gg_planes, nPlanes);
-            mc_gm_planes = ensure_plane_cell(mc_gm_planes, nPlanes);
-            mc_mm_planes = ensure_plane_cell(mc_mm_planes, nPlanes);
-        end
-
-        % Return outputs (session -> planes) WITHOUT touching data
+        % ==================================================
+        % 4) Sorties
+        % ==================================================
         max_corr_gcamp_gcamp_by_plane{m} = mc_gg_planes;
         max_corr_gcamp_mtor_by_plane{m}  = mc_gm_planes;
         max_corr_mtor_mtor_by_plane{m}   = mc_mm_planes;
     end
+
+    % ==================================================
+    % 5) Injecter dans data
+    % ==================================================
+    data.max_corr_gcamp_gcamp_by_plane = max_corr_gcamp_gcamp_by_plane;
+    data.max_corr_gcamp_mtor_by_plane  = max_corr_gcamp_mtor_by_plane;
+    data.max_corr_mtor_mtor_by_plane   = max_corr_mtor_mtor_by_plane;
 end
 
-% ---------------- utilities ----------------
+% ========================= utilities =========================
+
 function planes = get_planes_or_error(data, m, fieldName)
     if ~isfield(data, fieldName) || numel(data.(fieldName)) < m || isempty(data.(fieldName){m})
         error('Session %d: champ "%s" manquant ou vide. (format by_plane requis)', m, fieldName);
     end
+
     planes = data.(fieldName){m};
+
     if ~iscell(planes) || isempty(planes)
         error('Session %d: "%s{%d}" doit être une cell non vide de plans.', m, fieldName, m);
     end
@@ -172,18 +171,16 @@ function value = getFieldOrDefault(structure, fieldName, defaultValue)
 end
 
 function c = ensure_plane_cell(c, nPlanes)
-% ensure_plane_cell
-% Force une cell(1,nPlanes). Si c est plus long, crop; si plus court, pad.
     if isempty(c)
         c = cell(1,nPlanes);
         return;
     end
+
     if ~iscell(c)
         c = cell(1,nPlanes);
         return;
     end
 
-    % aplatit en row
     c = c(:).';
     if numel(c) > nPlanes
         c = c(1:nPlanes);
@@ -191,3 +188,4 @@ function c = ensure_plane_cell(c, nPlanes)
         c = [c, cell(1, nPlanes-numel(c))];
     end
 end
+
