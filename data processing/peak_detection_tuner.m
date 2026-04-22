@@ -13,16 +13,19 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     % ---- Options détection (valeurs initiales) ----
     opts = struct( ...
-        'window_size', 800, ... 
-        'savgol_win', 9, ...
+        'window_size_ms', 5000, ...      % detrending window
+        'savgol_win', 9, ...             % garde en frames
         'savgol_poly', 3, ...
-        'min_width_fr', 6, ...
+        'min_width_ms', 200, ...         % largeur minimale d'événement
+        'refrac_ms', 300, ...            % période réfractaire
         'prominence_factor', 0.8, ...
-        'refrac_fr', 3, ...
+        'local_win_ms', 10000, ...       % fenêtre locale pour baseline d'événement
         'min_n_peaks_cutoff', 10, ...
-        'min_mask_pixels', 10 ...
+        'min_mask_um2', 50 ...
     );
-
+    
+    opts = convert_opts_ms_to_frames(opts, fs);
+    
     % ---- Inputs optionnels ----
     iscell_in = [];
     stat_in   = [];
@@ -140,23 +143,36 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     % ---- Titre fenêtre ----
     winTitle = '';
     
+        % ---- Titre fenêtre ----
+    nCells = size(F,1);
+    title_parts = {};
+
     if viewer_mode
-        winTitle = '[VIEWER MODE]';
-    elseif ~isempty(gcamp_TSeries_path)
-        planePath = fileparts(gcamp_TSeries_path);
-        nCells = size(F,1);
-        winTitle = sprintf('%s | nCells=%d', planePath, nCells);
-    else
-        winTitle = sprintf('nCells=%d', size(F,1));
+        title_parts{end+1} = '[VIEWER MODE]';
     end
-    
+
     if ~isempty(cell_type)
-        if isempty(winTitle)
-            winTitle = sprintf('cell type: %s', cell_type);
-        else
-            winTitle = sprintf('%s | %s', winTitle, cell_type);
+        title_parts{end+1} = cell_type;
+    end
+
+    % priorité au dossier de sortie en combined
+    if strcmpi(cell_type, 'combined')
+        if ~isempty(gcamp_output_folder)
+            title_parts{end+1} = char(string(gcamp_output_folder));
+        elseif ~isempty(gcamp_TSeries_path)
+            title_parts{end+1} = char(string(fileparts(gcamp_TSeries_path)));
+        end
+    else
+        if ~isempty(gcamp_TSeries_path)
+            title_parts{end+1} = char(string(fileparts(gcamp_TSeries_path)));
+        elseif ~isempty(gcamp_output_folder)
+            title_parts{end+1} = char(string(gcamp_output_folder));
         end
     end
+
+    title_parts{end+1} = sprintf('nCells=%d', nCells);
+
+    winTitle = strjoin(title_parts, ' | ');
     
     % ===================== GUI =====================
     fig = figure('Name', winTitle, ...
@@ -192,7 +208,7 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
         'String', sprintf('Navigation cellule (1 / %d)', size(F,1)), ...
         'Units','normalized', ...
         'Position',[0.05 0.935 0.90 0.03], ...
-        'Tag','lbl_quality_thr', ...
+        'Tag','lbl_nav_cell', ...
         'HorizontalAlignment','left', ...
         'BackgroundColor',[.97 .97 .98], ...
         'FontWeight','bold');
@@ -212,8 +228,8 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
         'SliderStep', [step_small step_big], ...
         'Units','normalized', ...
         'Position',[0.05 0.865 0.90 0.055], ...
-        'Tag','sldr_quality_thr', ...
-        'Callback', @(src,~) update_quality_threshold(fig, round(get(src,'Value'))));
+        'Tag','sldr_nav_cell', ...
+        'Callback', @(src,~) update_current_cell(fig, round(get(src,'Value'))));
     
     % ---- Cutoff ----
     uicontrol('Parent',ctrl_panel,'Style','text', ...
@@ -275,18 +291,18 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
         'Callback', finalize_cb);
     
     if viewer_mode
-        set(findobj(ctrl_panel,'String','Définir cutoff'),    'Enable','off');
-        set(findobj(ctrl_panel,'String','Valider sélection'), 'Enable','off');
-        set(findobj(ctrl_panel,'String','Garder cellule'),    'Enable','off');
-        set(findobj(ctrl_panel,'String','Exclure cellule'),   'Enable','off');
+        set(findobj(ctrl_panel,'String','Appliquer cutoff'),   'Enable','off');
+        set(findobj(ctrl_panel,'String','Garder cellule'),     'Enable','off');
+        set(findobj(ctrl_panel,'String','Exclure cellule'),    'Enable','off');
+        set(findobj(ctrl_panel,'String','Confirmer sélection'),'Enable','on');
     end
 
     % ---- Contrôles détection ----
-    make_slider(ctrl_panel,fig,'Window size (fr)','window_size',round(fs*5),round(fs*300),opts.window_size,[0.05 0.76 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Largeur min (fr)','min_width_fr',0,50,opts.min_width_fr,[0.05 0.68 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Window size (ms)','window_size_ms',200,30000,opts.window_size_ms,[0.05 0.76 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Largeur min (ms)','min_width_ms',0,5000,opts.min_width_ms,[0.05 0.68 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.60 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Réfractaire (fr)','refrac_fr',0,10,opts.refrac_fr,[0.05 0.52 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'SavGol window','savgol_win',3,51,opts.savgol_win,[0.05 0.44 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Réfractaire (ms)','refrac_ms',0,5000,opts.refrac_ms,[0.05 0.52 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'SavGol window (fr)','savgol_win',3,51,opts.savgol_win,[0.05 0.44 0.90 0.06]);
 
     % ---- Axe principal ----
     ax1 = axes('Parent',fig,'Position',[0.28 0.63 0.70 0.30]);
@@ -359,20 +375,51 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     setappdata(fig,'masks', masks);
     
+    pixel_size_um = NaN;
     mask_sizes = [];
 
     if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
+
+        % ----------------------------
+        % Pixel size depuis meta_tbl
+        % ----------------------------
+        pixel_size_um = NaN;
+        if isappdata(fig,'meta_tbl')
+            meta_tbl = getappdata(fig,'meta_tbl');
+            try
+                if istable(meta_tbl) && any(strcmp(meta_tbl.Properties.VariableNames,'PixelSize'))
+                    px = meta_tbl.PixelSize;
+    
+                    if isnumeric(px)
+                        pixel_size_um = double(px(1));
+                    elseif iscell(px) && ~isempty(px)
+                        pixel_size_um = str2double(string(px{1}));
+                    elseif isstring(px) || ischar(px)
+                        pixel_size_um = str2double(string(px(1)));
+                    end
+                end
+            catch
+                pixel_size_um = NaN;
+            end
+        end
+
         nCells_masks = size(masks,1);
         mask_sizes = zeros(nCells_masks,1);
-    
+        
         for i = 1:nCells_masks
             m = squeeze(masks(i,:,:));
             if ~isempty(m)
-                mask_sizes(i) = sum(m(:) > 0);
+                npix = sum(m(:) > 0);
+                if isfinite(pixel_size_um) && pixel_size_um > 0
+                    mask_sizes(i) = npix * (pixel_size_um^2);
+                else
+                    mask_sizes(i) = NaN;
+                end
             end
         end
     end
     
+    setappdata(fig,'pixel_size_um', pixel_size_um);
     setappdata(fig,'mask_sizes', mask_sizes);
     
     if viewer_mode
@@ -462,7 +509,7 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     setappdata(fig,'cell_status', cell_status);
 
     refresh_selection_order(fig);
-    update_quality_threshold(fig, 1);
+    update_current_cell(fig, 1);
     drawnow;
 
     uiwait(fig);
@@ -523,6 +570,26 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 end
 
 %% ===================== PIPELINE CORE =====================
+
+function opts = convert_opts_ms_to_frames(opts, fs)
+
+    if nargin < 2 || isempty(fs) || ~isfinite(fs) || fs <= 0
+        error('convert_opts_ms_to_frames: fs invalide.');
+    end
+
+    opts.window_size = max(1, round(opts.window_size_ms * fs / 1000));
+    opts.min_width_fr = max(1, round(opts.min_width_ms * fs / 1000));
+    opts.refrac_fr    = max(1, round(opts.refrac_ms * fs / 1000));
+    opts.local_win_fr = max(1, round(opts.local_win_ms * fs / 1000));
+
+    % SavGol reste en frames mais doit être impair et >= poly+2
+    sg = round(opts.savgol_win);
+    sg = max(opts.savgol_poly + 2, sg);
+    if mod(sg,2) == 0
+        sg = sg + 1;
+    end
+    opts.savgol_win = sg;
+end
 
 function DF_sg = DF_processing(Fdetrend, opts)
 
@@ -596,15 +663,13 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
 
     x_det = x;
     x_det(bad_mask) = -Inf;
-    
+
     seuil_detection = 2.33 * sigma;
-    %seuil_detection = 3.09 * sigma;
     if ~isfinite(seuil_detection) || seuil_detection <= 0
         seuil_detection = 0;
     end
     out.threshold = seuil_detection;
 
-    minW = max(1, round(opts.min_width_fr));
     mpd  = max(1, round(opts.refrac_fr));
     prom = seuil_detection * opts.prominence_factor;
 
@@ -613,11 +678,7 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
     end
 
     x_valid = x_det(isfinite(x_det));
-    if isempty(x_valid)
-        return;
-    end
-
-    if max(x_valid) <= seuil_detection
+    if isempty(x_valid) || max(x_valid) <= seuil_detection
         return;
     end
 
@@ -640,104 +701,12 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
 
     out.locs_raw = locs;
 
-    if isempty(locs)
-        return;
-    end
+    % Plus de calcul de début/fin de transitoire
+    out.intervals_raw = zeros(0,2);
 
-    intervals = zeros(numel(locs), 2);
-    keep_interval = true(numel(locs),1);
-
-    local_win = 120;
-    baseline_margin = 0.5;
-
-    for i = 1:numel(locs)
-        pk = locs(i);
-
-        left_win = max(1, pk - local_win);
-        local_segment = x(left_win:pk);
-        local_segment = local_segment(isfinite(local_segment));
-
-        if isempty(local_segment)
-            keep_interval(i) = false;
-            continue;
-        end
-
-        baseline_local_i = prctile(local_segment, 10);
-        noise_local = std(local_segment, 'omitnan');
-        if ~isfinite(noise_local)
-            noise_local = 0;
-        end
-
-        thr_event = baseline_local_i + baseline_margin * noise_local;
-
-        a = pk;
-        while a > 1 && isfinite(x(a)) && x(a) > thr_event && ~bad_mask(a)
-            a = a - 1;
-        end
-        if bad_mask(a) || ~isfinite(x(a)) || x(a) <= thr_event
-            a = min(pk, a + 1);
-        end
-
-        b = pk;
-        while b < Nx && isfinite(x(b)) && x(b) > thr_event && ~bad_mask(b)
-            b = b + 1;
-        end
-        if bad_mask(b) || ~isfinite(x(b)) || x(b) <= thr_event
-            b = max(pk, b - 1);
-        end
-
-        if (b - a + 1) < minW
-            d = ceil((minW - (b - a + 1))/2);
-            a = max(1, a - d);
-            b = min(Nx, b + d);
-        end
-
-        if a > b || any(bad_mask(a:b))
-            keep_interval(i) = false;
-        else
-            intervals(i,:) = [a b];
-        end
-    end
-
-    locs = locs(keep_interval);
-    intervals = intervals(keep_interval,:);
-
-    out.intervals_raw = intervals;
-
-    if isempty(locs) || isempty(intervals)
-        return;
-    end
-
-    intervals = sortrows(intervals, 1);
-    merged = [];
-    cur = intervals(1,:);
-    gap = max(0, round(opts.refrac_fr));
-
-    for i = 2:size(intervals,1)
-        if intervals(i,1) <= cur(2) + gap
-            cur(2) = max(cur(2), intervals(i,2));
-        else
-            merged = [merged; cur]; %#ok<AGROW>
-            cur = intervals(i,:);
-        end
-    end
-    merged = [merged; cur];
-
-    locs_merged = [];
-    for r = 1:size(merged,1)
-        in_interval = locs(locs >= merged(r,1) & locs <= merged(r,2));
-        if ~isempty(in_interval)
-            [~, idx_max] = max(x(in_interval));
-            pk = in_interval(idx_max);
-
-            if ~bad_mask(pk) && isfinite(x(pk)) && x(pk) >= seuil_detection
-                locs_merged(end+1,1) = pk; %#ok<AGROW>
-            end
-        end
-    end
-
-    out.locs_merged = locs_merged;
-    out.intervals_merged = merged;
+    % Plus de fusion : la période réfractaire est déjà gérée par MinPeakDistance
+    out.locs_merged = locs;
+    out.intervals_merged = zeros(0,2);
 end
 
 function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, quality_thr0] = ...
@@ -1008,7 +977,7 @@ function [invalid_cells, valid_cells, DF_sg, F0, Raster, Acttmp2, StartEnd, MAct
         good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
         
         if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-            good_by_mask = mask_sizes >= opts.min_mask_pixels;
+            good_by_mask  = mask_sizes >= opts.min_mask_um2;
         else
             good_by_mask = true(size(n_peaks_all));
         end
@@ -1145,9 +1114,7 @@ end
 
 %% ===================== NAVIGATION / CUTOFF =====================
 
-function update_quality_threshold(fig, idx_slider)
-
-    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+function update_current_cell(fig, idx_slider)
 
     if ~isappdata(fig,'order_cells')
         return;
@@ -1167,14 +1134,14 @@ function update_quality_threshold(fig, idx_slider)
     setappdata(fig,'nav_rank', idx);
     setappdata(fig,'cell_id', cid);
 
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    sldr = findobj(fig,'Tag','sldr_nav_cell');
     if ~isempty(sldr) && isgraphics(sldr)
         set(sldr,'Min',1,'Max',numel(order_cells),'Value',idx);
         step = 1/max(1,numel(order_cells)-1);
         set(sldr,'SliderStep',[step min(1,10*step)]);
     end
 
-    lbl = findobj(fig,'Tag','lbl_quality_thr');
+    lbl = findobj(fig,'Tag','lbl_nav_cell');
     if ~isempty(lbl)
         lbl.String = sprintf('Navigation cellule (%d / %d)', idx, numel(order_cells));
     end
@@ -1204,7 +1171,7 @@ function next_cell(fig)
     end
 
     idx = min(idx + 1, numel(order_cells));
-    update_quality_threshold(fig, idx);
+    update_current_cell(fig, idx);
 end
 
 function prev_cell(fig)
@@ -1224,7 +1191,7 @@ function prev_cell(fig)
     end
 
     idx = max(idx - 1, 1);
-    update_quality_threshold(fig, idx);
+    update_current_cell(fig, idx);
 end
 
 function goto_navigation_index(fig, hEdit)
@@ -1265,7 +1232,7 @@ function goto_navigation_index(fig, hEdit)
     end
 
     set(hEdit, 'String', num2str(idx));
-    update_quality_threshold(fig, idx);
+    update_current_cell(fig, idx);
 end
 
 function apply_auto_cutoff(fig)
@@ -1297,7 +1264,7 @@ function apply_auto_cutoff(fig)
     good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
 
     if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-        good_by_mask = mask_sizes >= opts.min_mask_pixels;
+        good_by_mask  = mask_sizes >= opts.min_mask_um2;
     else
         good_by_mask = true(size(n_peaks_all));
     end
@@ -1308,8 +1275,8 @@ function apply_auto_cutoff(fig)
     setappdata(fig,'cutoff_validated', true);
     setappdata(fig,'cutoff_locked', true);
 
-    fprintf('Cutoff auto : >= %d pics ET masque >= %d pixels.\n', ...
-        opts.min_n_peaks_cutoff, opts.min_mask_pixels);
+    fprintf('Cutoff auto : >= %d pics ET masque >= %.1f um^2.\n', ...
+        opts.min_n_peaks_cutoff, opts.min_mask_um2);
 end
 
 function validate_selection_filter(fig)
@@ -1344,7 +1311,7 @@ function validate_selection_filter(fig)
     end
 
     min_n_peaks = opts.min_n_peaks_cutoff;
-    min_mask_pixels = opts.min_mask_pixels;
+    min_mask_um2 = opts.min_mask_um2;
 
     mask_sizes = [];
     if isappdata(fig,'mask_sizes')
@@ -1354,7 +1321,7 @@ function validate_selection_filter(fig)
     good_by_peaks = n_peaks_all >= min_n_peaks;
 
     if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-        good_by_mask = mask_sizes >= min_mask_pixels;
+        good_by_mask = mask_sizes >= min_mask_um2;
     else
         good_by_mask = true(size(n_peaks_all));
     end
@@ -1382,7 +1349,7 @@ function validate_selection_filter(fig)
     setappdata(fig,'nav_rank', 1);
     setappdata(fig,'cell_id', order_cells(1));
 
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    sldr = findobj(fig,'Tag','sldr_nav_cell');
     if ~isempty(sldr) && isgraphics(sldr)
         n = numel(order_cells);
         set(sldr,'Min',1,'Max',max(1,n),'Value',1);
@@ -1390,7 +1357,7 @@ function validate_selection_filter(fig)
         set(sldr,'SliderStep',[step min(1,10*step)]);
     end
 
-    lbl = findobj(fig,'Tag','lbl_quality_thr');
+    lbl = findobj(fig,'Tag','lbl_nav_cell');
     if ~isempty(lbl)
         lbl.String = sprintf('Navigation cellule (%d / %d)', 1, numel(order_cells));
     end
@@ -1401,10 +1368,10 @@ function validate_selection_filter(fig)
         rmappdata(fig,'seuil_detection_last');
     end
 
-    update_quality_threshold(fig, 1);
+    update_current_cell(fig, 1);
 
-    fprintf('Validation appliquée : %d cellules affichées (manual keep + >= %d pics + masque >= %d px).\n', ...
-        numel(order_cells), min_n_peaks, min_mask_pixels);
+    fprintf('Validation appliquée : %d cellules affichées (manual keep + >= %d pics + masque >= %.1f um^2).\n', ...
+        numel(order_cells), min_n_peaks, min_mask_um2);
 end
 
 function refresh_selection_order(fig)
@@ -1425,7 +1392,7 @@ function refresh_selection_order(fig)
     if isempty(order_cells_all)
         setappdata(fig,'order_cells', []);
 
-        sldr = findobj(fig,'Tag','sldr_quality_thr');
+        sldr = findobj(fig,'Tag','sldr_nav_cell');
         if ~isempty(sldr) && isgraphics(sldr)
             set(sldr,'Min',1,'Max',1,'Value',1,'SliderStep',[1 1]);
         end
@@ -1435,7 +1402,7 @@ function refresh_selection_order(fig)
             set(hEdit(1),'String','1');
         end
 
-        lbl = findobj(fig,'Tag','lbl_quality_thr');
+        lbl = findobj(fig,'Tag','lbl_nav_cell');
         if ~isempty(lbl)
             lbl.String = 'Navigation cellule (0 / 0)';
         end
@@ -1471,7 +1438,7 @@ function refresh_selection_order(fig)
         setappdata(fig,'cutoff_rank', idx);
     end
 
-    sldr = findobj(fig,'Tag','sldr_quality_thr');
+    sldr = findobj(fig,'Tag','sldr_nav_cell');
     if ~isempty(sldr) && isgraphics(sldr)
         n = numel(order_cells);
         set(sldr,'Min',1,'Max',n,'Value',idx);
@@ -1489,7 +1456,7 @@ function refresh_selection_order(fig)
         end
     end
 
-    lbl = findobj(fig,'Tag','lbl_quality_thr');
+    lbl = findobj(fig,'Tag','lbl_nav_cell');
     if ~isempty(lbl)
         lbl.String = sprintf('Navigation cellule (%d / %d)', idx, numel(order_cells));
     end
@@ -1818,7 +1785,7 @@ function refresh_data(fig)
                             if isappdata(fig,'mask_sizes')
                                 mask_sizes = getappdata(fig,'mask_sizes');
                                 if cell_id <= numel(mask_sizes)
-                                    cond_mask = mask_sizes(cell_id) >= opts.min_mask_pixels;
+                                    cond_mask = isfinite(mask_sizes(cell_id)) && (mask_sizes(cell_id) >= opts.min_mask_um2);
                                 end
                             end
                         
@@ -1998,34 +1965,12 @@ function update_roi_zoom(fig)
     cid = round(getappdata(fig,'cell_id'));
 
     % ----------------------------
-    % Pixel size depuis meta_tbl
-    % ----------------------------
-    pixel_size_um = NaN;
-    if isappdata(fig,'meta_tbl')
-        meta_tbl = getappdata(fig,'meta_tbl');
-        try
-            if istable(meta_tbl) && any(strcmp(meta_tbl.Properties.VariableNames,'PixelSize'))
-                px = meta_tbl.PixelSize;
-
-                if isnumeric(px)
-                    pixel_size_um = double(px(1));
-                elseif iscell(px) && ~isempty(px)
-                    pixel_size_um = str2double(string(px{1}));
-                elseif isstring(px) || ischar(px)
-                    pixel_size_um = str2double(string(px(1)));
-                end
-            end
-        catch
-            pixel_size_um = NaN;
-        end
-    end
-
-    % ----------------------------
     % Récupération masque (stack N x H x W)
     % ----------------------------
     mask = [];
     if isappdata(fig,'masks')
         masks = getappdata(fig,'masks');
+        pixel_size_um = getappdata(fig,'pixel_size_um');
 
         if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
             if cid >= 1 && cid <= size(masks,1)
@@ -2178,7 +2123,9 @@ end
 %% ===================== SLIDERS / PARAMS =====================
 
 function make_slider(parent,fig,label,field,minv,maxv,val,pos)
-    intFields = {'savgol_win','min_width_fr','refrac_fr'};
+
+    intFields = {'savgol_win','window_size_ms','min_width_ms','refrac_ms','local_win_ms'};
+
     if ismember(field,intFields)
         val = round(max(minv, min(maxv, val)));
         fmt = '%s = %d';
@@ -2197,22 +2144,34 @@ function make_slider(parent,fig,label,field,minv,maxv,val,pos)
 end
 
 function update_param(fig, field, value)
+
     opts = getappdata(fig,'opts');
-    intFields = {'savgol_win','min_width_fr','refrac_fr','window_size'};
+    fs   = getappdata(fig,'fs');
+
+    intFields = {'savgol_win','window_size_ms','min_width_ms','refrac_ms','local_win_ms'};
 
     if ismember(field,intFields)
+        value = round(value);
+
         if strcmp(field,'savgol_win')
-            value = round(value);
-            if value < 3, value = 3; end
-            if mod(value,2)==0, value = value+1; end
+            if value < 3
+                value = 3;
+            end
+            if mod(value,2)==0
+                value = value + 1;
+            end
         else
-            value = round(max(1, value));
+            value = max(0, value);
         end
     else
         value = max(0, value);
     end
 
     opts.(field) = value;
+
+    % reconvertit les options temporelles ms -> frames
+    opts = convert_opts_ms_to_frames(opts, fs);
+
     setappdata(fig,'opts',opts);
 
     lbl = findobj(fig,'Tag',['lbl_' field]);
@@ -2231,11 +2190,9 @@ function update_param(fig, field, value)
         end
     end
 
-    % Recalcul si window_size ou SavGol changent
-    if ismember(field, {'window_size','savgol_win'})
+    % Recalcul si window_size_ms ou SavGol changent
+    if ismember(field, {'window_size_ms','savgol_win'})
         F_raw = getappdata(fig,'F_raw');
-        fs    = getappdata(fig,'fs');
-
         bad_frames = [];
         if isappdata(fig,'bad_frames')
             bad_frames = getappdata(fig,'bad_frames');
@@ -2510,7 +2467,10 @@ function create_random_peak_preview(valid_cells, DF_sg, Acttmp2, thresholds, out
         end
 
         if ~isempty(pk)
-            plot(pk, x(pk), 'r*', 'MarkerSize', 6, 'LineWidth', 1);
+            plot(pk, x(pk), '*', ...
+            'Color', [0.85 0.1 0.1], ...
+            'MarkerSize', 3.5, ...
+            'LineWidth', 0.7);
         end
 
         if ~isempty(thresholds) && numel(thresholds) >= ii && isfinite(thresholds(ii))
@@ -2531,7 +2491,7 @@ function create_random_peak_preview(valid_cells, DF_sg, Acttmp2, thresholds, out
     % ----------------------------
     % Sauvegarde PNG si demandé
     % ----------------------------
-    %if ~isempty(png_path)
+    if ~isempty(png_path)
         try
             exportgraphics(figPrev, png_path, 'Resolution', 200);
             fprintf('Preview PNG sauvegardée : %s\n', png_path);
@@ -2543,5 +2503,6 @@ function create_random_peak_preview(valid_cells, DF_sg, Acttmp2, thresholds, out
         if ishghandle(figPrev)
             close(figPrev);
         end
-    %end
+    end
 end
+

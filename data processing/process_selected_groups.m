@@ -13,7 +13,7 @@ function selected_groups = process_selected_groups(selected_groups, metadata_res
         meta_tbl = metadata_results{k};
         data = selected_groups(k).data;
     
-        [sampling_rate_group, synchronous_frames_group] = fill_sampling_and_sync_frames( ...
+        [sampling_rate_group, ~] = fill_sampling_and_sync_frames( ...
             gcamp_root_folders, current_xml_group, meta_tbl, 0.2);
     
         %===================%

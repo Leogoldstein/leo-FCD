@@ -1,8 +1,9 @@
-function [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, position, time_minutes, pixel_size, n_plans] = find_key_value(path)
+function [recording_time, sampling_rate, sampling_rate_per_plane, interplane_delay_s, optical_zoom, position, time_minutes, pixel_size, n_plans] = find_key_value(path)
     % Fonction pour extraire les métadonnées d'un fichier XML Prairie View :
     %   - Heure d'enregistrement
     %   - Framerate global Prairie (Hz), sans tenir compte des déplacements
-    %   - Framerate estimé par plan (Hz), avec délai fixe de 15 ms entre plans
+    %   - Framerate estimé par plan (Hz)
+    %   - Délai inter-plan estimé (s)
     %   - Optical zoom
     %   - Position Z (µm) :
     %       * TSeries simple : scalaire
@@ -19,7 +20,8 @@ function [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, 
     % -----------------------------
     recording_time          = '';
     sampling_rate           = NaN;   % framerate global Prairie
-    sampling_rate_per_plane = NaN;   % framerate estimé par plan
+    sampling_rate_per_plane = NaN;   % framerate réel par plan
+    interplane_delay_s      = NaN;   % délai estimé entre deux plans
     optical_zoom            = NaN;
     position                = NaN;   % scalaire ou vecteur
     time_minutes            = NaN;
@@ -28,9 +30,6 @@ function [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, 
 
     pixel_size_x = NaN;
     pixel_size_y = NaN;
-
-    % Hypothèse simplifiée : 15 ms entre deux plans
-    interplane_delay_s = 0.015;
 
     % Convertit "4,17" -> 4.17
     str2num_local = @(s) str2double(strrep(char(s), ',', '.'));
@@ -161,20 +160,23 @@ function [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, 
             end
         end
 
-        %% === Durée d’enregistrement ===
-        frameNodes = xmlDoc.getElementsByTagName('Frame');
-        nFrames = frameNodes.getLength;
+        %% === Durée d’enregistrement + absoluteTime globaux ===
+        frameNodesGlobal = xmlDoc.getElementsByTagName('Frame');
+        nFramesGlobal = frameNodesGlobal.getLength;
+        abs_times_global = nan(1, nFramesGlobal);
 
-        if nFrames > 0
+        if nFramesGlobal > 0
             t_min = inf;
             t_max = -inf;
             have_time = false;
 
-            for f = 0:nFrames-1
-                frameNode = frameNodes.item(f);
+            for f = 0:nFramesGlobal-1
+                frameNode = frameNodesGlobal.item(f);
 
                 if frameNode.hasAttribute('absoluteTime')
                     t = str2num_local(frameNode.getAttribute('absoluteTime'));
+                    abs_times_global(f+1) = t;
+
                     if ~isnan(t)
                         have_time = true;
                         if t < t_min, t_min = t; end
@@ -317,36 +319,57 @@ function [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, 
 
             n_plans = nFramesInSeq;
             position = z_pos_all;
-
-            fprintf('ZSeries detectee : %d plans\n', n_plans);
-            fprintf('Frame index detectes : %s\n', mat2str(frame_index));
-            fprintf('Z focus : %s\n', mat2str(z_focus_all));
-            fprintf('ETL raw : %s\n', mat2str(etl_raw_all));
-            fprintf('Positions Z estimees : %s\n', mat2str(position));
-
             break;
         end
 
-        %% === Sampling rate par plan ===
-        % Hypothèse :
-        % - sampling_rate = framerate global Prairie sans déplacement
-        % - on ajoute 15 ms entre les plans
-        %
-        % Cas 1 plan :
-        %   pas de déplacement => sampling_rate_per_plane = sampling_rate
-        %
-        % Cas N plans :
-        %   temps retour même plan = N * (1/sampling_rate + 0.015)
+        %% === Inférence du délai inter-plan et du sampling rate par plan ===
+        abs_times = abs_times_global(~isnan(abs_times_global));
 
         if ~isnan(sampling_rate) && n_plans > 0
             if n_plans == 1
+                % Pas de déplacement entre plans
                 sampling_rate_per_plane = sampling_rate;
+                interplane_delay_s = 0;
+
             else
-                time_per_plane = n_plans * ((1 / sampling_rate) + interplane_delay_s);
-                sampling_rate_per_plane = 1 / time_per_plane;
+                % 1) Estimation directe du sampling rate par plan
+                if numel(abs_times) > n_plans
+                    dt_same_plane = abs_times(1+n_plans:end) - abs_times(1:end-n_plans);
+                    dt_same_plane = dt_same_plane(dt_same_plane > 0);
+
+                    if ~isempty(dt_same_plane)
+                        sampling_rate_per_plane = 1 / median(dt_same_plane);
+                    end
+                end
+
+                % 2) Estimation du délai inter-plan depuis les frames consécutives
+                if numel(abs_times) >= 2
+                    dt_consecutive = diff(abs_times);
+                    dt_consecutive = dt_consecutive(dt_consecutive > 0);
+
+                    if ~isempty(dt_consecutive)
+                        interplane_delay_s = median(dt_consecutive) - (1 / sampling_rate);
+
+                        % évite les petites valeurs négatives dues au bruit numérique
+                        if ~isnan(interplane_delay_s) && interplane_delay_s < 0
+                            interplane_delay_s = max(interplane_delay_s, 0);
+                        end
+                    end
+                end
+
+                % === Affichage délai inter-plan ===
+                if ~isnan(interplane_delay_s)
+                    fprintf('Delai inter-plan estime : %.3f ms\n', interplane_delay_s * 1000);
+                else
+                    fprintf('Delai inter-plan non estime\n');
+                end
+
+                % 3) Fallback si dt_same_plane indisponible
+                if isnan(sampling_rate_per_plane) && ~isnan(interplane_delay_s)
+                    time_per_plane = n_plans * ((1 / sampling_rate) + interplane_delay_s);
+                    sampling_rate_per_plane = 1 / time_per_plane;
+                end
             end
-        else
-            sampling_rate_per_plane = NaN;
         end
 
         %% === Pixel size final ===

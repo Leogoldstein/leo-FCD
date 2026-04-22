@@ -336,7 +336,7 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                         end
 
                         %------------------------------
-                        % Dernière ligne : motion energy
+                        % Dernière ligne : motion energy sur 2 colonnes
                         %------------------------------
                         if has_summary_motion
                             row_counter = row_counter + 1;
@@ -355,17 +355,25 @@ function build_rasterplot(data, gcamp_output_folders, current_animal_group, curr
                                 t_motion = linspace(0, total_time_motion, numel(motion_energy_smooth));
                                 activity_segs_sec_m = build_activity_segments(speed_active, total_time_motion);
 
-                                ax_m = subplot(nRows, nCols, (row_counter-1)*nCols + 1);
-                                plot(ax_m, t_motion, motion_energy_smooth, 'LineWidth', 1.5);
-                                grid(ax_m, 'on');
-                                xlim(ax_m, [0 total_time_motion]);
-                                xlabel(ax_m, 'Time (s)');
-                                ylabel(ax_m, 'Motion');
-                                title(ax_m, 'Motion energy');
-                                plot_activity_bands(ax_m, activity_segs_sec_m);
+                                % Colonne gauche
+                                ax_m1 = subplot(nRows, nCols, (row_counter-1)*nCols + 1);
+                                plot(ax_m1, t_motion, motion_energy_smooth, 'LineWidth', 1.5);
+                                grid(ax_m1, 'on');
+                                xlim(ax_m1, [0 total_time_motion]);
+                                xlabel(ax_m1, 'Time (s)');
+                                ylabel(ax_m1, 'Motion');
+                                title(ax_m1, 'Motion energy');
+                                plot_activity_bands(ax_m1, activity_segs_sec_m);
 
-                                ax_empty = subplot(nRows, nCols, (row_counter-1)*nCols + 2);
-                                axis(ax_empty, 'off');
+                                % Colonne droite
+                                ax_m2 = subplot(nRows, nCols, (row_counter-1)*nCols + 2);
+                                plot(ax_m2, t_motion, motion_energy_smooth, 'LineWidth', 1.5);
+                                grid(ax_m2, 'on');
+                                xlim(ax_m2, [0 total_time_motion]);
+                                xlabel(ax_m2, 'Time (s)');
+                                ylabel(ax_m2, 'Motion');
+                                title(ax_m2, 'Motion energy');
+                                plot_activity_bands(ax_m2, activity_segs_sec_m);
                             end
                         else
                             for c = 1:nCols

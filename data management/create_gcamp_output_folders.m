@@ -104,27 +104,27 @@ function [selected_groups, gcamp_output_folders_all, gcamp_root_folders_all, day
         %======================================================
         % Nettoyage optionnel
         %======================================================
-        numFolders = numel(gcamp_root_folders);
-
-        for m = 1:numFolders
-            currentFolder = gcamp_root_folders{m};
-
-            files = dir(currentFolder);
-
-            for i = 1:length(files)
-                if files(i).isdir
-                    continue;
-                end
-
-                filename = files(i).name;
-
-                if ~strcmp(filename, 'results_movie.mat') && ...
-                   ~strcmp(filename, 'metadata_results.xlsx')
-
-                    delete(fullfile(currentFolder, filename));
-                end
-            end
-        end
+        % numFolders = numel(gcamp_root_folders);
+        % 
+        % for m = 1:numFolders
+        %     currentFolder = gcamp_root_folders{m};
+        % 
+        %     files = dir(currentFolder);
+        % 
+        %     for i = 1:length(files)
+        %         if files(i).isdir
+        %             continue;
+        %         end
+        % 
+        %         filename = files(i).name;
+        % 
+        %         if ~strcmp(filename, 'results_movie.mat') && ...
+        %            ~strcmp(filename, 'metadata_results.xlsx')
+        % 
+        %             delete(fullfile(currentFolder, filename));
+        %         end
+        %     end
+        % end
     end
 end
 

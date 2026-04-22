@@ -1,92 +1,154 @@
-function plot_gcamp_histograms(results_analysis, gcamp_output_folders, current_animal_group, current_ages_group)
+function plot_gcamp_histograms(results_analysis, gcamp_root_folders, current_animal_group, current_ages_group)
 
 numFolders = length(results_analysis);
 
 for m = 1:numFolders
-    
-    %==================== DATA ====================%
-    freq = results_analysis(m).FrequencyPerCell_gcamp;
-    freq = freq(isfinite(freq));
-    
-    dur = results_analysis(m).DurationPerCell_gcamp_s;
-    dur = dur(isfinite(dur));
-    
-    iei = results_analysis(m).IEImeanPerCell_gcamp_s;
-    iei = iei(isfinite(iei));
-    
-    %==================== CHECK DATA ====================%
-    if isempty(freq) && isempty(dur) && isempty(iei)
-        fprintf('m=%d: aucune donnée valide pour les histogrammes GCaMP. Skip.\n', m);
-        continue;
+
+    fig = [];
+    try
+        % -----------------------------
+        % Nom dossier / fichier
+        % -----------------------------
+        output_folder = gcamp_root_folders{m};
+
+        if ~exist(output_folder, 'dir')
+            mkdir(output_folder);
+        end
+
+        filename = fullfile(output_folder, sprintf( ...
+            'GCaMP_histograms_%s_%s.png', ...
+            char(string(current_animal_group)), char(string(current_ages_group{m}))));
+
+        % -----------------------------
+        % Si la figure existe déjà, skip
+        % -----------------------------
+        if exist(filename, 'file')
+            fprintf('Rec %d: figure déjà existante, skip: %s\n', m, filename);
+            continue;
+        end
+
+        % -----------------------------
+        % Récupération des données
+        % -----------------------------
+        dur = results_analysis(m).AllDurations_gcamp;
+        amp = results_analysis(m).AllAmplitudes_gcamp;
+        freq = results_analysis(m).FrequencyPerCell_gcamp;
+
+        % -----------------------------
+        % Conversion robuste en vecteurs numériques
+        % -----------------------------
+        dur  = force_numeric_vector(dur);
+        amp  = force_numeric_vector(amp);
+        freq = force_numeric_vector(freq);
+
+        if isempty(dur) && isempty(amp) && isempty(freq)
+            fprintf('Rec %d: aucune donnée exploitable, skip.\n', m);
+            continue;
+        end
+
+        % -----------------------------
+        % Figure
+        % -----------------------------
+        fig = figure('Position', [100 100 1400 400]);
+        tl = tiledlayout(1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+        % Histogramme durées
+        nexttile;
+        if ~isempty(dur)
+            histogram(dur, 50);
+            xlabel('Duration');
+            ylabel('Count');
+            title('GCaMP durations');
+            grid on;
+        else
+            text(0.5, 0.5, 'No duration data', 'HorizontalAlignment', 'center');
+            axis off;
+        end
+
+        % Histogramme amplitudes
+        nexttile;
+        if ~isempty(amp)
+            histogram(amp, 50);
+            xlabel('Amplitude');
+            ylabel('Count');
+            title('GCaMP amplitudes');
+            grid on;
+        else
+            text(0.5, 0.5, 'No amplitude data', 'HorizontalAlignment', 'center');
+            axis off;
+        end
+
+        % Histogramme fréquences
+        nexttile;
+        if ~isempty(freq)
+            histogram(freq, 50);
+            xlabel('Frequency (events / min)');
+            ylabel('Count');
+            title('GCaMP frequencies');
+            grid on;
+        else
+            text(0.5, 0.5, 'No frequency data', 'HorizontalAlignment', 'center');
+            axis off;
+        end
+
+        title(tl, sprintf('GCaMP histograms - %s %s', ...
+            char(string(current_animal_group)), char(string(current_ages_group{m}))));
+
+        % -----------------------------
+        % Sauvegarde
+        % -----------------------------
+        saveas(fig, filename);
+        close(fig);
+
+        fprintf('Saved: %s\n', filename);
+
+    catch ME
+        fprintf('Erreur rec %d: %s\n', m, ME.message);
+        if ~isempty(fig) && ishghandle(fig)
+            close(fig);
+        end
     end
-    
-    %==================== OUTPUT ====================%
-    output_folder = gcamp_output_folders{m};
-    
-    if ~exist(output_folder, 'dir')
-        mkdir(output_folder);
-    end
-    
-    filename = fullfile(output_folder, sprintf('GCaMP_histograms_%s_%s.png', ...
-        current_animal_group, ...
-        current_ages_group{m}));
-    
-    if exist(filename, 'file')
-        fprintf('La figure "%s" existe déjà. Passage au suivant.\n', filename);
-        continue;
-    end
-    
-    %==================== FIGURE ====================%
-    fig = figure('Position',[100 100 1200 400]);
-    
-    sgtitle(sprintf('GCaMP – %s %s', ...
-        current_animal_group, ...
-        current_ages_group{m}));
-    
-    %----------- SUBPLOT 1 : FREQUENCY -----------%
-    subplot(1,3,1)
-    if isempty(freq)
-        text(0.5, 0.5, 'Aucune donnée valide', 'HorizontalAlignment', 'center');
-        axis off;
-    else
-        histogram(freq, 'BinMethod','fd');
-        xlabel('Frequency (events / min)');
-        ylabel('Number of cells');
-        title('Frequency');
-        grid on;
-    end
-    
-    %----------- SUBPLOT 2 : DURATION -----------%
-    subplot(1,3,2)
-    if isempty(dur)
-        text(0.5, 0.5, 'Aucune donnée valide', 'HorizontalAlignment', 'center');
-        axis off;
-    else
-        histogram(dur, 'BinMethod','fd');
-        xlabel('Transient duration (s)');
-        ylabel('Number of cells');
-        title('Duration');
-        grid on;
-    end
-    
-    %----------- SUBPLOT 3 : IEI -----------%
-    subplot(1,3,3)
-    if isempty(iei)
-        text(0.5, 0.5, 'Aucune donnée valide', 'HorizontalAlignment', 'center');
-        axis off;
-    else
-        histogram(iei, 'BinMethod','fd');
-        xlabel('Mean inter-event interval (s)');
-        ylabel('Number of cells');
-        title('IEI');
-        grid on;
-    end
-    
-    %==================== SAVE ====================%
-    saveas(fig, filename);
-    close(fig);
-    
-    fprintf('Saved: %s\n', filename);
 end
 
+end
+
+
+function v = force_numeric_vector(x)
+
+    if isempty(x)
+        v = [];
+        return;
+    end
+
+    if iscell(x)
+        % garder seulement les cellules non vides
+        x = x(~cellfun(@isempty, x));
+
+        if isempty(x)
+            v = [];
+            return;
+        end
+
+        % garder seulement les cellules numériques
+        x = x(cellfun(@isnumeric, x));
+
+        if isempty(x)
+            v = [];
+            return;
+        end
+
+        % transformer chaque cellule en vecteur colonne
+        x = cellfun(@(c) c(:), x, 'UniformOutput', false);
+
+        % concaténer
+        x = vertcat(x{:});
+    end
+
+    if ~isnumeric(x)
+        v = [];
+        return;
+    end
+
+    v = x(:);
+    v = v(isfinite(v));
 end
