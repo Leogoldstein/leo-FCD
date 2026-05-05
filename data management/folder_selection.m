@@ -48,8 +48,10 @@ function selected_groups = folder_selection(choices, group_order, dataFolders_by
                 [true_xml_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, ...
                  iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
 
-                TSeriesPaths_jm   = TSeriesPaths_jm(~cellfun('isempty', TSeriesPaths_jm));
-                true_xml_paths_jm = true_xml_paths_jm(~cellfun('isempty', true_xml_paths_jm));
+                valid_jm = ~cellfun('isempty', TSeriesPaths_jm);
+
+                TSeriesPaths_jm   = TSeriesPaths_jm(valid_jm);
+                true_xml_paths_jm = true_xml_paths_jm(valid_jm);
 
                 [~, ~, ~, ~, ~, gcampdataFolders] = preprocess_npy_files( ...
                     FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);

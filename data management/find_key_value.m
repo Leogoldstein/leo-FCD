@@ -358,11 +358,11 @@ function [recording_time, sampling_rate, sampling_rate_per_plane, interplane_del
                 end
 
                 % === Affichage délai inter-plan ===
-                if ~isnan(interplane_delay_s)
-                    fprintf('Delai inter-plan estime : %.3f ms\n', interplane_delay_s * 1000);
-                else
-                    fprintf('Delai inter-plan non estime\n');
-                end
+                % if ~isnan(interplane_delay_s)
+                %     fprintf('Delai inter-plan estime : %.3f ms\n', interplane_delay_s * 1000);
+                % else
+                %     fprintf('Delai inter-plan non estime\n');
+                % end
 
                 % 3) Fallback si dt_same_plane indisponible
                 if isnan(sampling_rate_per_plane) && ~isnan(interplane_delay_s)

@@ -13,7 +13,7 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
 
     % ---- Options détection (valeurs initiales) ----
     opts = struct( ...
-        'window_size_ms', 5000, ...      % detrending window
+        'window_size_s', 120, ...      % detrending window
         'savgol_win', 9, ...             % garde en frames
         'savgol_poly', 3, ...
         'min_width_ms', 200, ...         % largeur minimale d'événement
@@ -298,7 +298,7 @@ function [F0, noise_est, SNR, valid_cells, DF_sg, Raster, Acttmp2, StartEnd, MAc
     end
 
     % ---- Contrôles détection ----
-    make_slider(ctrl_panel,fig,'Window size (ms)','window_size_ms',200,30000,opts.window_size_ms,[0.05 0.76 0.90 0.06]);
+    make_slider(ctrl_panel,fig,'Window size (sec)','window_size_s',1,300,opts.window_size_s,[0.05 0.76 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Largeur min (ms)','min_width_ms',0,5000,opts.min_width_ms,[0.05 0.68 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.60 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Réfractaire (ms)','refrac_ms',0,5000,opts.refrac_ms,[0.05 0.52 0.90 0.06]);
@@ -577,7 +577,7 @@ function opts = convert_opts_ms_to_frames(opts, fs)
         error('convert_opts_ms_to_frames: fs invalide.');
     end
 
-    opts.window_size = max(1, round(opts.window_size_ms * fs / 1000));
+    opts.window_size = max(1, round(opts.window_size_s * fs));
     opts.min_width_fr = max(1, round(opts.min_width_ms * fs / 1000));
     opts.refrac_fr    = max(1, round(opts.refrac_ms * fs / 1000));
     opts.local_win_fr = max(1, round(opts.local_win_ms * fs / 1000));
@@ -2124,7 +2124,7 @@ end
 
 function make_slider(parent,fig,label,field,minv,maxv,val,pos)
 
-    intFields = {'savgol_win','window_size_ms','min_width_ms','refrac_ms','local_win_ms'};
+    intFields = {'savgol_win','window_size_s','min_width_ms','refrac_ms','local_win_ms'};
 
     if ismember(field,intFields)
         val = round(max(minv, min(maxv, val)));
@@ -2148,7 +2148,7 @@ function update_param(fig, field, value)
     opts = getappdata(fig,'opts');
     fs   = getappdata(fig,'fs');
 
-    intFields = {'savgol_win','window_size_ms','min_width_ms','refrac_ms','local_win_ms'};
+    intFields = {'savgol_win','window_size_s','min_width_ms','refrac_ms','local_win_ms'};
 
     if ismember(field,intFields)
         value = round(value);
@@ -2190,8 +2190,8 @@ function update_param(fig, field, value)
         end
     end
 
-    % Recalcul si window_size_ms ou SavGol changent
-    if ismember(field, {'window_size_ms','savgol_win'})
+    % Recalcul si window_size_s ou SavGol changent
+    if ismember(field, {'window_size_s','savgol_win'})
         F_raw = getappdata(fig,'F_raw');
         bad_frames = [];
         if isappdata(fig,'bad_frames')

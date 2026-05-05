@@ -85,18 +85,18 @@ for k = 1:length(selected_groups)
             current_xml_group);
     
     results_analysis_all{k} = results_analysis;
-
+     
     [grouped_data_by_age, fig] = plot_basic_metrics_boxplots_by_age(current_ages_group, results_analysis, current_ani_path_group, current_animal_group);
+    % 
+    % plot_frequency_boxplot(results_analysis, gcamp_root_folders, current_animal_group, current_ages_group)
+    % 
+    % plot_all_pairwise_corr_types( ...
+    %     current_ages_group, ...
+    %     data,...
+    %     gcamp_root_folders, ...
+    %     current_animal_group);
 
-    plot_frequency_boxplot(results_analysis, gcamp_root_folders, current_animal_group, current_ages_group)
-
-    plot_all_pairwise_corr_types( ...
-        current_ages_group, ...
-        data,...
-        gcamp_root_folders, ...
-        current_animal_group);
-
-    plot_gcamp_histograms(results_analysis, gcamp_root_folders, current_animal_group, current_ages_group)
+    %plot_gcamp_histograms(results_analysis, gcamp_root_folders, current_animal_group, current_ages_group)
 
 
 %         % Cluster analysis

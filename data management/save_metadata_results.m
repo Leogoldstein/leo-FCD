@@ -109,7 +109,7 @@ function [metadata_results, selected_groups] = save_metadata_results(selected_gr
             %===================%
             %   Extraction depuis le XML
             %===================%
-            [recording_time, sampling_rate, sampling_rate_per_plane, optical_zoom, position, ...
+            [recording_time, sampling_rate, sampling_rate_per_plane, ~, optical_zoom, position, ...
              time_minutes, pixel_size, num_planes] = find_key_value(xml_file);
 
             % Conversion position Z en string

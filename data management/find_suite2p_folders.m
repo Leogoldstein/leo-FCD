@@ -388,11 +388,19 @@ end
 % --------- Sous-fonctions --------- %
 
 function [xml_paths_all, xml_path] = processEnvFile(TSeriesPathGcamp)
-    xml_file = dir(fullfile(TSeriesPathGcamp, '*.xml'));
+    xml_folder = fullfile(TSeriesPathGcamp, 'raw_data');
+
+    if isfolder(xml_folder)
+        xml_file = dir(fullfile(xml_folder, '*.xml'));
+    else
+        warning('raw_data folder not found in %s', TSeriesPathGcamp);
+        xml_file = [];
+    end
+    
     xml_paths_all = {};
 
     if ~isempty(xml_file)
-        xml_path = fullfile(TSeriesPathGcamp, xml_file(1).name);
+        xml_path = fullfile(TSeriesPathGcamp, 'raw_data', xml_file(1).name);
         xml_paths_all{end+1} = xml_path;
     else
         disp(['Warning: No .xml file found in GCaMP folder: ', TSeriesPathGcamp]);
@@ -402,7 +410,15 @@ function [xml_paths_all, xml_path] = processEnvFile(TSeriesPathGcamp)
 end
 
 function dataFolders = process_TSeries(TSeriesPath)
-    suite2pFolder = fullfile(TSeriesPath, 'suite2p');
+    suite2pOldFolder = fullfile(TSeriesPath, 'suite2p');
+    suite2pNewFolder = fullfile(TSeriesPath, 'suite2p_new');
+
+    if isfolder(suite2pNewFolder)
+        suite2pFolder = suite2pNewFolder;
+    else
+        suite2pFolder = suite2pOldFolder;
+    end
+
     if ~isfolder(suite2pFolder)
         dataFolders = {};
         return;
