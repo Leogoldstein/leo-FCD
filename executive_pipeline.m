@@ -10,7 +10,7 @@ setup_python_env()
 clearvars -except choices group_order animal_date_list
 dataFolders_by_group = select_data_folders_by_group(choices, group_order);
 
-%% Organisation des informations spécifiques
+% Organisation des informations spécifiques
 
 selected_groups = folder_selection(choices, group_order, dataFolders_by_group);
 
@@ -18,7 +18,6 @@ selected_groups = folder_selection(choices, group_order, dataFolders_by_group);
 
 [selected_groups, gcamp_output_folders_all, gcamp_root_folders_all, daytime] = create_gcamp_output_folders(selected_groups);
 selected_groups = create_data(selected_groups);
-%%
 metadata_results = save_metadata_results(selected_groups);
 
 %% Data processing
@@ -62,28 +61,28 @@ for k = 1:length(selected_groups)
     [sampling_rate_group, synchronous_frames_group] = fill_sampling_and_sync_frames( ...
                 gcamp_root_folders, current_xml_group, meta_tbl, 0.2);
     
-    %===================%
-    %   Pairwise correlation
-    %===================%
-    data = load_or_process_corr_data( ...
-        gcamp_root_folders, data);
-
-    %===================%
-    %   SCEs
-    %===================%
-    data = load_or_process_sce_data( ...
-        current_animal_group, date_group_paths, ...
-        gcamp_root_folders, synchronous_frames_group, data);
-    
-    selected_groups(k).data = data;
-
+    % %===================%
+    % %   Pairwise correlation
+    % %===================%
+    % data = load_or_process_corr_data( ...
+    %     gcamp_root_folders, data);
+    % 
+    % %===================%
+    % %   SCEs
+    % %===================%
+    % data = load_or_process_sce_data( ...
+    %     current_animal_group, date_group_paths, ...
+    %     gcamp_root_folders, synchronous_frames_group, data);
+    % 
+    % selected_groups(k).data = data;
+    % 
     % Compute basic metrcis
     results_analysis = compute_export_basic_metrics( ...
             gcamp_root_folders, ...
             data, ...
             sampling_rate_group, ...
             current_xml_group);
-    
+
     results_analysis_all{k} = results_analysis;
      
     [grouped_data_by_age, fig] = plot_basic_metrics_boxplots_by_age(current_ages_group, results_analysis, current_ani_path_group, current_animal_group);

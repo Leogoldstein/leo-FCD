@@ -10,8 +10,8 @@ function results_analysis = compute_export_basic_metrics( ...
         'ActiveCellsNumberBlue', ...
         'FrequencyPerCell_gcamp', ...
         'FrequencyPerCell_blue', ...
-        'InterEventIntervals_gcamp_s', ...
-        'InterEventIntervals_blue_s', ...
+        'InterEventIntervals_gcamp_ms', ...
+        'InterEventIntervals_blue_ms', ...
         'SCEsThreshold', ...
         'SCEsNumber', ...
         'SCEsCellParticipation_percent', ...
@@ -32,7 +32,7 @@ function results_analysis = compute_export_basic_metrics( ...
             z_position_um = NaN;
     
             try
-                [~, ~, ~, ~, position, ~, ~, ~] = find_key_value(current_env_group{m});
+                [~, ~, ~, ~, ~, position, ~, ~, ~] = find_key_value(current_env_group{m});
     
                 if ~isempty(position)
                     position = position(:);
@@ -145,8 +145,8 @@ function results_analysis = compute_export_basic_metrics( ...
             results_analysis(m).FrequencyPerCell_gcamp = gcamp_metrics.freq(:);
             results_analysis(m).FrequencyPerCell_blue  = blue_metrics.freq(:);
     
-            results_analysis(m).InterEventIntervals_gcamp_s = gcamp_metrics.intervals_s(:);
-            results_analysis(m).InterEventIntervals_blue_s  = blue_metrics.intervals_s(:);
+            results_analysis(m).InterEventIntervals_gcamp_ms = gcamp_metrics.intervals_ms(:);
+            results_analysis(m).InterEventIntervals_blue_ms  = blue_metrics.intervals_ms(:);
     
             results_analysis(m).SCEsThreshold                 = sce_threshold;
             results_analysis(m).SCEsNumber                    = num_sces;
@@ -171,7 +171,7 @@ function metrics = compute_branch_metrics(data, branchName, m, sampling_rate, df
         'nCells', NaN, ...
         'nFrames', NaN, ...
         'freq', [], ...
-        'intervals_s', []);
+        'intervals_ms', []);
     
     has_data = has_nonempty_plane_field_nested(data, branchName, dfField, m) && ...
                has_nonempty_plane_field_nested(data, branchName, rasterField, m);
@@ -194,7 +194,7 @@ function metrics = compute_branch_metrics(data, branchName, m, sampling_rate, df
     metrics.nFrames = size(Raster,2);
     
     metrics.freq = compute_frequency_from_raster(Raster, sampling_rate);
-    metrics.intervals_s = compute_inter_event_intervals_from_raster(Raster, sampling_rate);
+    metrics.intervals_ms = compute_inter_event_intervals_from_raster(Raster, sampling_rate);
 
 end
 
@@ -283,9 +283,9 @@ function freq_per_cell_per_min = compute_frequency_from_raster(Raster, sampling_
 end
 
 
-function intervals_s = compute_inter_event_intervals_from_raster(Raster, sampling_rate)
+function intervals_ms = compute_inter_event_intervals_from_raster(Raster, sampling_rate)
 
-    intervals_s = [];
+    intervals_ms = [];
     
     if isempty(Raster) || sampling_rate <= 0
         return;
@@ -301,10 +301,10 @@ function intervals_s = compute_inter_event_intervals_from_raster(Raster, samplin
             continue;
         end
     
-        cell_intervals = diff(event_frames) ./ sampling_rate;
-        intervals_s = [intervals_s; cell_intervals(:)]; %#ok<AGROW>
+        cell_intervals = diff(event_frames) ./ sampling_rate * 1000; % → ms
+        intervals_ms = [intervals_ms; cell_intervals(:)]; %#ok<AGROW>
     end
     
-    intervals_s = intervals_s(isfinite(intervals_s));
+    intervals_ms = intervals_ms(isfinite(intervals_ms));
 
 end
