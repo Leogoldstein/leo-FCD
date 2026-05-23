@@ -27,8 +27,9 @@ for m = 1:numFolders
             freq = [];
         end
 
-        if isfield(results_analysis, 'InterEventIntervals_gcamp_s')
-            intervals = results_analysis(m).InterEventIntervals_gcamp_s;
+        if isfield(results_analysis, 'InterEventIntervals_gcamp_ms')
+            intervals = results_analysis(m).InterEventIntervals_gcamp_ms / 1000; % ms -> s
+        
         else
             intervals = [];
         end
@@ -58,10 +59,13 @@ for m = 1:numFolders
 
         nexttile;
         if ~isempty(intervals)
-            histogram(intervals, 50);
+        
+            histogram(intervals, 150, 'BinLimits', [0 60]);
+            xlim([0 60]);
+        
             xlabel('Inter-event interval (s)');
             ylabel('Count');
-            title('GCaMP inter-event intervals');
+            title('Inter-event intervals');
             grid on;
         else
             text(0.5, 0.5, 'No interval data', 'HorizontalAlignment', 'center');

@@ -652,9 +652,6 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
     bad_mask = make_bad_mask(bad_frames, Nx);
     out.bad_mask = bad_mask;
 
-    x_det = x;
-    x_det(bad_mask) = -Inf;
-
     seuil_detection = 2.33 * sigma;
     if ~isfinite(seuil_detection) || seuil_detection <= 0
         seuil_detection = 0;
@@ -668,29 +665,59 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
         prom = 0;
     end
 
-    x_valid = x_det(isfinite(x_det));
-    if isempty(x_valid) || max(x_valid) <= seuil_detection
+    valid_mask = isfinite(x) & ~bad_mask;
+
+    if ~any(valid_mask)
         return;
     end
 
-    try
-        [~, locs] = findpeaks(x_det, ...
-            'MinPeakHeight', seuil_detection, ...
-            'MinPeakProminence', prom, ...
-            'MinPeakDistance', mpd);
-    catch
-        locs = [];
-    end
-
-    if isempty(locs)
+    if max(x(valid_mask)) <= seuil_detection
         return;
     end
 
-    locs = locs(:);
-    locs = locs(locs >= 1 & locs <= Nx);
-    locs = locs(~bad_mask(locs));
+    % Découpe en segments continus valides
+    d = diff([false; valid_mask; false]);
+    seg_start = find(d == 1);
+    seg_end   = find(d == -1) - 1;
 
-    out.locs_raw = locs;
+    locs_all = [];
+
+    for s = 1:numel(seg_start)
+
+        idx = seg_start(s):seg_end(s);
+        x_seg = x(idx);
+
+        if numel(x_seg) < 3
+            continue;
+        end
+
+        if max(x_seg) <= seuil_detection
+            continue;
+        end
+
+        try
+            [~, locs_seg] = findpeaks(x_seg, ...
+                'MinPeakHeight', seuil_detection, ...
+                'MinPeakProminence', prom, ...
+                'MinPeakDistance', mpd);
+        catch
+            locs_seg = [];
+        end
+
+        if ~isempty(locs_seg)
+            locs_all = [locs_all; idx(locs_seg(:))']; %#ok<AGROW>
+        end
+    end
+
+    if isempty(locs_all)
+        return;
+    end
+
+    locs_all = unique(locs_all(:));
+    locs_all = locs_all(locs_all >= 1 & locs_all <= Nx);
+    locs_all = locs_all(~bad_mask(locs_all));
+
+    out.locs_raw = locs_all;
 end
 
 function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, quality_thr0] = ...
@@ -2420,8 +2447,11 @@ function create_random_peak_preview(valid_cells, DF, Acttmp2, thresholds, outdir
 
         nexttile;
         hold on;
-        box on;
+        box off;
 
+        set(gca, 'LineWidth', 0.8);
+        set(gca, 'TickDir', 'out');
+        
         plot(t, x, 'k-', 'LineWidth', 1);
 
         pk = [];

@@ -1,4 +1,4 @@
-function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, DF, MAct, MinPeakDistancesce, Raster, animal, date)
+function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = select_synchronies(directory, synchronous_frames, WinActive, MAct, MinPeakDistancesce, Raster, animal, date)
     % select_synchronies processes data from a single folder, detecting synchronies (SCEs),
     % creating raster plots, and saving the results.
     %
@@ -17,7 +17,7 @@ function [sce_n_cells_threshold, TRace, Race, sces_distances, RasterRace] = sele
     % - RasterRace: Matrix containing RasterRace data for the folder
 
     try
-        [NCell, Nz] = size(DF);
+        [NCell, Nz] = size(Raster);
 
         % Select synchronies (SCEs)
 

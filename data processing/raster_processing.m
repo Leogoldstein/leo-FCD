@@ -2,7 +2,6 @@ function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
     
     % Initialisation des sorties en cas d'erreur
     isort1 = [];
-    isort1_blue = [];
     isort2 = [];
     Sm = [];
 
