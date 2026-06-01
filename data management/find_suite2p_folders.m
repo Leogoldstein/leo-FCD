@@ -79,7 +79,7 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
         gcamp_idx = find(strcmpi(labels, 'gcamp'), 1);
 
         if ~isempty(gcamp_idx) && ~isempty(foundFolders{gcamp_idx})
-            if numel(foundFolders{gcamp_idx}) == 1
+            if isscalar(foundFolders{gcamp_idx})
                 TSeriesPathsTemp{gcamp_idx} = foundFolders{gcamp_idx}{1};
             else
                 start_path    = selectedFolder;
@@ -149,7 +149,7 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
                             end
                         end
 
-                        if numel(matched_blue) == 1
+                        if isscalar(matched_blue)
                             TSeriesPathsTemp{k} = matched_blue{1};
                             continue;
                         elseif numel(matched_blue) > 1
@@ -162,7 +162,7 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
                 end
 
                 % Sinon, si un seul blue dispo, on le prend
-                if numel(blue_paths) == 1
+                if isscalar(blue_paths)
                     TSeriesPathsTemp{k} = blue_paths{1};
                     continue;
                 end
@@ -187,7 +187,7 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
             % --------------------------------------------------------
             % Cas normal
             % --------------------------------------------------------
-            if numel(foundFolders{k}) == 1
+            if isscalar(foundFolders{k})
                 TSeriesPathsTemp{k} = foundFolders{k}{1};
             else
                 start_path    = selectedFolder;

@@ -1,5 +1,5 @@
 function results_analysis = compute_export_basic_metrics( ...
-    gcamp_output_folders, data, sampling_rate_group, current_env_group)
+    gcamp_output_folders, date_group_paths, data, sampling_rate_group, current_env_group)
 
     nRec = numel(gcamp_output_folders);
 
@@ -23,6 +23,10 @@ function results_analysis = compute_export_basic_metrics( ...
         nRec, 1);
 
     for m = 1:nRec
+
+        % Nom de la date
+        [~, date_name] = fileparts(date_group_paths{m});
+
         try
             sampling_rate = sampling_rate_group{m};
 
@@ -49,10 +53,28 @@ function results_analysis = compute_export_basic_metrics( ...
             % ==========================================================
             % 1) GCaMP par plan
             % ==========================================================
+            first_stim_frame = [];
+
+            if isfield(data, 'stim') && ...
+               isfield(data.stim, 'stim_frames_log_group') && ...
+               numel(data.stim.stim_frames_log_group) >= m && ...
+               ~isempty(data.stim.stim_frames_log_group{m})
+            
+                stim_frames = data.stim.stim_frames_log_group{m};
+                stim_frames = double(stim_frames(:));
+                stim_frames = stim_frames(isfinite(stim_frames));
+            
+                if ~isempty(stim_frames)
+                    first_stim_frame = min(stim_frames);
+                end
+            end
+
             gcamp_metrics = compute_branch_metrics_by_plane( ...
                 data, 'gcamp_plane', m, sampling_rate, ...
                 'DF_gcamp_by_plane', ...
-                'Raster_gcamp_by_plane');
+                'Raster_gcamp_by_plane', ...
+                first_stim_frame, ...
+                date_name);
 
             if ~gcamp_metrics.valid
                 warning('Skipping rec %d (%s) — DF/Raster GCaMP vide.', ...
@@ -66,7 +88,9 @@ function results_analysis = compute_export_basic_metrics( ...
             blue_metrics = compute_branch_metrics_by_plane( ...
                 data, 'blue_plane', m, sampling_rate, ...
                 'DF_blue_by_plane', ...
-                'Raster_blue_by_plane');
+                'Raster_blue_by_plane', ...
+                first_stim_frame, ...
+                date_name);
 
             % ==========================================================
             % 3) SCE metrics
@@ -163,7 +187,8 @@ end
 % HELPERS
 % =====================================================================
 
-function metrics = compute_branch_metrics_by_plane(data, branchName, m, sampling_rate, dfField, rasterField)
+function metrics = compute_branch_metrics_by_plane( ...
+    data, branchName, m, sampling_rate, dfField, rasterField, first_stim_frame, date_name)
 
     metrics = struct( ...
         'valid', false, ...
@@ -210,6 +235,22 @@ function metrics = compute_branch_metrics_by_plane(data, branchName, m, sampling
 
         if isempty(DF) || isempty(Raster)
             continue;
+        end
+        
+        % Crop avant la première frame de stimulation
+        if ~isempty(first_stim_frame) && isfinite(first_stim_frame)
+        
+            first_stim_frame_global = round(first_stim_frame);
+        
+            % Conversion frame globale → frame du plan
+            first_stim_frame_plane = ceil(first_stim_frame_global / nPlanes);
+            fprintf('[INFO] Date %s | Branch %s | Plane %d | First stim frame (plane): %d\n', ...
+                date_name, branchName, p, first_stim_frame_plane);
+        
+            if first_stim_frame_plane > 1 && first_stim_frame_plane <= size(Raster, 2)
+                %DF     = DF(:, 1:first_stim_frame_plane-1);
+                Raster = Raster(:, 1:first_stim_frame_plane-1);
+            end
         end
 
         metrics.valid = true;

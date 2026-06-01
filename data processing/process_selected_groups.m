@@ -41,7 +41,13 @@ function selected_groups = process_selected_groups(selected_groups, metadata_res
             data);
     
         data.movie = movie;
-    
+        
+        %===================%
+        %   Whisker stims
+        %===================%
+        data = load_or_process_stims( ...
+            date_group_paths, current_TSeries_group(:, 1), data);
+
         %===================%
         %   GCaMP cells
         %===================%

@@ -11,7 +11,7 @@ clearvars -except choices group_order animal_date_list
 dataFolders_by_group = select_data_folders_by_group(choices, group_order);
 selected_groups = folder_selection(choices, group_order, dataFolders_by_group);
 
-%% Gestion des dossiers de sorties
+% Gestion des dossiers de sorties
 
 [selected_groups, gcamp_output_folders_all, gcamp_root_folders_all, daytime] = create_gcamp_output_folders(selected_groups);
 selected_groups = create_data(selected_groups);
@@ -32,18 +32,14 @@ metadata_results = save_metadata_results(selected_groups);
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '1';
 selected_groups = process_selected_groups(selected_groups, metadata_results, include_blue_cells);
-
 %%
 selected_groups = DF_peak_detection(selected_groups, metadata_results);
 
-%% Data visualization (concatenate planes)
+[selected_groups, results_analysis_all] = compute_DF(selected_groups, metadata_results);
 
-[selected_groups, results_analysis_all] = visualize_data(selected_groups, metadata_results);
+%% Data visualization (Grouped by layers)
 
-
-
-
-
+visualize_data(selected_groups, results_analysis_all);
 
 
 

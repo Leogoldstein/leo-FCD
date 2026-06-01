@@ -13,67 +13,131 @@ for m = 1:numFolders
         end
 
         filename = fullfile(output_folder, sprintf( ...
-            'GCaMP_freq_intervals_histograms_%s_%s.png', ...
+            'GCaMP_freq_intervals_histograms_by_plane_%s_%s.png', ...
             char(string(current_animal_group)), char(string(current_ages_group{m}))));
 
-        if exist(filename, 'file')
-            fprintf('Rec %d: figure déjà existante, skip: %s\n', m, filename);
-            continue;
-        end
+        % if exist(filename, 'file')
+        %     fprintf('Rec %d: figure déjà existante, skip: %s\n', m, filename);
+        %     continue;
+        % end
 
+        % -----------------------------
+        % Données par plan
+        % -----------------------------
         if isfield(results_analysis, 'FrequencyPerCell_gcamp')
-            freq = results_analysis(m).FrequencyPerCell_gcamp;
+            freq_by_plane = results_analysis(m).FrequencyPerCell_gcamp;
         else
-            freq = [];
+            freq_by_plane = {};
         end
 
         if isfield(results_analysis, 'InterEventIntervals_gcamp_ms')
-            intervals = results_analysis(m).InterEventIntervals_gcamp_ms / 1000; % ms -> s
-        
+            intervals_by_plane = results_analysis(m).InterEventIntervals_gcamp_ms;
         else
-            intervals = [];
+            intervals_by_plane = {};
         end
 
-        freq = force_numeric_vector(freq);
-        intervals = force_numeric_vector(intervals);
+        if ~iscell(freq_by_plane)
+            freq_by_plane = {freq_by_plane};
+        end
 
-        if isempty(freq) && isempty(intervals)
+        if ~iscell(intervals_by_plane)
+            intervals_by_plane = {intervals_by_plane};
+        end
+
+        nPlanes = max(numel(freq_by_plane), numel(intervals_by_plane));
+
+        if nPlanes == 0
             fprintf('Rec %d: aucune donnée exploitable, skip.\n', m);
             continue;
         end
 
-        fig = figure('Position', [100 100 1000 400]);
-        tl = tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+        % Vérifie s'il existe au moins une donnée
+        has_data = false;
+        for p = 1:nPlanes
+            freq_p = [];
+            int_p  = [];
 
-        nexttile;
-        if ~isempty(freq)
-            histogram(freq, 50);
-            xlabel('Frequency (events / min)');
-            ylabel('Count');
-            title('GCaMP frequencies');
-            grid on;
-        else
-            text(0.5, 0.5, 'No frequency data', 'HorizontalAlignment', 'center');
-            axis off;
+            if p <= numel(freq_by_plane)
+                freq_p = force_numeric_vector(freq_by_plane{p});
+            end
+
+            if p <= numel(intervals_by_plane)
+                int_p = force_numeric_vector(intervals_by_plane{p}) ./ 1000;
+            end
+
+            if ~isempty(freq_p) || ~isempty(int_p)
+                has_data = true;
+                break;
+            end
         end
 
-        nexttile;
-        if ~isempty(intervals)
-        
-            histogram(intervals, 150, 'BinLimits', [0 60]);
-            xlim([0 60]);
-        
-            xlabel('Inter-event interval (s)');
-            ylabel('Count');
-            title('Inter-event intervals');
-            grid on;
-        else
-            text(0.5, 0.5, 'No interval data', 'HorizontalAlignment', 'center');
-            axis off;
+        if ~has_data
+            fprintf('Rec %d: aucune donnée exploitable, skip.\n', m);
+            continue;
         end
 
-        title(tl, sprintf('GCaMP frequency and interval histograms - %s %s', ...
+        % -----------------------------
+        % Figure
+        % -----------------------------
+        fig = figure('Color','w', ...
+            'Position', [100 100 1100 max(350, 300*nPlanes)], ...
+            'Name', sprintf('GCaMP histograms by plane - %s %s', ...
             char(string(current_animal_group)), char(string(current_ages_group{m}))));
+
+        tl = tiledlayout(nPlanes, 2, ...
+            'TileSpacing', 'compact', ...
+            'Padding', 'compact');
+
+        for p = 1:nPlanes
+
+            freq = [];
+            intervals = [];
+
+            if p <= numel(freq_by_plane)
+                freq = force_numeric_vector(freq_by_plane{p});
+            end
+
+            if p <= numel(intervals_by_plane)
+                intervals = force_numeric_vector(intervals_by_plane{p}) ./ 1000; % ms -> s
+            end
+
+            % -----------------------------
+            % Histogram fréquence
+            % -----------------------------
+            nexttile;
+            if ~isempty(freq)
+                histogram(freq, 50);
+                xlabel('Frequency (events / min)');
+                ylabel('Count');
+                title(sprintf('Plane %d - GCaMP frequencies', p), 'Interpreter','none');
+                grid on;
+                box off;
+            else
+                empty_hist_axis(sprintf('Plane %d - No frequency data', p));
+            end
+
+            % -----------------------------
+            % Histogram intervalles
+            % -----------------------------
+            nexttile;
+            if ~isempty(intervals)
+                histogram(intervals, 150, 'BinLimits', [0 60]);
+                xlim([0 60]);
+                xlabel('Inter-event interval (s)');
+                ylabel('Count');
+                title(sprintf('Plane %d - Inter-event intervals', p), 'Interpreter','none');
+                grid on;
+                box off;
+            else
+                empty_hist_axis(sprintf('Plane %d - No interval data', p));
+            end
+        end
+
+        title(tl, sprintf('GCaMP frequency and interval histograms by plane - %s %s', ...
+            char(string(current_animal_group)), ...
+            char(string(current_ages_group{m}))), ...
+            'Interpreter','none', ...
+            'FontWeight','bold');
 
         saveas(fig, filename);
         close(fig);
@@ -123,4 +187,13 @@ function v = force_numeric_vector(x)
 
     v = x(:);
     v = v(isfinite(v));
+end
+
+function empty_hist_axis(msg)
+
+    title(msg, 'Interpreter','none');
+    xticks([]);
+    yticks([]);
+    box off;
+
 end
