@@ -1,6 +1,6 @@
 function data = run_gcamp_peak_detection( ...
     gcamp_output_folders, ...
-    meta_tbl, ...
+    metadata, ...
     sampling_rate_group, synchronous_frames_group, ...
     current_animal_group, current_ages_group, ...
     data, meanImgs_gcamp, ...
@@ -48,7 +48,12 @@ function data = run_gcamp_peak_detection( ...
         has_new_blue_group     = false;
         has_new_combined_group = false;
 
+        sampling_rate_m = sampling_rate_group{m};
+        sync_frames_m   = synchronous_frames_group{m};
+        metadata_m      = get_metadata_for_record(metadata, m);
+
         nPlanes = infer_nplanes_for_group_new(data, m);
+
         if nPlanes == 0
             fprintf('Group %d: no planes found, skipping.\n', m);
             continue;
@@ -57,9 +62,11 @@ function data = run_gcamp_peak_detection( ...
         for f = 1:numel(fields_detect_gcamp)
             data = ensure_branch_plane_cell(data, 'gcamp_plane', fields_detect_gcamp{f}, m, nPlanes);
         end
+
         for f = 1:numel(fields_detect_blue)
             data = ensure_branch_plane_cell(data, 'blue_plane', fields_detect_blue{f}, m, nPlanes);
         end
+
         for f = 1:numel(fields_detect_combined)
             data = ensure_branch_plane_cell(data, 'combined_plane', fields_detect_combined{f}, m, nPlanes);
         end
@@ -85,6 +92,7 @@ function data = run_gcamp_peak_detection( ...
         end
 
         outdir_m = fileparts(gcamp_output_folders{m}{1});
+
         filePath_gcamp    = fullfile(outdir_m, 'results_gcamp.mat');
         filePath_blue     = fullfile(outdir_m, 'results_blue.mat');
         filePath_combined = fullfile(outdir_m, 'results_combined.mat');
@@ -110,6 +118,7 @@ function data = run_gcamp_peak_detection( ...
         has_combined_group = false;
 
         for pp = 1:nPlanes
+
             has_any_detection_group = has_any_detection_group || ...
                 has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, pp) || ...
                 has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, pp) || ...
@@ -130,6 +139,7 @@ function data = run_gcamp_peak_detection( ...
         choice_group = '';
 
         if has_any_detection_group
+
             [viewer_mode_requested_group, skip_group] = ask_viewer(true, m, 0, 'group');
 
             if skip_group
@@ -149,6 +159,7 @@ function data = run_gcamp_peak_detection( ...
                 fprintf('Group %d: user cancelled signal mode selection.\n', m);
                 continue;
             end
+
         else
             force_auto_mode_group = true;
         end
@@ -181,6 +192,7 @@ function data = run_gcamp_peak_detection( ...
             end
 
             if force_auto_mode_group
+
                 if has_combined
                     choice = 'combined';
                 elseif has_gcamp
@@ -190,15 +202,18 @@ function data = run_gcamp_peak_detection( ...
                 else
                     continue;
                 end
+
             else
                 choice = choice_group;
 
                 if strcmp(choice, 'combined') && ~has_combined
                     fprintf('Group %d plane %d: combined unavailable, skipping.\n', m, p);
                     continue;
+
                 elseif strcmp(choice, 'gcamp') && ~has_gcamp
                     fprintf('Group %d plane %d: gcamp unavailable, skipping.\n', m, p);
                     continue;
+
                 elseif strcmp(choice, 'blue') && ~has_blue
                     fprintf('Group %d plane %d: blue unavailable, skipping.\n', m, p);
                     continue;
@@ -209,6 +224,7 @@ function data = run_gcamp_peak_detection( ...
             masks_in = [];
 
             switch choice
+
                 case 'gcamp'
                     family      = 'gcamp';
                     cell_type   = 'gcamp';
@@ -217,6 +233,7 @@ function data = run_gcamp_peak_detection( ...
                     iscell_in   = get_branch_plane_or_empty(data, 'gcamp_plane', 'iscell_gcamp_by_plane', m, p);
                     ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
                     masks_in    = get_branch_plane_or_empty(data, 'gcamp_plane', 'gcamp_mask_by_plane', m, p);
+
                     viewer_mode = viewer_mode_requested_group && ...
                         has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p);
 
@@ -228,6 +245,7 @@ function data = run_gcamp_peak_detection( ...
                     iscell_in   = [];
                     ops_in      = get_branch_plane_or_empty(data, 'blue_plane', 'ops_suite2p_blue_by_plane', m, p);
                     masks_in    = get_branch_plane_or_empty(data, 'blue_plane', 'mask_cellpose_by_plane', m, p);
+
                     viewer_mode = viewer_mode_requested_group && ...
                         has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, p);
 
@@ -240,6 +258,7 @@ function data = run_gcamp_peak_detection( ...
                     ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
                     masks_in    = get_branch_plane_or_empty(data, 'combined_plane', 'mask_combined_by_plane', m, p);
                     blue_idx    = get_branch_plane_or_empty(data, 'combined_plane', 'blue_indices_combined_by_plane', m, p);
+
                     viewer_mode = viewer_mode_requested_group && ...
                         has_existing_detection_new(data, 'combined_plane', 'DF_combined_by_plane', m, p);
 
@@ -254,6 +273,7 @@ function data = run_gcamp_peak_detection( ...
             end
 
             if viewer_mode
+
                 switch family
                     case 'gcamp'
                         valid_cells_prev = get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p);
@@ -276,6 +296,7 @@ function data = run_gcamp_peak_detection( ...
                     end
 
                     if strcmp(family, 'combined') && ~isempty(blue_indices_in)
+
                         map_old_to_new = nan(size(F_in,1),1);
                         map_old_to_new(valid_cells_prev) = 1:numel(valid_cells_prev);
 
@@ -286,11 +307,13 @@ function data = run_gcamp_peak_detection( ...
                         blue_indices_in = blue_indices_in(isfinite(blue_indices_in));
                         blue_indices_in = blue_indices_in(:);
                     end
+
                 else
                     warning('Group %d plane %d: invalid previous valid_cells, fallback full signal.', m, p);
                     viewer_mode = false;
                     F_view = F_in;
                 end
+
             else
                 F_view = F_in;
             end
@@ -304,8 +327,8 @@ function data = run_gcamp_peak_detection( ...
              Acttmp2, MAct, thresholds, bad_segs, ...
              opts_det, has_new] = ...
                 peak_detection_tuner(F_view, ...
-                    sampling_rate_group{m}, ...
-                    synchronous_frames_group{m}, ...
+                    sampling_rate_m, ...
+                    sync_frames_m, ...
                     'animal_group', current_animal_group, ...
                     'ages_group', current_ages_group{m}, ...
                     'viewer_mode', viewer_mode, ...
@@ -318,7 +341,7 @@ function data = run_gcamp_peak_detection( ...
                     'meanImg', meanImg, ...
                     'gcamp_TSeries_path', tiff_path, ...
                     'speed', speed_m, ...
-                    'meta_tbl', meta_tbl(m,:), ...
+                    'metadata', metadata_m, ...
                     'gcamp_output_folder', gcamp_output_folders{m}{p});
 
             if ~has_new
@@ -330,6 +353,7 @@ function data = run_gcamp_peak_detection( ...
                 compute_sort_outputs_from_df(DF, tiff_path, ops_in);
 
             switch family
+
                 case 'gcamp'
                     has_new_gcamp_group = true;
 
@@ -387,12 +411,14 @@ function data = run_gcamp_peak_detection( ...
                           isempty(get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p)) );
 
                     if should_rebuild_gcamp
+
                         [ok_gcamp, gcamp_from_combined] = ...
                             reconstruct_gcamp_from_combined_outputs( ...
                                 valid_cells, F0, noise_est, DF, Raster, Acttmp2, ...
-                                thresholds, bad_segs, opts_det, blue_indices_in, synchronous_frames_group{m});
+                                thresholds, bad_segs, opts_det, blue_indices_in, sync_frames_m);
 
                         if ok_gcamp
+
                             data.gcamp_plane.F0_gcamp_by_plane{m}{p} = gcamp_from_combined.F0;
                             data.gcamp_plane.noise_est_gcamp_by_plane{m}{p} = gcamp_from_combined.noise_est;
                             data.gcamp_plane.valid_gcamp_cells_by_plane{m}{p} = gcamp_from_combined.valid_cells;
@@ -412,6 +438,7 @@ function data = run_gcamp_peak_detection( ...
                             data.gcamp_plane.Sm_gcamp_by_plane{m}{p} = Sm_tmp;
 
                             has_new_gcamp_group = true;
+
                             fprintf('Group %d plane %d: GCaMP detection rebuilt from combined outputs.\n', m, p);
                         end
                     end
@@ -421,12 +448,14 @@ function data = run_gcamp_peak_detection( ...
                           isempty(get_branch_plane_or_empty(data, 'blue_plane', 'valid_blue_cells_by_plane', m, p)) );
 
                     if should_rebuild_blue
+
                         [ok_blue, blue_from_combined] = ...
                             reconstruct_blue_from_combined_outputs( ...
                                 valid_cells, F0, noise_est, SNR, DF, Raster, Acttmp2, ...
-                                thresholds, bad_segs, opts_det, blue_indices_in, synchronous_frames_group{m});
+                                thresholds, bad_segs, opts_det, blue_indices_in, sync_frames_m);
 
                         if ok_blue
+
                             data.blue_plane.F0_blue_by_plane{m}{p} = blue_from_combined.F0;
                             data.blue_plane.noise_est_blue_by_plane{m}{p} = blue_from_combined.noise_est;
                             data.blue_plane.SNR_blue_by_plane{m}{p} = blue_from_combined.SNR;
@@ -447,6 +476,7 @@ function data = run_gcamp_peak_detection( ...
                             data.blue_plane.Sm_blue_by_plane{m}{p} = Sm_tmp;
 
                             has_new_blue_group = true;
+
                             fprintf('Group %d plane %d: BLUE detection rebuilt from combined outputs.\n', m, p);
                         end
                     end
@@ -473,7 +503,6 @@ function data = run_gcamp_peak_detection( ...
         end
     end
 end
-
 % =========================================================
 % ==================== UTILITAIRES ========================
 % =========================================================
@@ -914,5 +943,34 @@ function [viewer_mode, skip_plane] = ask_viewer(has_detection, m, p, cell_type)
         otherwise
             viewer_mode = false;
             skip_plane  = true;
+    end
+end
+
+function metadata_m = get_metadata_for_record(metadata, idx)
+
+    metadata_m = struct();
+
+    if isempty(metadata) || ~isstruct(metadata)
+        return;
+    end
+
+    fields = fieldnames(metadata);
+
+    for f = 1:numel(fields)
+
+        field = fields{f};
+        value = metadata.(field);
+
+        if iscell(value)
+
+            if numel(value) >= idx
+                metadata_m.(field) = value{idx};
+            else
+                metadata_m.(field) = [];
+            end
+
+        else
+            metadata_m.(field) = value;
+        end
     end
 end

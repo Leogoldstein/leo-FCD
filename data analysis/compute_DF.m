@@ -1,61 +1,79 @@
-function [selected_groups, results_analysis_all] = compute_DF(selected_groups, metadata_results)
+function selected_groups = compute_DF(selected_groups)
 
-% visualize_data
-% Lance les analyses/visualisations pour chaque groupe sélectionné.
-%
-% Outputs
-%   selected_groups       : structure mise à jour avec data et results_analysis
-%   results_analysis_all  : cell array contenant les results_analysis par groupe
+    if nargin < 1 || isempty(selected_groups)
+        return;
+    end
 
-    nGroups = length(selected_groups);
-    results_analysis_all = cell(nGroups, 1);
+    type_names = fieldnames(selected_groups);
 
-    for k = 1:nGroups
+    for t = 1:numel(type_names)
 
-        fprintf('\n==============================\n');
-        fprintf('Compute data from group %d / %d\n', k, nGroups);
-        fprintf('Animal: %s\n', char(string(selected_groups(k).animal_group)));
-        fprintf('==============================\n');
+        current_type = type_names{t};
 
-        gcamp_root_folders   = selected_groups(k).gcamp_root_folders;
-        current_animal_group = selected_groups(k).animal_group;
-        current_xml_group    = selected_groups(k).xml_path;
-        date_group_paths     = selected_groups(k).date_group_path;
-        data                 = selected_groups(k).data;
+        for k = 1:numel(selected_groups.(current_type))
 
-        meta_tbl = metadata_results{k};
+            fprintf('\n==============================\n');
+            fprintf('Compute data\n');
+            fprintf('Type: %s\n', current_type);
+            fprintf('Animal %d / %d: %s\n', ...
+                k, numel(selected_groups.(current_type)), ...
+                char(string(selected_groups.(current_type)(k).animal_group)));
+            fprintf('==============================\n');
 
-        % ======================================================
-        % Sampling rate + synchronous frames
-        % ======================================================
-        [sampling_rate_group, synchronous_frames_group] = fill_sampling_and_sync_frames( ...
-            gcamp_root_folders, current_xml_group, meta_tbl, 0.2);
+            paths    = selected_groups.(current_type)(k).paths;
+            metadata = selected_groups.(current_type)(k).metadata;
+            data     = selected_groups.(current_type)(k).data;
 
-        % ======================================================
-        % Pairwise correlation
-        % ======================================================
-        data = load_or_process_corr_data( ...
-            gcamp_root_folders, data);
+            gcamp_root_folders = paths.gcamp_root;
+            date_group_paths   = paths.date;
+            current_xml_group  = paths.xml;
 
-        % ======================================================
-        % SCEs
-        % ======================================================
-        data = load_or_process_sce_data( ...
-            current_animal_group, date_group_paths, ...
-            gcamp_root_folders, synchronous_frames_group, data);
+            current_animal_group = selected_groups.(current_type)(k).animal_group;
 
-        selected_groups(k).data = data;
+            %======================================================
+            % Sampling rate + synchronous frames depuis metadata
+            %======================================================
+            sampling_rate_group = metadata.SamplingRatePlane;
 
-        % ======================================================
-        % Basic metrics
-        % ======================================================
-        results_analysis = compute_export_basic_metrics( ...
-            gcamp_root_folders, ...
-            date_group_paths, ...
-            data, ...
-            sampling_rate_group, ...
-            current_xml_group);
+            synchronous_frames_group = cell(size(sampling_rate_group));
+            
+            for m = 1:numel(sampling_rate_group)
+                synchronous_frames_group{m} = ...
+                    round(0.2 * sampling_rate_group{m});
+            end
 
-        results_analysis_all{k} = results_analysis;
+            %======================================================
+            % Pairwise correlation
+            %======================================================
+            data = load_or_process_corr_data( ...
+                gcamp_root_folders, ...
+                data);
+
+            %======================================================
+            % SCEs
+            %======================================================
+            data = load_or_process_sce_data( ...
+                current_animal_group, ...
+                date_group_paths, ...
+                gcamp_root_folders, ...
+                synchronous_frames_group, ...
+                data);
+
+            %======================================================
+            % Basic metrics
+            %======================================================
+            results_analysis = compute_export_basic_metrics( ...
+                gcamp_root_folders, ...
+                date_group_paths, ...
+                data, ...
+                sampling_rate_group, ...
+                current_xml_group);
+
+            %======================================================
+            % Save back
+            %======================================================
+            selected_groups.(current_type)(k).data = data;
+            selected_groups.(current_type)(k).results_analysis = results_analysis;
+        end
     end
 end

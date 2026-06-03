@@ -16,10 +16,10 @@ for m = 1:numFolders
             'GCaMP_freq_intervals_histograms_by_plane_%s_%s.png', ...
             char(string(current_animal_group)), char(string(current_ages_group{m}))));
 
-        % if exist(filename, 'file')
-        %     fprintf('Rec %d: figure déjà existante, skip: %s\n', m, filename);
-        %     continue;
-        % end
+        if exist(filename, 'file')
+            fprintf('Rec %d: figure déjà existante, skip: %s\n', m, filename);
+            continue;
+        end
 
         % -----------------------------
         % Données par plan

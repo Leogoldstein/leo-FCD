@@ -1,53 +1,56 @@
-function visualize_data(selected_groups, results_analysis_all)
+function figs_by_type = visualize_data(selected_groups)
 
-% visualize_data
-% Lance les analyses/visualisations pour chaque groupe sélectionné.
-%
-% Outputs
-%   selected_groups       : structure mise à jour avec data et results_analysis
-%   results_analysis_all  : cell array contenant les results_analysis par groupe
-
-    nGroups = length(selected_groups);
-
-    for k = 1:nGroups
-
-        fprintf('\n==============================\n');
-        fprintf('Visualisation group %d / %d\n', k, nGroups);
-        fprintf('Animal: %s\n', char(string(selected_groups(k).animal_group)));
-        fprintf('==============================\n');
-
-        gcamp_root_folders   = selected_groups(k).gcamp_root_folders;
-        current_animal_group = selected_groups(k).animal_group;
-        current_ani_path_group = selected_groups(k).animal_path;
-        current_ages_group   = selected_groups(k).ages;    
-        data                 = selected_groups(k).data;
-        
-        results_analysis = results_analysis_all{k};
-        % ======================================================
-        % Plots
-        % ======================================================
-        plot_all_pairwise_corr_types( ...
-            current_ages_group, ...
-            data, ...
-            gcamp_root_folders, ...
-            current_animal_group);
-
-        plot_frequency_boxplot( ...
-            results_analysis, ...
-            gcamp_root_folders, ...
-            current_animal_group, ...
-            current_ages_group);
-
-        plot_gcamp_histograms( ...
-            results_analysis, ...
-            gcamp_root_folders, ...
-            current_animal_group, ...
-            current_ages_group);
-
-        plot_basic_metrics_boxplots_by_age( ...
-            current_ages_group, ...
-            results_analysis, ...
-            current_ani_path_group, ...
-            current_animal_group);
+    if nargin < 1 || isempty(selected_groups)
+        figs_by_type = struct();
+        return;
     end
+
+    type_names = fieldnames(selected_groups);
+
+    for t = 1:numel(type_names)
+
+        current_type = type_names{t};
+
+        for k = 1:numel(selected_groups.(current_type))
+
+            fprintf('\n==============================\n');
+            fprintf('Visualisation\n');
+            fprintf('Type: %s\n', current_type);
+            fprintf('Animal %d / %d: %s\n', ...
+                k, numel(selected_groups.(current_type)), ...
+                char(string(selected_groups.(current_type)(k).animal_group)));
+            fprintf('==============================\n');
+
+            animal = selected_groups.(current_type)(k);
+
+            gcamp_root_folders   = animal.paths.gcamp_root;
+            current_animal_group = animal.animal_group;
+            current_ages_group   = animal.ages;
+            data                 = animal.data;
+            results_analysis     = animal.results_analysis;
+
+            plot_all_pairwise_corr_types( ...
+                current_ages_group, ...
+                data, ...
+                gcamp_root_folders, ...
+                current_animal_group);
+
+            plot_frequency_boxplot( ...
+                results_analysis, ...
+                gcamp_root_folders, ...
+                current_animal_group, ...
+                current_ages_group);
+
+            plot_gcamp_histograms( ...
+                results_analysis, ...
+                gcamp_root_folders, ...
+                current_animal_group, ...
+                current_ages_group);
+        end
+    end
+
+    % ======================================================
+    % Pooled basic metrics by type
+    % ======================================================
+    figs_by_type = plot_basic_metrics_by_type(selected_groups);
 end

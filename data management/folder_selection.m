@@ -1,21 +1,5 @@
 function selected_groups = folder_selection(choices, group_order, dataFolders_by_group)
 
-% folder_selection
-% Sortie unique : selected_groups
-%
-% Champs de sortie par groupe, dans cet ordre :
-%   1) animal_group
-%   2) type
-%   3) line
-%   4) sex
-%   5) ages
-%   6) animal_path
-%   7) date_group_path
-%   8) TSeries_path    (N x 4)
-%   9) xml_path
-%  10) suite2p_path    (N x 4)
-%  11) fallmat_path    (N x 4)
-
     destinationFolder = 'D:/Imaging/jm/';
     root_path = 'D:\Imaging';
 
@@ -39,9 +23,6 @@ function selected_groups = folder_selection(choices, group_order, dataFolders_by
 
         switch choice
 
-            %========================
-            % JM
-            %========================
             case 1
                 disp('Processing JM data...');
 
@@ -75,9 +56,6 @@ function selected_groups = folder_selection(choices, group_order, dataFolders_by
                 suite2p_folders = concat_cell_matrices_4col(suite2p_folders, suite2p_folders_4col);
                 Fallmat_paths   = concat_cell_matrices_4col(Fallmat_paths, Fallmat_paths_4col);
 
-            %========================
-            % FCD / WT / SHAM
-            %========================
             case {2,3,4}
                 group_name = group_order{choice};
                 fprintf('Processing %s data...\n', group_name);
@@ -85,7 +63,6 @@ function selected_groups = folder_selection(choices, group_order, dataFolders_by
                 [suite2p_tmp, TSeries_tmp, ~, xml_tmp, ~, Fall_tmp] = ...
                     find_suite2p_folders(dataFolders);
 
-                % TSeries_path : garder les 4 colonnes
                 TSeriesPaths    = concat_cell_matrices_4col(TSeriesPaths, force_4col(TSeries_tmp));
                 true_xml_paths  = [true_xml_paths; xml_tmp];
 
@@ -94,17 +71,15 @@ function selected_groups = folder_selection(choices, group_order, dataFolders_by
         end
     end
 
-    %======================================================
-    % Liste intermédiaire
-    %======================================================
     animal_date_list = create_animal_date_list(first_col_safe(TSeriesPaths), root_path);
 
-    %======================================================
-    % Construction finale de selected_groups
-    %======================================================
-    selected_groups = build_selected_groups_minimal( ...
+    selected_groups_flat = build_selected_groups_minimal( ...
         animal_date_list, TSeriesPaths, true_xml_paths, ...
         suite2p_folders, Fallmat_paths);
+
+    selected_groups = group_selected_groups_by_type(selected_groups_flat);
+
+    [selected_groups, daytime] = create_gcamp_output_folders(selected_groups);
 end
 
 
@@ -117,26 +92,16 @@ function selected_groups = build_selected_groups_minimal( ...
         return;
     end
 
-    %------------------------------------------------------
-    % Conversion en table
-    %------------------------------------------------------
     if istable(animal_date_list)
         T = animal_date_list;
 
     elseif iscell(animal_date_list)
-        % col1 = type
-        % col2 = line
-        % col3 = animal
-        % col4 = date
-        % col5 = age
-        % col6 = sex
         T = cell2table(animal_date_list, ...
             'VariableNames', {'type','line','animal','date','age','sex'});
 
     elseif isstruct(animal_date_list)
         T = struct2table(animal_date_list);
 
-        % Compatibilité si ancien nom
         if ismember('animal_type', T.Properties.VariableNames) && ...
            ~ismember('type', T.Properties.VariableNames)
             T.type = T.animal_type;
@@ -145,7 +110,6 @@ function selected_groups = build_selected_groups_minimal( ...
         error('Format non supporté pour animal_date_list.');
     end
 
-    % Harmonisation
     vars = T.Properties.VariableNames;
     for i = 1:numel(vars)
         if iscell(T.(vars{i}))
@@ -164,32 +128,27 @@ function selected_groups = build_selected_groups_minimal( ...
         T.age = repmat("", height(T), 1);
     end
 
-    %------------------------------------------------------
-    % Groupement par animal
-    %------------------------------------------------------
     group_keys = T.type + "|" + T.line + "|" + T.animal;
     [unique_keys, ~, key_idx] = unique(group_keys, 'stable');
 
     nGroups = numel(unique_keys);
 
     empty_group = struct( ...
-        'animal_group',    '', ...
-        'type',            '', ...
-        'line',            '', ...
-        'sex',             '', ...
-        'ages',            {{}}, ...
-        'animal_path',     '', ...
-        'date_group_path', {{}}, ...
-        'TSeries_path',    {cell(0,4)}, ...
-        'xml_path',        {{}}, ...
-        'suite2p_path',    {cell(0,4)}, ...
-        'fallmat_path',    {cell(0,4)} );
+        'animal_group', '', ...
+        'type', '', ...
+        'line', '', ...
+        'sex', '', ...
+        'ages', {{}}, ...
+        'paths', struct( ...
+            'animal', '', ...
+            'date', {{}}, ...
+            'TSeries', {cell(0,4)}, ...
+            'xml', {{}}, ...
+            'suite2p', {cell(0,4)}, ...
+            'fallmat', {cell(0,4)}));
 
     selected_groups = repmat(empty_group, nGroups, 1);
 
-    %------------------------------------------------------
-    % Construction
-    %------------------------------------------------------
     for k = 1:nGroups
 
         idx = find(key_idx == k);
@@ -207,32 +166,35 @@ function selected_groups = build_selected_groups_minimal( ...
         ages_group  = cellstr(T.age(idx));
 
         date_group_path = cell(numel(idx),1);
+
         for j = 1:numel(idx)
+
             this_tseries = get_cell_safe(TSeriesPaths, idx(j), 1);
 
             if ~isempty(this_tseries)
                 [date_path, ~, ~] = fileparts(this_tseries);
                 date_group_path{j} = date_path;
+
+            elseif ~isempty(animal_path) && ~isempty(dates_group{j})
+                date_group_path{j} = fullfile(animal_path, dates_group{j});
+
             else
-                if ~isempty(animal_path) && ~isempty(dates_group{j})
-                    date_group_path{j} = fullfile(animal_path, dates_group{j});
-                else
-                    date_group_path{j} = '';
-                end
+                date_group_path{j} = '';
             end
         end
 
-        selected_groups(k).animal_group    = animal_group;
-        selected_groups(k).type            = type_value;
-        selected_groups(k).line            = line_name;
-        selected_groups(k).sex             = sex_value;
-        selected_groups(k).ages            = ages_group;
-        selected_groups(k).animal_path     = animal_path;
-        selected_groups(k).date_group_path = date_group_path;
-        selected_groups(k).TSeries_path    = subset_rows_safe_4col(TSeriesPaths, idx);
-        selected_groups(k).xml_path        = subset_vector_safe(true_xml_paths, idx);
-        selected_groups(k).suite2p_path    = subset_rows_safe_4col(suite2p_folders, idx);
-        selected_groups(k).fallmat_path    = subset_rows_safe_4col(Fallmat_paths, idx);
+        selected_groups(k).animal_group = animal_group;
+        selected_groups(k).type         = type_value;
+        selected_groups(k).line         = line_name;
+        selected_groups(k).sex          = sex_value;
+        selected_groups(k).ages         = ages_group;
+
+        selected_groups(k).paths.animal  = animal_path;
+        selected_groups(k).paths.date    = date_group_path;
+        selected_groups(k).paths.TSeries = subset_rows_safe_4col(TSeriesPaths, idx);
+        selected_groups(k).paths.xml     = subset_vector_safe(true_xml_paths, idx);
+        selected_groups(k).paths.suite2p = subset_rows_safe_4col(suite2p_folders, idx);
+        selected_groups(k).paths.fallmat = subset_rows_safe_4col(Fallmat_paths, idx);
     end
 end
 
@@ -246,19 +208,18 @@ function animal_path = infer_animal_path_from_tseries(TSeriesPaths, idx)
     end
 
     firstPath = get_cell_safe(TSeriesPaths, idx(1), 1);
+
     if isempty(firstPath)
         return;
     end
 
-    % Exemple :
-    % D:\Imaging\FCD\mtor31\1989\02-12-2025\TSeries-xxx
-    % -> animal_path = D:\Imaging\FCD\mtor31\1989
     [date_path, ~, ~] = fileparts(firstPath);
     [animal_path, ~, ~] = fileparts(date_path);
 end
 
 
 function out = subset_vector_safe(C, idx)
+
     if isempty(C)
         out = {};
         return;
@@ -273,6 +234,7 @@ end
 
 
 function out = subset_rows_safe_4col(C, idx)
+
     if isempty(C)
         out = cell(numel(idx),4);
         return;
@@ -284,6 +246,7 @@ end
 
 
 function out = first_col_safe(C)
+
     if isempty(C)
         out = {};
         return;
@@ -295,6 +258,7 @@ end
 
 
 function C4 = force_4col(C)
+
     if isempty(C)
         C4 = cell(0,4);
         return;
@@ -309,6 +273,7 @@ end
 
 
 function out = concat_cell_matrices_4col(a, b)
+
     a = force_4col(a);
     b = force_4col(b);
 
@@ -323,14 +288,44 @@ end
 
 
 function val = get_cell_safe(C, r, c)
+
     val = '';
+
     if isempty(C)
         return;
     end
+
     if size(C,1) >= r && size(C,2) >= c
         tmp = C{r,c};
+
         if ~isempty(tmp)
             val = tmp;
         end
+    end
+end
+
+
+function selected_groups_by_type = group_selected_groups_by_type(selected_groups_flat)
+
+    selected_groups_by_type = struct();
+
+    if isempty(selected_groups_flat)
+        return;
+    end
+
+    animal_types = unique(string({selected_groups_flat.type}), 'stable');
+
+    for i = 1:numel(animal_types)
+
+        current_type = char(animal_types(i));
+
+        if isempty(current_type)
+            continue;
+        end
+
+        idx = strcmpi({selected_groups_flat.type}, current_type);
+
+        selected_groups_by_type.(matlab.lang.makeValidName(current_type)) = ...
+            selected_groups_flat(idx);
     end
 end

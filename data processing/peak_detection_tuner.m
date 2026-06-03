@@ -35,7 +35,7 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     gcamp_output_folder = '';
     meanImg = [];
     ops = [];
-    meta_tbl = [];
+    metadata = [];
     viewer_mode = false;
     cell_type = '';
     masks = [];
@@ -97,8 +97,8 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
                 case 'speed'
                     speed = val;
 
-                case 'meta_tbl'
-                    meta_tbl = val;
+                case 'metadata'
+                    metadata = val;
                  
                 case 'gcamp_output_folder'
                     gcamp_output_folder = val;
@@ -130,6 +130,11 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
 
     % ---- Prétraitement ----
     window_size = opts.window_size;
+
+    % [F_sub, fs_sub, idx_keep] = simulate_three_plane_sampling(F, fs);
+    % F = F_sub;
+    % fs = fs_sub;
+
     [DF, F0] = F_processing(F, bad_frames, fs, window_size);
     DF_sg = savgol_transform(DF, opts);
     noise_est = estimate_noise(DF);
@@ -361,7 +366,7 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'iscell', iscell_in);
     setappdata(fig,'stat', stat_in);
     setappdata(fig,'meanImg', meanImg);
-    setappdata(fig,'meta_tbl', meta_tbl);
+    setappdata(fig,'metadata', metadata);
     setappdata(fig,'viewer_mode', viewer_mode);
     setappdata(fig,'blue_indices', blue_indices);
     
@@ -378,21 +383,20 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
 
         % ----------------------------
-        % Pixel size depuis meta_tbl
+        % Pixel size depuis metadata
         % ----------------------------
         pixel_size_um = NaN;
-        if isappdata(fig,'meta_tbl')
-            meta_tbl = getappdata(fig,'meta_tbl');
+        if isappdata(fig,'metadata')
+            metadata = getappdata(fig,'metadata');
             try
-                if istable(meta_tbl) && any(strcmp(meta_tbl.Properties.VariableNames,'PixelSize'))
-                    px = meta_tbl.PixelSize;
-    
+                if isstruct(metadata) && isfield(metadata, 'PixelSize') && ~isempty(metadata.PixelSize)           
+                    px = metadata.PixelSize;
                     if isnumeric(px)
                         pixel_size_um = double(px(1));
                     elseif iscell(px) && ~isempty(px)
-                        pixel_size_um = str2double(string(px{1}));
-                    elseif isstring(px) || ischar(px)
-                        pixel_size_um = str2double(string(px(1)));
+                        pixel_size_um = double(px{1});
+                    else
+                        pixel_size_um = NaN;
                     end
                 end
             catch
