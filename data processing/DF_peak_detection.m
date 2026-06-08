@@ -22,7 +22,7 @@ function selected_groups = DF_peak_detection(selected_groups)
 
             paths = selected_groups.(current_type)(k).paths;
 
-            gcamp_root_folders   = paths.gcamp_root;
+            %gcamp_root_folders   = paths.gcamp_root;
             gcamp_output_folders = paths.gcamp_output;
 
             current_animal_group = selected_groups.(current_type)(k).animal_group;

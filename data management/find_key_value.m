@@ -1,389 +1,557 @@
-function [recording_time, sampling_rate, sampling_rate_per_plane, interplane_delay_s, optical_zoom, position, time_minutes, pixel_size, n_plans] = find_key_value(path)
-    % Fonction pour extraire les métadonnées d'un fichier XML Prairie View :
-    %   - Heure d'enregistrement
-    %   - Framerate global Prairie (Hz), sans tenir compte des déplacements
-    %   - Framerate estimé par plan (Hz)
-    %   - Délai inter-plan estimé (s)
-    %   - Optical zoom
-    %   - Position Z (µm) :
-    %       * TSeries simple : scalaire
-    %       * TSeries ZSeries : vecteur (1 valeur par plan)
-    %   - Durée totale (en minutes)
-    %   - Taille d’un pixel (µm/pixel)
-    %   - Nombre de plans Z (n_plans)
-    %
-    % Entrée :
-    %   path : chemin complet vers le fichier XML Prairie View (.xml)
+function meta = find_key_value(path)
+%FIND_KEY_VALUE
+% Extrait les paramètres utiles d'un XML Prairie View.
 
-    % -----------------------------
-    % Valeurs par défaut
-    % -----------------------------
-    recording_time          = '';
-    sampling_rate           = NaN;   % framerate global Prairie
-    sampling_rate_per_plane = NaN;   % framerate réel par plan
-    interplane_delay_s      = NaN;   % délai estimé entre deux plans
-    optical_zoom            = NaN;
-    position                = NaN;   % scalaire ou vecteur
-    time_minutes            = NaN;
-    pixel_size              = NaN;
-    n_plans                 = 1;
+meta = struct();
 
-    pixel_size_x = NaN;
-    pixel_size_y = NaN;
+meta.RecordingTime         = '';
+meta.ActiveMode            = '';
+meta.BitDepth              = NaN;
 
-    % Convertit "4,17" -> 4.17
-    str2num_local = @(s) str2double(strrep(char(s), ',', '.'));
+meta.SamplingRate          = NaN;
+meta.FramePeriod           = NaN;
+meta.SamplingRatePlane     = NaN;
+meta.InterplaneDelay_s     = NaN;
 
-    try
-        %% === Lecture du fichier XML ===
-        xmlDoc = xmlread(path);
+meta.PixelsPerLine         = NaN;
+meta.LinesPerFrame         = NaN;
+meta.ImageSize             = '';
+meta.DwellTime_us          = NaN;
+meta.ScanLinePeriod_s      = NaN;
+meta.SamplesPerPixel       = NaN;
 
-        %% === Heure d'enregistrement ===
-        rootNode = xmlDoc.getDocumentElement();  % normalement PVScan
-        full_date = '';
+meta.OpticalZoom           = NaN;
+meta.ObjectiveLens         = '';
+meta.ObjectiveLensMag      = NaN;
+meta.ObjectiveLensNA       = NaN;
 
-        if ~isempty(rootNode) && rootNode.hasAttribute('date')
-            full_date = char(rootNode.getAttribute('date'));
-        else
-            envNode = xmlDoc.getElementsByTagName('Environment').item(0);
-            if ~isempty(envNode) && envNode.hasAttribute('date')
-                full_date = char(envNode.getAttribute('date'));
+meta.PixelSizeX_um         = NaN;
+meta.PixelSizeY_um         = NaN;
+meta.PixelSize_um          = NaN;
+
+meta.PositionX_um          = NaN;
+meta.PositionY_um          = NaN;
+meta.PositionZ             = '';
+
+meta.NumPlanes             = 1;
+meta.ZStep_um              = NaN;
+meta.ZMin_um               = NaN;
+meta.ZMax_um               = NaN;
+
+meta.LaserWavelength_nm    = NaN;
+meta.LaserPower_Pockels    = NaN;
+meta.LaserPowerByPlane_Pockels = '';
+
+meta.PMTGain_Red           = NaN;
+meta.PMTGain_Green         = NaN;
+meta.PMTGain_Blue          = NaN;
+
+meta.TimeMinutes           = NaN;
+meta.NumFrames             = NaN;
+meta.ChannelNames          = '';
+meta.NumChannels           = NaN;
+meta.BidirectionalZ        = '';
+
+str2num_local = @(s) str2double(strrep(char(s), ',', '.'));
+
+try
+    xmlDoc = xmlread(path);
+    rootNode = xmlDoc.getDocumentElement();
+
+    if ~isempty(rootNode) && rootNode.hasAttribute('date')
+
+        date_str = char(rootNode.getAttribute('date'));
+        split_date = strsplit(date_str);
+    
+        if numel(split_date) > 1
+            meta.RecordingTime = split_date{2};
+    
+            if numel(split_date) > 2
+                meta.RecordingTime = [meta.RecordingTime ' ' split_date{3}];
             end
         end
-
-        if ~isempty(full_date)
-            split_date = strsplit(full_date);
-            if numel(split_date) > 1
-                recording_time = split_date{2};
-                if numel(split_date) > 2
-                    recording_time = [recording_time ' ' split_date{3}];
-                end
-            end
-        end
-
-        %% === Extraction des PVStateValue globaux ===
-        pvNodes = xmlDoc.getElementsByTagName('PVStateValue');
-
-        for i = 0:pvNodes.getLength-1
-            currentNode = pvNodes.item(i);
-            key = char(currentNode.getAttribute('key'));
-
-            % --- Sampling rate global Prairie ---
-            if strcmp(key, 'framerate')
-                sampling_rate = str2num_local(currentNode.getAttribute('value'));
-
-            elseif strcmp(key, 'framePeriod') && isnan(sampling_rate)
-                fp = str2num_local(currentNode.getAttribute('value')); % secondes
-                if ~isnan(fp) && fp > 0
-                    sampling_rate = 1 / fp;
-                end
-            end
-
-            % --- Optical zoom ---
-            if strcmp(key, 'opticalZoom')
-                optical_zoom = str2num_local(currentNode.getAttribute('value'));
-            end
-
-            % --- Position Z globale (fallback pour TSeries simple) ---
-            if strcmp(key, 'positionCurrent')
-                subindexedValuesNodes = currentNode.getElementsByTagName('SubindexedValues');
-                for j = 0:subindexedValuesNodes.getLength-1
-                    subindexedNode = subindexedValuesNodes.item(j);
-
-                    if strcmp(char(subindexedNode.getAttribute('index')), 'ZAxis')
-                        siv = subindexedNode.getElementsByTagName('SubindexedValue');
-                        if siv.getLength > 0
-                            position = str2num_local(siv.item(0).getAttribute('value'));
-                            break;
-                        end
-                    end
-                end
-            end
-
-            % --- micronsPerPixel (X/Y) ---
-            if strcmp(key, 'micronsPerPixel')
-
-                % 1) IndexedValue descendants
-                idxNodes = currentNode.getElementsByTagName('IndexedValue');
-                for j = 0:idxNodes.getLength-1
-                    idxNode = idxNodes.item(j);
-                    axis_name = char(idxNode.getAttribute('index'));
-
-                    if ~isempty(axis_name) && idxNode.hasAttribute('value')
-                        v = str2num_local(idxNode.getAttribute('value'));
-
-                        if strcmp(axis_name, 'XAxis')
-                            pixel_size_x = v;
-                        elseif strcmp(axis_name, 'YAxis')
-                            pixel_size_y = v;
-                        end
-                    end
-                end
-
-                % 2) SubindexedValue descendants
-                subValNodes = currentNode.getElementsByTagName('SubindexedValue');
-                for j = 0:subValNodes.getLength-1
-                    svNode = subValNodes.item(j);
-
-                    axis_name = '';
-                    if svNode.hasAttribute('index')
-                        axis_name = char(svNode.getAttribute('index'));
-                    else
-                        parent = svNode.getParentNode();
-                        if ~isempty(parent) && parent.hasAttribute('index')
-                            axis_name = char(parent.getAttribute('index'));
-                        end
-                    end
-
-                    if ~isempty(axis_name) && svNode.hasAttribute('value')
-                        v = str2num_local(svNode.getAttribute('value'));
-
-                        if strcmp(axis_name, 'XAxis')
-                            pixel_size_x = v;
-                        elseif strcmp(axis_name, 'YAxis')
-                            pixel_size_y = v;
-                        end
-                    end
-                end
-
-                % 3) Attributs directs sur PVStateValue
-                if currentNode.hasAttribute('index') && currentNode.hasAttribute('value')
-                    axis_name = char(currentNode.getAttribute('index'));
-                    v = str2num_local(currentNode.getAttribute('value'));
-
-                    if strcmp(axis_name, 'XAxis')
-                        pixel_size_x = v;
-                    elseif strcmp(axis_name, 'YAxis')
-                        pixel_size_y = v;
-                    end
-                end
-            end
-        end
-
-        %% === Durée d’enregistrement + absoluteTime globaux ===
-        frameNodesGlobal = xmlDoc.getElementsByTagName('Frame');
-        nFramesGlobal = frameNodesGlobal.getLength;
-        abs_times_global = nan(1, nFramesGlobal);
-
-        if nFramesGlobal > 0
-            t_min = inf;
-            t_max = -inf;
-            have_time = false;
-
-            for f = 0:nFramesGlobal-1
-                frameNode = frameNodesGlobal.item(f);
-
-                if frameNode.hasAttribute('absoluteTime')
-                    t = str2num_local(frameNode.getAttribute('absoluteTime'));
-                    abs_times_global(f+1) = t;
-
-                    if ~isnan(t)
-                        have_time = true;
-                        if t < t_min, t_min = t; end
-                        if t > t_max, t_max = t; end
-                    end
-                end
-            end
-
-            if have_time
-                if t_max > t_min
-                    duree_s = t_max - t_min;
-                else
-                    duree_s = 0;
-                end
-                time_minutes = duree_s / 60;
-            end
-        end
-
-        % Fallback si aucun absoluteTime exploitable
-        if isnan(time_minutes)
-            segmentsNode = xmlDoc.getElementsByTagName('Segments').item(0);
-            if ~isempty(segmentsNode) && segmentsNode.hasAttribute('Time')
-                time_val = str2num_local(segmentsNode.getAttribute('Time')); % secondes
-                time_minutes = time_val / 60;
-            end
-        end
-
-        %% === Nombre de plans Z + positions Z par plan si ZSeries ===
-        seqNodes = xmlDoc.getElementsByTagName('Sequence');
-        n_plans = 1;   % valeur par défaut
-
-        for s = 0:seqNodes.getLength-1
-            seqNode = seqNodes.item(s);
-
-            if ~seqNode.hasAttribute('type')
-                continue;
-            end
-
-            seqType = char(seqNode.getAttribute('type'));
-            if ~contains(seqType, 'ZSeries')
-                continue;
-            end
-
-            frameNodesSeq = seqNode.getElementsByTagName('Frame');
-            nFramesInSeq = frameNodesSeq.getLength;
-
-            if nFramesInSeq == 0
-                continue;
-            end
-
-            frame_index = nan(1, nFramesInSeq);
-            z_focus_all = nan(1, nFramesInSeq);
-            etl_raw_all = nan(1, nFramesInSeq);
-            z_pos_all   = nan(1, nFramesInSeq);
-
-            for f = 0:nFramesInSeq-1
-                frameNode = frameNodesSeq.item(f);
-                ii = f + 1;
-
-                if frameNode.hasAttribute('index')
-                    frame_index(ii) = str2double(char(frameNode.getAttribute('index')));
-                else
-                    frame_index(ii) = ii;
-                end
-
-                shardNodes = frameNode.getElementsByTagName('PVStateShard');
-                shardNode = [];
-
-                for k = 0:shardNodes.getLength-1
-                    candidate = shardNodes.item(k);
-                    if candidate.getElementsByTagName('PVStateValue').getLength > 0
-                        shardNode = candidate;
-                        break;
-                    end
-                end
-
-                if isempty(shardNode)
-                    continue;
-                end
-
-                framePV = shardNode.getElementsByTagName('PVStateValue');
-
-                z_focus = NaN;
-                etl_raw = NaN;
-
-                for p = 0:framePV.getLength-1
-                    pvNode = framePV.item(p);
-                    kkey = char(pvNode.getAttribute('key'));
-
-                    if ~strcmp(kkey, 'positionCurrent')
-                        continue;
-                    end
-
-                    subindexedValuesNodes = pvNode.getElementsByTagName('SubindexedValues');
-                    for j = 0:subindexedValuesNodes.getLength-1
-                        subNode = subindexedValuesNodes.item(j);
-
-                        if ~strcmp(char(subNode.getAttribute('index')), 'ZAxis')
-                            continue;
-                        end
-
-                        sv = subNode.getElementsByTagName('SubindexedValue');
-                        for t = 0:sv.getLength-1
-                            svNode = sv.item(t);
-                            val = str2num_local(svNode.getAttribute('value'));
-
-                            descr = '';
-                            if svNode.hasAttribute('description')
-                                descr = char(svNode.getAttribute('description'));
-                            end
-
-                            subidx = '';
-                            if svNode.hasAttribute('subindex')
-                                subidx = char(svNode.getAttribute('subindex'));
-                            end
-
-                            if (~isempty(descr) && contains(descr, 'Z Focus')) || strcmp(subidx, '0')
-                                z_focus = val;
-                            elseif (~isempty(descr) && contains(descr, 'Optotune')) || strcmp(subidx, '1')
-                                etl_raw = val;
-                            end
-                        end
-                    end
-                end
-
-                if ~isnan(etl_raw) && abs(etl_raw) < 1e-6
-                    etl_raw = 0;
-                end
-
-                z_focus_all(ii) = z_focus;
-                etl_raw_all(ii) = etl_raw;
-
-                if ~isnan(z_focus)
-                    if isnan(etl_raw)
-                        etl_raw = 0;
-                    end
-                    z_pos_all(ii) = z_focus + etl_raw / 1000;
-                end
-            end
-
-            n_plans = nFramesInSeq;
-            position = z_pos_all;
-            break;
-        end
-
-        %% === Inférence du délai inter-plan et du sampling rate par plan ===
-        abs_times = abs_times_global(~isnan(abs_times_global));
-
-        if ~isnan(sampling_rate) && n_plans > 0
-            if n_plans == 1
-                % Pas de déplacement entre plans
-                sampling_rate_per_plane = sampling_rate;
-                interplane_delay_s = 0;
-
-            else
-                % 1) Estimation directe du sampling rate par plan
-                if numel(abs_times) > n_plans
-                    dt_same_plane = abs_times(1+n_plans:end) - abs_times(1:end-n_plans);
-                    dt_same_plane = dt_same_plane(dt_same_plane > 0);
-
-                    if ~isempty(dt_same_plane)
-                        sampling_rate_per_plane = 1 / median(dt_same_plane);
-                    end
-                end
-
-                % 2) Estimation du délai inter-plan depuis les frames consécutives
-                if numel(abs_times) >= 2
-                    dt_consecutive = diff(abs_times);
-                    dt_consecutive = dt_consecutive(dt_consecutive > 0);
-
-                    if ~isempty(dt_consecutive)
-                        interplane_delay_s = median(dt_consecutive) - (1 / sampling_rate);
-
-                        % évite les petites valeurs négatives dues au bruit numérique
-                        if ~isnan(interplane_delay_s) && interplane_delay_s < 0
-                            interplane_delay_s = max(interplane_delay_s, 0);
-                        end
-                    end
-                end
-
-                % === Affichage délai inter-plan ===
-                % if ~isnan(interplane_delay_s)
-                %     fprintf('Delai inter-plan estime : %.3f ms\n', interplane_delay_s * 1000);
-                % else
-                %     fprintf('Delai inter-plan non estime\n');
-                % end
-
-                % 3) Fallback si dt_same_plane indisponible
-                if isnan(sampling_rate_per_plane) && ~isnan(interplane_delay_s)
-                    time_per_plane = n_plans * ((1 / sampling_rate) + interplane_delay_s);
-                    sampling_rate_per_plane = 1 / time_per_plane;
-                end
-            end
-        end
-
-        %% === Pixel size final ===
-        if ~isnan(pixel_size_x) && ~isnan(pixel_size_y)
-            pixel_size = (pixel_size_x + pixel_size_y) / 2;
-        elseif ~isnan(pixel_size_x)
-            pixel_size = pixel_size_x;
-        elseif ~isnan(pixel_size_y)
-            pixel_size = pixel_size_y;
-        else
-            pixel_size = NaN;
-        end
-
-    catch ME
-        fprintf('Erreur lors de la lecture du fichier : %s\n', ME.message);
     end
+
+    pvNodes = xmlDoc.getElementsByTagName('PVStateValue');
+
+    for i = 0:pvNodes.getLength-1
+
+        currentNode = pvNodes.item(i);
+        key = char(currentNode.getAttribute('key'));
+
+        switch key
+
+            case 'activeMode'
+                meta.ActiveMode = char(currentNode.getAttribute('value'));
+
+            case 'bitDepth'
+                meta.BitDepth = str2num_local(currentNode.getAttribute('value'));
+
+            case 'framerate'
+                meta.SamplingRate = str2num_local(currentNode.getAttribute('value'));
+
+            case 'framePeriod'
+                meta.FramePeriod = str2num_local(currentNode.getAttribute('value'));
+                if isnan(meta.SamplingRate) && meta.FramePeriod > 0
+                    meta.SamplingRate = 1 / meta.FramePeriod;
+                end
+
+            case 'pixelsPerLine'
+                meta.PixelsPerLine = str2num_local(currentNode.getAttribute('value'));
+
+            case 'linesPerFrame'
+                meta.LinesPerFrame = str2num_local(currentNode.getAttribute('value'));
+
+            case 'dwellTime'
+                meta.DwellTime_us = str2num_local(currentNode.getAttribute('value'));
+
+            case 'scanLinePeriod'
+                meta.ScanLinePeriod_s = str2num_local(currentNode.getAttribute('value'));
+
+            case 'samplesPerPixel'
+                meta.SamplesPerPixel = str2num_local(currentNode.getAttribute('value'));
+
+            case 'opticalZoom'
+                meta.OpticalZoom = str2num_local(currentNode.getAttribute('value'));
+
+            case 'objectiveLens'
+                meta.ObjectiveLens = char(currentNode.getAttribute('value'));
+
+            case 'objectiveLensMag'
+                meta.ObjectiveLensMag = str2num_local(currentNode.getAttribute('value'));
+
+            case 'objectiveLensNA'
+                meta.ObjectiveLensNA = str2num_local(currentNode.getAttribute('value'));
+
+            case 'micronsPerPixel'
+                [meta.PixelSizeX_um, meta.PixelSizeY_um] = get_indexed_xy(currentNode);
+
+                if ~isnan(meta.PixelSizeX_um) && ~isnan(meta.PixelSizeY_um)
+                    meta.PixelSize_um = mean([meta.PixelSizeX_um, meta.PixelSizeY_um]);
+                elseif ~isnan(meta.PixelSizeX_um)
+                    meta.PixelSize_um = meta.PixelSizeX_um;
+                elseif ~isnan(meta.PixelSizeY_um)
+                    meta.PixelSize_um = meta.PixelSizeY_um;
+                end
+
+            case 'laserWavelength'
+                meta.LaserWavelength_nm = get_indexed_value(currentNode, '0');
+
+            case 'laserPower'
+                % On garde seulement la première valeur globale du XML.
+                % Les valeurs par plan seront lues séparément dans les Frames.
+                if isnan(meta.LaserPower_Pockels)
+                    meta.LaserPower_Pockels = get_indexed_value(currentNode, '0');
+                end
+
+            case 'pmtGain'
+                meta.PMTGain_Red   = get_indexed_value_by_description(currentNode, 'Red');
+                meta.PMTGain_Green = get_indexed_value_by_description(currentNode, 'Green');
+                meta.PMTGain_Blue  = get_indexed_value_by_description(currentNode, 'Blue');
+
+            case 'positionCurrent'
+                [meta.PositionX_um, meta.PositionY_um, z_str] = get_position_xyz(currentNode);
+                if ~isempty(z_str)
+                    meta.PositionZ = z_str;
+                end
+        end
+    end
+
+    if ~isnan(meta.PixelsPerLine) && ~isnan(meta.LinesPerFrame)
+        meta.ImageSize = sprintf('%d x %d', ...
+            meta.PixelsPerLine, meta.LinesPerFrame);
+    end
+
+    frameNodes = xmlDoc.getElementsByTagName('Frame');
+    meta.NumFrames = frameNodes.getLength;
+
+    [meta.TimeMinutes, abs_times] = get_recording_duration(frameNodes);
+    [meta.ChannelNames, meta.NumChannels] = get_channel_names(frameNodes);
+    [meta.NumPlanes, z_positions, meta.BidirectionalZ] = get_zseries_info(xmlDoc);
+
+    if ~isempty(z_positions)
+        meta.PositionZ = vector_to_string(z_positions);
+        meta.ZMin_um = min(z_positions);
+        meta.ZMax_um = max(z_positions);
+
+        if numel(z_positions) > 1
+            dz = diff(sort(z_positions));
+            dz = dz(abs(dz) > 1e-9);
+
+            if ~isempty(dz)
+                meta.ZStep_um = median(abs(dz));
+            end
+        end
+    end
+
+    meta.LaserPowerByPlane_Pockels = ...
+        extract_laser_power_by_plane(xmlDoc, meta.LaserPower_Pockels);
+
+    if meta.NumPlanes <= 1
+        meta.SamplingRatePlane = meta.SamplingRate;
+        meta.InterplaneDelay_s = 0;
+    else
+        if numel(abs_times) > meta.NumPlanes
+            dt_same_plane = abs_times(1+meta.NumPlanes:end) - ...
+                            abs_times(1:end-meta.NumPlanes);
+            dt_same_plane = dt_same_plane(dt_same_plane > 0);
+
+            if ~isempty(dt_same_plane)
+                meta.SamplingRatePlane = 1 / median(dt_same_plane);
+            end
+        end
+
+        if numel(abs_times) >= 2 && ~isnan(meta.SamplingRate)
+            dt_consecutive = diff(abs_times);
+            dt_consecutive = dt_consecutive(dt_consecutive > 0);
+
+            if ~isempty(dt_consecutive)
+                meta.InterplaneDelay_s = median(dt_consecutive) - ...
+                    (1 / meta.SamplingRate);
+
+                if meta.InterplaneDelay_s < 0
+                    meta.InterplaneDelay_s = 0;
+                end
+            end
+        end
+    end
+
+catch ME
+    fprintf('Erreur lors de la lecture du fichier XML : %s\n', ME.message);
+end
+
+end
+
+%% ========================================================================
+function [x, y] = get_indexed_xy(node)
+
+x = NaN;
+y = NaN;
+
+idxNodes = node.getElementsByTagName('IndexedValue');
+
+for j = 0:idxNodes.getLength-1
+
+    idxNode = idxNodes.item(j);
+    axis_name = char(idxNode.getAttribute('index'));
+    value = str2double(char(idxNode.getAttribute('value')));
+
+    if strcmp(axis_name, 'XAxis')
+        x = value;
+    elseif strcmp(axis_name, 'YAxis')
+        y = value;
+    end
+end
+
+end
+
+%% ========================================================================
+function value = get_indexed_value(node, wanted_index)
+
+value = NaN;
+
+idxNodes = node.getElementsByTagName('IndexedValue');
+
+for j = 0:idxNodes.getLength-1
+
+    idxNode = idxNodes.item(j);
+
+    if strcmp(char(idxNode.getAttribute('index')), wanted_index)
+        value = str2double(char(idxNode.getAttribute('value')));
+        return;
+    end
+end
+
+end
+
+%% ========================================================================
+function value = get_indexed_value_by_description(node, wanted_description)
+
+value = NaN;
+
+idxNodes = node.getElementsByTagName('IndexedValue');
+
+for j = 0:idxNodes.getLength-1
+
+    idxNode = idxNodes.item(j);
+
+    if idxNode.hasAttribute('description')
+        descr = char(idxNode.getAttribute('description'));
+
+        if strcmpi(descr, wanted_description)
+            value = str2double(char(idxNode.getAttribute('value')));
+            return;
+        end
+    end
+end
+
+end
+
+%% ========================================================================
+function [x, y, z_string] = get_position_xyz(node)
+
+x = NaN;
+y = NaN;
+z_string = '';
+
+subNodes = node.getElementsByTagName('SubindexedValues');
+
+z_focus = NaN;
+etl_raw = NaN;
+
+for j = 0:subNodes.getLength-1
+
+    subNode = subNodes.item(j);
+    axis_name = char(subNode.getAttribute('index'));
+    valNodes = subNode.getElementsByTagName('SubindexedValue');
+
+    for v = 0:valNodes.getLength-1
+
+        valNode = valNodes.item(v);
+        val = str2double(char(valNode.getAttribute('value')));
+
+        if strcmp(axis_name, 'XAxis')
+            x = val;
+
+        elseif strcmp(axis_name, 'YAxis')
+            y = val;
+
+        elseif strcmp(axis_name, 'ZAxis')
+
+            descr = '';
+            if valNode.hasAttribute('description')
+                descr = char(valNode.getAttribute('description'));
+            end
+
+            subidx = '';
+            if valNode.hasAttribute('subindex')
+                subidx = char(valNode.getAttribute('subindex'));
+            end
+
+            if contains(descr, 'Z Focus') || strcmp(subidx, '0')
+                z_focus = val;
+            elseif contains(descr, 'Optotune') || strcmp(subidx, '1')
+                etl_raw = val;
+            end
+        end
+    end
+end
+
+if ~isnan(z_focus)
+
+    if isnan(etl_raw)
+        etl_raw = 0;
+    end
+
+    if abs(etl_raw) < 1e-6
+        etl_raw = 0;
+    end
+
+    z_string = sprintf('%.4f', z_focus + etl_raw / 1000);
+end
+
+end
+
+%% ========================================================================
+function [time_minutes, abs_times] = get_recording_duration(frameNodes)
+
+time_minutes = NaN;
+nFrames = frameNodes.getLength;
+abs_times = nan(1, nFrames);
+
+for f = 0:nFrames-1
+
+    frameNode = frameNodes.item(f);
+
+    if frameNode.hasAttribute('absoluteTime')
+        abs_times(f+1) = str2double(char(frameNode.getAttribute('absoluteTime')));
+    end
+end
+
+valid_t = abs_times(isfinite(abs_times));
+
+if numel(valid_t) >= 2
+    time_minutes = (max(valid_t) - min(valid_t)) / 60;
+end
+
+end
+
+%% ========================================================================
+function [channel_names, n_channels] = get_channel_names(frameNodes)
+
+names = {};
+
+for f = 0:frameNodes.getLength-1
+
+    frameNode = frameNodes.item(f);
+    fileNodes = frameNode.getElementsByTagName('File');
+
+    for j = 0:fileNodes.getLength-1
+
+        fileNode = fileNodes.item(j);
+
+        if fileNode.hasAttribute('channelName')
+            names{end+1} = char(fileNode.getAttribute('channelName')); %#ok<AGROW>
+        elseif fileNode.hasAttribute('channel')
+            names{end+1} = ['Ch' char(fileNode.getAttribute('channel'))]; %#ok<AGROW>
+        end
+    end
+end
+
+names = unique(names, 'stable');
+n_channels = numel(names);
+
+if isempty(names)
+    channel_names = '';
+else
+    channel_names = strjoin(names, ', ');
+end
+
+end
+
+%% ========================================================================
+function [n_planes, z_positions, bidirectionalZ] = get_zseries_info(xmlDoc)
+
+n_planes = 1;
+z_positions = [];
+bidirectionalZ = '';
+
+seqNodes = xmlDoc.getElementsByTagName('Sequence');
+
+for s = 0:seqNodes.getLength-1
+
+    seqNode = seqNodes.item(s);
+
+    if seqNode.hasAttribute('bidirectionalZ')
+        bidirectionalZ = char(seqNode.getAttribute('bidirectionalZ'));
+    end
+
+    if ~seqNode.hasAttribute('type')
+        continue;
+    end
+
+    seqType = char(seqNode.getAttribute('type'));
+
+    if ~contains(seqType, 'ZSeries')
+        continue;
+    end
+
+    frameNodesSeq = seqNode.getElementsByTagName('Frame');
+    n_planes = frameNodesSeq.getLength;
+
+    z_positions = nan(1, n_planes);
+
+    for f = 0:n_planes-1
+
+        frameNode = frameNodesSeq.item(f);
+        pvNodes = frameNode.getElementsByTagName('PVStateValue');
+
+        for p = 0:pvNodes.getLength-1
+
+            pvNode = pvNodes.item(p);
+
+            if ~strcmp(char(pvNode.getAttribute('key')), 'positionCurrent')
+                continue;
+            end
+
+            [~, ~, z_str] = get_position_xyz(pvNode);
+
+            if ~isempty(z_str)
+                z_positions(f+1) = str2double(z_str);
+            end
+        end
+    end
+
+    z_positions = z_positions(isfinite(z_positions));
+    break;
+end
+
+end
+
+%% ========================================================================
+
+function str = extract_laser_power_by_plane(xmlDoc, default_power)
+
+powers = [];
+
+seqNodes = xmlDoc.getElementsByTagName('Sequence');
+
+for s = 0:seqNodes.getLength-1
+
+    seqNode = seqNodes.item(s);
+
+    if ~seqNode.hasAttribute('type')
+        continue;
+    end
+
+    seqType = char(seqNode.getAttribute('type'));
+
+    if ~contains(seqType, 'ZSeries')
+        continue;
+    end
+
+    frameNodes = seqNode.getElementsByTagName('Frame');
+    nPlanes = frameNodes.getLength;
+
+    powers = repmat(default_power, 1, nPlanes);
+
+    for f = 0:nPlanes-1
+
+        frameNode = frameNodes.item(f);
+
+        if frameNode.hasAttribute('index')
+            plane_idx = str2double(char(frameNode.getAttribute('index')));
+        else
+            plane_idx = f + 1;
+        end
+
+        if isnan(plane_idx) || plane_idx < 1 || plane_idx > nPlanes
+            plane_idx = f + 1;
+        end
+
+        pvNodes = frameNode.getElementsByTagName('PVStateValue');
+
+        for p = 0:pvNodes.getLength-1
+
+            pvNode = pvNodes.item(p);
+
+            if strcmp(char(pvNode.getAttribute('key')), 'laserPower')
+
+                v = get_indexed_value(pvNode, '0');
+
+                if ~isnan(v)
+                    powers(plane_idx) = v;
+                end
+            end
+        end
+    end
+
+    break;
+end
+
+str = vector_to_string(powers);
+
+end
+%% ========================================================================
+function str = vector_to_string(v)
+
+if isempty(v)
+    str = '';
+    return;
+end
+
+v = v(:)';
+
+parts = cell(1, numel(v));
+
+for i = 1:numel(v)
+    if isnan(v(i))
+        parts{i} = 'NaN';
+    else
+        parts{i} = sprintf('%.4f', v(i));
+    end
+end
+
+str = strjoin(parts, ' ');
+
 end

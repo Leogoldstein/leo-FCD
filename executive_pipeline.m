@@ -9,10 +9,15 @@ setup_python_env()
 %% Choix du ou des animaux
 clearvars -except choices group_order animal_date_list
 dataFolders_by_group = select_data_folders_by_group(choices, group_order);
+
 selected_groups = folder_selection(choices, group_order, dataFolders_by_group);
 
 selected_groups = create_data(selected_groups);
+
+%%
 selected_groups = create_metadata(selected_groups);
+%%
+recap_all = create_summary_sheets(selected_groups);
 
 %% Data processing
 
@@ -29,7 +34,7 @@ selected_groups = create_metadata(selected_groups);
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '1';
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-
+%%
 selected_groups = DF_peak_detection(selected_groups);
 
 selected_groups = compute_DF(selected_groups);

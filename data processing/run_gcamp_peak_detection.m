@@ -86,9 +86,42 @@ function data = run_gcamp_peak_detection( ...
         if isfield(data, 'movie') && ...
            isfield(data.movie, 'speed_active_group') && ...
            numel(data.movie.speed_active_group) >= m
+           
             speed_m = data.movie.speed_active_group{m};
+        
         else
             speed_m = [];
+        end
+
+        if isfield(data, 'stim') && ...
+           isfield(data.stim, 'stim_frames_log_group') && ...
+           isfield(data.stim, 'stim_protocol_group') && ...
+           numel(data.stim.stim_frames_log_group) >= m && ...
+           numel(data.stim.stim_protocol_group) >= m
+        
+            stim_frames_m   = data.stim.stim_frames_log_group{m};
+            stim_protocol_m = data.stim.stim_protocol_group{m};
+        
+            if ~isempty(stim_frames_m) && ~isempty(stim_protocol_m)
+        
+                stim_frames_m   = stim_frames_m(:);
+                stim_protocol_m = stim_protocol_m(:);
+        
+                % Sécurité si tailles différentes
+                n = min(numel(stim_frames_m), numel(stim_protocol_m));
+        
+                stim_frames_m   = stim_frames_m(1:n);
+                stim_protocol_m = stim_protocol_m(1:n);
+        
+                % Garder uniquement les stimulations dont le protocole vaut 0
+                stim_frames_m = stim_frames_m(stim_protocol_m == 0);
+        
+            else
+                stim_frames_m = [];
+            end
+        
+        else
+            stim_frames_m = [];
         end
 
         outdir_m = fileparts(gcamp_output_folders{m}{1});
@@ -342,6 +375,7 @@ function data = run_gcamp_peak_detection( ...
                     'gcamp_TSeries_path', tiff_path, ...
                     'speed', speed_m, ...
                     'metadata', metadata_m, ...
+                    'stim_frames', stim_frames_m, ...
                     'gcamp_output_folder', gcamp_output_folders{m}{p});
 
             if ~has_new

@@ -40,6 +40,7 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     cell_type = '';
     masks = [];
     blue_indices = [];
+    stim_frames = [];
 
     if ~isempty(varargin)
 
@@ -99,6 +100,9 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
 
                 case 'metadata'
                     metadata = val;
+
+                case 'stim_frames'
+                    stim_frames = val;
                  
                 case 'gcamp_output_folder'
                     gcamp_output_folder = val;
@@ -131,11 +135,13 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     % ---- Prétraitement ----
     window_size = opts.window_size;
 
-    % [F_sub, fs_sub, idx_keep] = simulate_three_plane_sampling(F, fs);
-    % F = F_sub;
-    % fs = fs_sub;
+    % [F_gcamp_sub, frame_rate_sub, idx_keep, down_factor] = ...
+    % simulate_three_plane(F, fs);
+    % F = F_gcamp_sub;
+    % fs = frame_rate_sub;
 
-    [DF, F0] = F_processing(F, bad_frames, fs, window_size);
+    %[DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
+    [DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
     DF_sg = savgol_transform(DF, opts);
     noise_est = estimate_noise(DF);
 
@@ -361,6 +367,8 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'deviation', deviation);
     setappdata(fig,'bad_frames', bad_frames);
     setappdata(fig,'focus_segs', focus_segs);
+
+    setappdata(fig,'stim_frames', stim_frames);
     
     setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
     setappdata(fig,'iscell', iscell_in);
@@ -1643,6 +1651,40 @@ function refresh_data(fig)
     xlim(ax,[1 max(1,T)]);
     plot(ax,t,x,'k-');
     hold(ax,'on');
+    
+    % ---- Stim frames ----
+    if isappdata(fig,'stim_frames')
+    
+        stim_frames = getappdata(fig,'stim_frames');
+    
+        if ~isempty(stim_frames)
+    
+            stim_frames = round(stim_frames(:).');
+            stim_frames = stim_frames(isfinite(stim_frames));
+    
+            % garder seulement les stim frames dans la trace
+            stim_frames = stim_frames(stim_frames >= 1 & stim_frames <= T);
+    
+            if ~isempty(stim_frames)
+    
+                yl = ylim(ax);
+    
+                % position légèrement au-dessus du bord inférieur
+                y_stim = yl(1) + 0.03 * diff(yl);
+    
+                plot(ax, ...
+                    stim_frames, ...
+                    repmat(y_stim, size(stim_frames)), ...
+                    'v', ...
+                    'LineStyle','none', ...
+                    'MarkerSize',8, ...
+                    'MarkerFaceColor',[0.45 0 0], ...
+                    'MarkerEdgeColor',[0.20 0 0], ...
+                    'LineWidth',1, ...
+                    'Clipping','on');
+            end
+        end
+    end
 
     % ---- Trace F0 ----
     if ~isempty(F0) && cell_id >= 1 && cell_id <= size(F0,1)
