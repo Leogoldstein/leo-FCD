@@ -42,6 +42,17 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     blue_indices = [];
     stim_frames = [];
 
+    DF_in = [];
+    F0_in = [];
+    noise_est_in = [];
+    SNR_in = [];
+
+    Raster_in = [];
+    Acttmp2_in = [];
+    thresholds_in = [];
+    valid_cells_in = [];
+
+
     if ~isempty(varargin)
 
         if mod(numel(varargin),2) ~= 0
@@ -65,17 +76,35 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
                 case 'viewer_mode'
                     viewer_mode = logical(val);
 
+                case 'DF'
+                    DF_in = val;
+
+                case 'F0'
+                    F0_in = val;
+
+                case 'noise_est'
+                    noise_est_in = val;
+
+                case 'SNR'
+                    SNR_in = val;
+
+                case 'Raster'
+                    Raster_in = val;
+
+                case 'Acttmp2'
+                    Acttmp2_in = val;
+
+                case 'thresholds'
+                    thresholds_in = val;
+
+                case 'valid_cells'
+                    valid_cells_in = val;
+
                 case 'cell_type'
                     cell_type = char(val);
 
                 case 'ops'
                     ops = val;
-
-                case 'animal_group'
-                    animal_group = val; %#ok<NASGU>
-
-                case 'ages_group'
-                    ages_group = val; %#ok<NASGU>
 
                 case 'iscell'
                     iscell_in = val;
@@ -111,7 +140,7 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     end
 
     % ---- Motion correction / bad frames ----
-    if ~isempty(speed)
+    if ~viewer_mode && ~isempty(speed)
         [deviation, bad_frames, ~, ~, F] = ...
             motion_correction_substraction(F, ops, speed);
 
@@ -134,20 +163,69 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
 
     % ---- Prétraitement ----
     window_size = opts.window_size;
-
-    % [F_gcamp_sub, frame_rate_sub, idx_keep, down_factor] = ...
-    % simulate_three_plane(F, fs);
-    % F = F_gcamp_sub;
-    % fs = frame_rate_sub;
-
-    %[DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
-    [DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
-    DF_sg = savgol_transform(DF, opts);
-    noise_est = estimate_noise(DF);
-
-    % ---- Qualité / SNR ----
-    [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
-        compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+    
+    if viewer_mode
+    
+        % ============================================================
+        % VIEWER MODE :
+        % aucun F_processing
+        % aucun SavGol
+        % aucune estimation du bruit
+        % aucun tri qualité
+        % ============================================================
+    
+        if ~isempty(DF_in) && size(DF_in,1) == size(F,1)
+    
+            DF_sg = DF_in;
+    
+            if ~isempty(F0_in) && size(F0_in,1) == size(F,1)
+                F0 = F0_in;
+            else
+                F0 = nan(size(F));
+            end
+    
+            if ~isempty(noise_est_in) && numel(noise_est_in) == size(F,1)
+                noise_est = noise_est_in(:);
+            else
+                noise_est = nan(size(F,1),1);
+            end
+    
+            if ~isempty(SNR_in) && numel(SNR_in) == size(F,1)
+                SNR = SNR_in(:);
+            else
+                SNR = nan(size(F,1),1);
+            end
+    
+            cells_sorted_by_quality = (1:size(F,1)).';
+    
+        else
+    
+            warning('viewer_mode demandé mais DF sauvegardé absent/incompatible. Recalcul normal.');
+            viewer_mode = false;
+    
+            %[DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
+            [DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
+            DF_sg = savgol_transform(DF, opts);
+            noise_est = estimate_noise(DF);
+    
+            [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+                compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+        end
+    
+    else
+    
+        % ============================================================
+        % MODE NORMAL :
+        % preprocessing + détection actifs
+        % ============================================================
+        %[DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
+        [DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
+        DF_sg = savgol_transform(DF, opts);
+        noise_est = estimate_noise(DF);
+    
+        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+    end
 
     % ---- Titre fenêtre ----
     winTitle = '';
@@ -303,7 +381,7 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         set(findobj(ctrl_panel,'String','Appliquer cutoff'),   'Enable','off');
         set(findobj(ctrl_panel,'String','Garder cellule'),     'Enable','off');
         set(findobj(ctrl_panel,'String','Exclure cellule'),    'Enable','off');
-        set(findobj(ctrl_panel,'String','Confirmer sélection'),'Enable','on');
+        set(findobj(ctrl_panel,'String','Confirmer sélection'),'Enable','off');
     end
 
     % ---- Contrôles détection ----
@@ -378,6 +456,12 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'viewer_mode', viewer_mode);
     setappdata(fig,'blue_indices', blue_indices);
     
+    % ---- Données de détection sauvegardées pour viewer mode ----
+    setappdata(fig,'Raster_saved', Raster_in);
+    setappdata(fig,'Acttmp2_saved', Acttmp2_in);
+    setappdata(fig,'thresholds_saved', thresholds_in);
+    setappdata(fig,'valid_cells_saved', valid_cells_in);
+    
     % cell_status: 0 undecided, +1 keep, -1 exclude
     setappdata(fig,'cell_status', zeros(size(F,1),1));
 
@@ -397,8 +481,8 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         if isappdata(fig,'metadata')
             metadata = getappdata(fig,'metadata');
             try
-                if isstruct(metadata) && isfield(metadata, 'PixelSize') && ~isempty(metadata.PixelSize)           
-                    px = metadata.PixelSize;
+                if isstruct(metadata) && isfield(metadata, 'PixelSize_um') && ~isempty(metadata.PixelSize_um)           
+                    px = metadata.PixelSize_um;
                     if isnumeric(px)
                         pixel_size_um = double(px(1));
                     elseif iscell(px) && ~isempty(px)
@@ -507,15 +591,41 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     
     linkaxes([ax1 axF0 axDev],'x');
 
-    % ---- Recompute pics ----
-    recompute_n_peaks_all(fig);
-    apply_auto_cutoff(fig);
+    % ---- Pics / sélection ----
+    if viewer_mode
 
-    n_peaks_all = getappdata(fig,'n_peaks_all');
-    cell_status = getappdata(fig,'cell_status');
-    zero_peak_cells = (n_peaks_all == 0);
-    cell_status(zero_peak_cells) = -1;
-    setappdata(fig,'cell_status', cell_status);
+        % En viewer mode : NE PAS redétecter.
+        % On utilise uniquement les pics sauvegardés.
+        nCells = size(F,1);
+        n_peaks_all = zeros(nCells,1);
+
+        if ~isempty(Acttmp2_in)
+            for cid = 1:min(nCells, numel(Acttmp2_in))
+                if iscell(Acttmp2_in)
+                    n_peaks_all(cid) = numel(Acttmp2_in{cid});
+                else
+                    n_peaks_all(cid) = 0;
+                end
+            end
+        elseif ~isempty(Raster_in)
+            n_peaks_all = sum(logical(Raster_in), 2);
+            n_peaks_all = n_peaks_all(:);
+        end
+
+        setappdata(fig,'n_peaks_all', n_peaks_all);
+
+    else
+
+        % Mode normal : détection active
+        recompute_n_peaks_all(fig);
+        apply_auto_cutoff(fig);
+
+        n_peaks_all = getappdata(fig,'n_peaks_all');
+        cell_status = getappdata(fig,'cell_status');
+        zero_peak_cells = (n_peaks_all == 0);
+        cell_status(zero_peak_cells) = -1;
+        setappdata(fig,'cell_status', cell_status);
+    end
 
     refresh_selection_order(fig);
     update_current_cell(fig, 1);
@@ -880,16 +990,67 @@ function bad_mask = make_bad_mask(bad_frames, Nx)
 end
 
 %% ===================== DETECTION / SAVE =====================
-
 function auto_detect_and_add(fig)
 
-    if ~isappdata(fig,'DF') || ~isappdata(fig,'cell_id') || ...
-       ~isappdata(fig,'opts')  || ~isappdata(fig,'noise_est')
+    if ~isappdata(fig,'DF') || ~isappdata(fig,'cell_id')
         return;
     end
 
-    DF        = getappdata(fig,'DF');
-    cid       = getappdata(fig,'cell_id');
+    DF  = getappdata(fig,'DF');
+    cid = getappdata(fig,'cell_id');
+
+    if isempty(cid) || ~isscalar(cid) || ~isfinite(cid)
+        return;
+    end
+
+    cid = round(cid);
+
+    if cid < 1 || cid > size(DF,1)
+        return;
+    end
+
+    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+
+    if viewer_mode
+
+        auto_peaks = [];
+        seuil = NaN;
+
+        if isappdata(fig,'Acttmp2_saved')
+            Acttmp2_saved = getappdata(fig,'Acttmp2_saved');
+
+            if iscell(Acttmp2_saved) && cid <= numel(Acttmp2_saved)
+                auto_peaks = Acttmp2_saved{cid};
+            end
+        end
+
+        if isempty(auto_peaks) && isappdata(fig,'Raster_saved')
+            Raster_saved = getappdata(fig,'Raster_saved');
+
+            if ~isempty(Raster_saved) && cid <= size(Raster_saved,1)
+                auto_peaks = find(Raster_saved(cid,:));
+            end
+        end
+
+        if isappdata(fig,'thresholds_saved')
+            thresholds_saved = getappdata(fig,'thresholds_saved');
+
+            if ~isempty(thresholds_saved) && cid <= numel(thresholds_saved)
+                seuil = thresholds_saved(cid);
+            end
+        end
+
+        setappdata(fig,'auto_peaks', auto_peaks);
+        setappdata(fig,'seuil_detection_last', seuil);
+
+        refresh_data(fig);
+        return;
+    end
+
+    if ~isappdata(fig,'opts') || ~isappdata(fig,'noise_est')
+        return;
+    end
+
     opts      = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
 
@@ -897,15 +1058,6 @@ function auto_detect_and_add(fig)
         bad_frames = getappdata(fig,'bad_frames');
     else
         bad_frames = [];
-    end
-
-    if isempty(cid) || ~isscalar(cid) || ~isfinite(cid)
-        return;
-    end
-    cid = round(cid);
-
-    if cid < 1 || cid > size(DF,1)
-        return;
     end
 
     x = DF(cid,:).';
@@ -1558,7 +1710,41 @@ function finalize_and_close(fig, synchronous_frames)
 
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
-    if ~viewer_mode && isappdata(fig,'order_cells_all') && isappdata(fig,'order_cells')
+    if viewer_mode
+
+        DF = getappdata(fig,'DF');
+        F0 = getappdata(fig,'F0');
+
+        Raster = getappdata(fig,'Raster_saved');
+        Acttmp2 = getappdata(fig,'Acttmp2_saved');
+        thresholds = getappdata(fig,'thresholds_saved');
+        valid_cells = getappdata(fig,'valid_cells_saved');
+
+        if isempty(valid_cells)
+            valid_cells = (1:size(DF,1)).';
+        end
+
+        setappdata(fig,'last_save_outputs', struct( ...
+            'invalid_cells', [], ...
+            'valid_cells', valid_cells, ...
+            'orig2new', [], ...
+            'DF', DF, ...
+            'F0', F0, ...
+            'Raster', Raster, ...
+            'Acttmp2', {Acttmp2}, ...
+            'MAct', [], ...
+            'thresholds', thresholds, ...
+            'opts', [], ...
+            'summary', []));
+
+        if ishghandle(fig)
+            uiresume(fig);
+        end
+
+        return;
+    end
+
+    if isappdata(fig,'order_cells_all') && isappdata(fig,'order_cells')
         order_cells_all = getappdata(fig,'order_cells_all');
         order_cells     = getappdata(fig,'order_cells');
     
@@ -1570,7 +1756,6 @@ function finalize_and_close(fig, synchronous_frames)
     [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
 
-    % Aperçu aléatoire de 10 traces sauvegardées avec pics
     try
         if isappdata(fig,'gcamp_output_folder')
             outdir_preview = getappdata(fig,'gcamp_output_folder');
@@ -2177,6 +2362,10 @@ function make_slider(parent,fig,label,field,minv,maxv,val,pos)
 end
 
 function update_param(fig, field, value)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        return;
+    end
 
     opts = getappdata(fig,'opts');
     fs   = getappdata(fig,'fs');

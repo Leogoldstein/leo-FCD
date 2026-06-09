@@ -2,7 +2,6 @@ function data = run_gcamp_peak_detection( ...
     gcamp_output_folders, ...
     metadata, ...
     sampling_rate_group, synchronous_frames_group, ...
-    current_animal_group, current_ages_group, ...
     data, meanImgs_gcamp, ...
     current_gcamp_TSeries_path)
 
@@ -307,64 +306,181 @@ function data = run_gcamp_peak_detection( ...
 
             if viewer_mode
 
+                % ============================================================
+                % Charger les résultats sauvegardés
+                % ============================================================
+                Acttmp2_saved      = [];
+                Raster_saved       = [];
+                thresholds_saved   = [];
+                valid_cells_saved  = [];
+                DF_saved           = [];
+                F0_saved           = [];
+                noise_est_saved    = [];
+            
                 switch family
+            
                     case 'gcamp'
-                        valid_cells_prev = get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p);
+            
+                        valid_cells_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p);
+            
+                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'Acttmp2_gcamp_by_plane', m, p);
+            
+                        Raster_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'Raster_gcamp_by_plane', m, p);
+            
+                        thresholds_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'thresholds_gcamp_by_plane', m, p);
+            
+                        DF_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'DF_gcamp_by_plane', m, p);
+            
+                        F0_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'F0_gcamp_by_plane', m, p);
+            
+                        noise_est_saved = get_branch_plane_or_empty(data, ...
+                            'gcamp_plane', 'noise_est_gcamp_by_plane', m, p);
+            
                     case 'blue'
-                        valid_cells_prev = get_branch_plane_or_empty(data, 'blue_plane', 'valid_blue_cells_by_plane', m, p);
+            
+                        valid_cells_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'valid_blue_cells_by_plane', m, p);
+            
+                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'Acttmp2_blue_by_plane', m, p);
+            
+                        Raster_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'Raster_blue_by_plane', m, p);
+            
+                        thresholds_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'thresholds_blue_by_plane', m, p);
+            
+                        DF_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'DF_blue_by_plane', m, p);
+            
+                        F0_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'F0_blue_by_plane', m, p);
+            
+                        noise_est_saved = get_branch_plane_or_empty(data, ...
+                            'blue_plane', 'noise_est_blue_by_plane', m, p);
+            
                     case 'combined'
-                        valid_cells_prev = get_branch_plane_or_empty(data, 'combined_plane', 'valid_combined_cells_by_plane', m, p);
+            
+                        valid_cells_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'valid_combined_cells_by_plane', m, p);
+            
+                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'Acttmp2_combined_by_plane', m, p);
+            
+                        Raster_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'Raster_combined_by_plane', m, p);
+            
+                        thresholds_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'thresholds_combined_by_plane', m, p);
+            
+                        DF_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'DF_combined_by_plane', m, p);
+            
+                        F0_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'F0_combined_by_plane', m, p);
+            
+                        noise_est_saved = get_branch_plane_or_empty(data, ...
+                            'combined_plane', 'noise_est_combined_by_plane', m, p);
                 end
-
-                if ~isempty(valid_cells_prev) && ...
-                   all(valid_cells_prev >= 1) && ...
-                   all(valid_cells_prev <= size(F_in,1))
-
-                    F_view = F_in(valid_cells_prev, :);
-
-                    if ~isempty(masks_in) && ndims(masks_in) >= 3 && size(masks_in,1) >= max(valid_cells_prev)
-                        masks_in = masks_in(valid_cells_prev, :, :);
+            
+                % ============================================================
+                % Vérification cohérence
+                % ============================================================
+                valid_viewer_data = ...
+                    ~isempty(valid_cells_saved) && ...
+                    ~isempty(DF_saved) && ...
+                    size(DF_saved,1) == numel(valid_cells_saved) && ...
+                    all(valid_cells_saved >= 1) && ...
+                    all(valid_cells_saved <= size(F_in,1));
+            
+                if valid_viewer_data
+            
+                    % F_view limité aux cellules conservées
+                    F_view = F_in(valid_cells_saved,:);
+            
+                    % masques limités aux cellules conservées
+                    if ~isempty(masks_in) && ...
+                       ndims(masks_in) >= 3 && ...
+                       size(masks_in,1) >= max(valid_cells_saved)
+            
+                        masks_in = masks_in(valid_cells_saved,:,:);
+            
                     else
                         masks_in = [];
                     end
-
-                    if strcmp(family, 'combined') && ~isempty(blue_indices_in)
-
+            
+                    % remapping indices bleus
+                    if strcmp(family,'combined') && ~isempty(blue_indices_in)
+            
                         map_old_to_new = nan(size(F_in,1),1);
-                        map_old_to_new(valid_cells_prev) = 1:numel(valid_cells_prev);
-
+                        map_old_to_new(valid_cells_saved) = 1:numel(valid_cells_saved);
+            
                         blue_indices_in = blue_indices_in( ...
-                            blue_indices_in >= 1 & blue_indices_in <= size(F_in,1));
-
+                            blue_indices_in >= 1 & ...
+                            blue_indices_in <= size(F_in,1));
+            
                         blue_indices_in = map_old_to_new(blue_indices_in);
                         blue_indices_in = blue_indices_in(isfinite(blue_indices_in));
                         blue_indices_in = blue_indices_in(:);
                     end
-
+            
                 else
-                    warning('Group %d plane %d: invalid previous valid_cells, fallback full signal.', m, p);
+            
+                    warning(['Group %d plane %d : viewer mode impossible ' ...
+                             '(DF/valid_cells manquants). Recalcul normal.'], ...
+                             m, p);
+            
                     viewer_mode = false;
+            
                     F_view = F_in;
+            
+                    Acttmp2_saved      = [];
+                    Raster_saved       = [];
+                    thresholds_saved   = [];
+                    valid_cells_saved  = [];
+                    DF_saved           = [];
+                    F0_saved           = [];
+                    noise_est_saved    = [];
                 end
-
+            
             else
+            
                 F_view = F_in;
+            
+                Acttmp2_saved      = [];
+                Raster_saved       = [];
+                thresholds_saved   = [];
+                valid_cells_saved  = [];
+                DF_saved           = [];
+                F0_saved           = [];
+                noise_est_saved    = [];
             end
 
             if isempty(F_view)
                 fprintf('Group %d plane %d: F_view empty.\n', m, p);
                 continue;
             end
-
+            
             [F0, noise_est, SNR, valid_cells, DF, Raster, ...
              Acttmp2, MAct, thresholds, bad_segs, ...
              opts_det, has_new] = ...
                 peak_detection_tuner(F_view, ...
                     sampling_rate_m, ...
                     sync_frames_m, ...
-                    'animal_group', current_animal_group, ...
-                    'ages_group', current_ages_group{m}, ...
                     'viewer_mode', viewer_mode, ...
+                    'DF', DF_saved, ...
+                    'F0', F0_saved, ...
+                    'noise_est', noise_est_saved, ...
+                    'Acttmp2', Acttmp2_saved, ...
+                    'Raster', Raster_saved, ...
+                    'thresholds', thresholds_saved, ...
+                    'valid_cells', valid_cells_saved, ...
                     'cell_type', cell_type, ...
                     'ops', ops_in, ...
                     'iscell', iscell_in, ...
@@ -377,7 +493,11 @@ function data = run_gcamp_peak_detection( ...
                     'metadata', metadata_m, ...
                     'stim_frames', stim_frames_m, ...
                     'gcamp_output_folder', gcamp_output_folders{m}{p});
-
+            
+            if viewer_mode
+                continue;
+            end
+            
             if ~has_new
                 fprintf('Group %d plane %d: no new outputs for %s.\n', m, p, family);
                 continue;

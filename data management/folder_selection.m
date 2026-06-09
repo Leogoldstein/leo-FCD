@@ -1,4 +1,4 @@
-function selected_groups = folder_selection(choices, group_order, dataFolders_by_group)
+function [selected_groups, animal_date_list] = folder_selection(choices, group_order, dataFolders_by_group)
 
     destinationFolder = 'D:/Imaging/jm/';
     root_path = 'D:\Imaging';

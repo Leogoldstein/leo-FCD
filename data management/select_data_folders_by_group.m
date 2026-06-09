@@ -45,83 +45,78 @@ function dataFolders_by_group = select_data_folders_by_group(choices, group_orde
         end
 
         %======================================================
-        % FCD : proposer mtor / animal / date
+        % FCD : proposer mtor / animal / date seulement si animal_date_list existe
         %======================================================
         if choice == 2
-
-            level_choice = questdlg( ...
-                'Select FCD folders by:', ...
-                'Selection level', ...
-                'mtor', 'animal', 'date', 'mtor');
-
-            if isempty(level_choice)
-                dataFolders_by_group{i} = {};
-                continue;
-            end
-
+        
+            has_animal_date_list = ~isempty(animal_date_list);
+        
             rows = [];
-            if ~isempty(animal_date_list)
+            if has_animal_date_list
                 type_col = animal_date_list(:,1);
                 rows = find(strcmpi(type_col, current_type));
             end
-
+        
+            if has_animal_date_list && ~isempty(rows)
+        
+                level_choice = questdlg( ...
+                    'Select FCD folders by:', ...
+                    'Selection level', ...
+                    'mtor', 'animal', 'date', 'mtor');
+        
+                if isempty(level_choice)
+                    dataFolders_by_group{i} = {};
+                    continue;
+                end
+        
+            else
+                level_choice = 'manual';
+            end
+        
             start_folder = root_folder;
-
-            %-------------------%
-            % mtor -> D:\Imaging\FCD
-            %-------------------%
+        
             if strcmp(level_choice, 'mtor')
-
+        
                 start_folder = root_folder;
-
-            %-------------------%
-            % animal -> D:\Imaging\FCD\mtorXX
-            %-------------------%
+        
             elseif strcmp(level_choice, 'animal')
-
-                if ~isempty(rows)
-                    group_col  = animal_date_list(rows,2);
-                    animal_col = animal_date_list(rows,3);
-
-                    for k = 1:numel(group_col)
-                        if isempty(group_col{k})
-                            group_col{k} = animal_col{k};
-                        end
-                    end
-
-                    unique_groups = unique(group_col);
-
-                    if isscalar(unique_groups)
-                        start_folder = fullfile(root_folder, unique_groups{1});
+        
+                group_col  = animal_date_list(rows,2);
+                animal_col = animal_date_list(rows,3);
+        
+                for k = 1:numel(group_col)
+                    if isempty(group_col{k})
+                        group_col{k} = animal_col{k};
                     end
                 end
-
-            %-------------------%
-            % date -> D:\Imaging\FCD\mtorXX\animalXX
-            %-------------------%
+        
+                unique_groups = unique(group_col);
+        
+                if isscalar(unique_groups)
+                    start_folder = fullfile(root_folder, unique_groups{1});
+                end
+        
             elseif strcmp(level_choice, 'date')
-
-                if ~isempty(rows)
-                    group_col  = animal_date_list(rows,2);
-                    animal_col = animal_date_list(rows,3);
-
-                    for k = 1:numel(group_col)
-                        if isempty(group_col{k})
-                            group_col{k} = animal_col{k};
-                        end
+        
+                group_col  = animal_date_list(rows,2);
+                animal_col = animal_date_list(rows,3);
+        
+                for k = 1:numel(group_col)
+                    if isempty(group_col{k})
+                        group_col{k} = animal_col{k};
                     end
-
-                    unique_groups  = unique(group_col);
-                    unique_animals = unique(animal_col);
-
-                    if isscalar(unique_groups) && isscalar(unique_animals)
-                        start_folder = fullfile(root_folder, unique_groups{1}, unique_animals{1});
-                    elseif isscalar(unique_groups)
-                        start_folder = fullfile(root_folder, unique_groups{1});
-                    end
+                end
+        
+                unique_groups  = unique(group_col);
+                unique_animals = unique(animal_col);
+        
+                if isscalar(unique_groups) && isscalar(unique_animals)
+                    start_folder = fullfile(root_folder, unique_groups{1}, unique_animals{1});
+                elseif isscalar(unique_groups)
+                    start_folder = fullfile(root_folder, unique_groups{1});
                 end
             end
-
+        
             fprintf('[SELECT] FCD %s -> %s\n', level_choice, start_folder);
             dataFolders = select_folders(start_folder);
             dataFolders = organize_data_by_animal(dataFolders, group_order{2});
