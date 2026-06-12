@@ -4,20 +4,20 @@ function gcamp_plane = process_gcamp_cells( ...
     meanImgs_gcamp, ...
     data)
 
-% PROCESS_GCAMP_CELLS
-% - recharge results_gcamp.mat si présent
-% - complète uniquement les champs/plans absents dans data.gcamp_plane
-% - ne réécrit pas les données déjà présentes en mémoire
-% - garde ops_suite2p_by_plane en mémoire seulement (non sauvegardé)
-% - recharge aussi ops en mémoire même si raw+masques sont déjà présents
-% - retourne uniquement data.gcamp_plane
+    % PROCESS_GCAMP_CELLS
+    % - recharge results_gcamp.mat si présent
+    % - complète uniquement les champs/plans absents dans data.gcamp_plane
+    % - ne réécrit pas les données déjà présentes en mémoire
+    % - garde ops_suite2p_by_plane en mémoire seulement (non sauvegardé)
+    % - recharge aussi ops en mémoire même si raw+masques sont déjà présents
+    % - retourne uniquement data.gcamp_plane
 
     numFolders = numel(gcamp_output_folders);
 
     % Champs sauvegardés dans results_gcamp.mat
     fields_gcamp_saved = { ...
         'F_gcamp_by_plane', 'F_deconv_gcamp_by_plane', ...
-        'stat_by_plane', 'iscell_gcamp_by_plane', ...
+        'stat_by_plane', 'iscell_gcamp_by_plane', 'iscell_idx_gcamp_by_plane', ...
         'stat_false_by_plane', 'iscell_false_by_plane', ...
         'outlines_gcampx_by_plane', 'outlines_gcampy_by_plane', ...
         'gcamp_mask_by_plane', 'gcamp_props_by_plane', ...
@@ -74,9 +74,10 @@ function gcamp_plane = process_gcamp_cells( ...
             end
 
             already_has_raw = ...
-                gcamp_field_has_value(data, 'F_gcamp_by_plane', m, p) && ...
-                gcamp_field_has_value(data, 'stat_by_plane', m, p) && ...
-                gcamp_field_has_value(data, 'iscell_gcamp_by_plane', m, p);
+                gcamp_field_has_value(data,'F_gcamp_by_plane',m,p) && ...
+                gcamp_field_has_value(data,'stat_by_plane',m,p) && ...
+                gcamp_field_has_value(data,'iscell_gcamp_by_plane',m,p) && ...
+                gcamp_field_has_value(data,'iscell_idx_gcamp_by_plane',m,p);
 
             already_has_true_masks = ...
                 gcamp_field_has_value(data, 'gcamp_props_by_plane', m, p) && ...
@@ -107,15 +108,16 @@ function gcamp_plane = process_gcamp_cells( ...
             end
 
             if ~already_has_raw
-                [~, F, F_deconv, ops, stat, iscell_mat, stat_false, iscell_false_mat] = ...
+                [~, F, F_deconv, ops, stat, iscell_cells, iscell_cells_idx, stat_false, iscell_false] = ...
                     load_data(fall_path);
 
                 data.gcamp_plane.F_gcamp_by_plane{m}{p}        = F;
                 data.gcamp_plane.F_deconv_gcamp_by_plane{m}{p} = F_deconv;
                 data.gcamp_plane.stat_by_plane{m}{p}           = stat;
-                data.gcamp_plane.iscell_gcamp_by_plane{m}{p}   = iscell_mat;
+                data.gcamp_plane.iscell_gcamp_by_plane{m}{p}   = iscell_cells;
+                data.gcamp_plane.iscell_idx_gcamp_by_plane{m}{p}   = iscell_cells_idx;
                 data.gcamp_plane.stat_false_by_plane{m}{p}     = stat_false;
-                data.gcamp_plane.iscell_false_by_plane{m}{p}   = iscell_false_mat;
+                data.gcamp_plane.iscell_false_by_plane{m}{p}   = iscell_false;
 
                 % mémoire uniquement
                 data.gcamp_plane.ops_suite2p_by_plane{m}{p}    = ops;
@@ -123,9 +125,9 @@ function gcamp_plane = process_gcamp_cells( ...
                 has_new_data_for_group = true;
             else
                 stat             = get_gcamp_plane_or_empty(data, 'stat_by_plane', m, p);
-                iscell_mat       = get_gcamp_plane_or_empty(data, 'iscell_gcamp_by_plane', m, p);
+                iscell_cells       = get_gcamp_plane_or_empty(data, 'iscell_gcamp_by_plane', m, p);
                 stat_false       = get_gcamp_plane_or_empty(data, 'stat_false_by_plane', m, p);
-                iscell_false_mat = get_gcamp_plane_or_empty(data, 'iscell_false_by_plane', m, p);
+                iscell_false = get_gcamp_plane_or_empty(data, 'iscell_false_by_plane', m, p);
 
                 if ~gcamp_field_slot_exists(data, 'ops_suite2p_by_plane', m, p) || ...
                    isempty(data.gcamp_plane.ops_suite2p_by_plane{m}{p})
@@ -156,13 +158,13 @@ function gcamp_plane = process_gcamp_cells( ...
             end
 
             if ~already_has_true_masks
-                if ~isempty(stat) && ~isempty(iscell_mat)
+                if ~isempty(stat) && ~isempty(iscell_cells)
                     try
-                        valid_cells = 1:size(iscell_mat, 1);
+                        valid_cells = 1:size(iscell_cells, 1);
 
                         [~, outlines_gcampx_plane, outlines_gcampy_plane, ~, ~, ~, ...
                          gcamp_mask_plane, gcamp_props_plane] = ...
-                            load_calcium_mask(iscell_mat, stat, valid_cells, imgSize_ref);
+                            load_calcium_mask(iscell_cells, stat, valid_cells, imgSize_ref);
 
                         data.gcamp_plane.outlines_gcampx_by_plane{m}{p} = outlines_gcampx_plane;
                         data.gcamp_plane.outlines_gcampy_by_plane{m}{p} = outlines_gcampy_plane;
@@ -185,13 +187,13 @@ function gcamp_plane = process_gcamp_cells( ...
             end
 
             if ~already_has_false_masks
-                if ~isempty(stat_false) && ~isempty(iscell_false_mat)
+                if ~isempty(stat_false) && ~isempty(iscell_false)
                     try
-                        valid_cells_false = 1:size(iscell_false_mat, 1);
+                        valid_cells_false = 1:size(iscell_false, 1);
 
                         [~, outlines_gcampx_false_plane, outlines_gcampy_false_plane, ~, ~, ~, ...
                          gcamp_mask_false_plane, gcamp_props_false_plane] = ...
-                            load_calcium_mask(iscell_false_mat, stat_false, valid_cells_false, imgSize_ref);
+                            load_calcium_mask(iscell_false, stat_false, valid_cells_false, imgSize_ref);
 
                         data.gcamp_plane.outlines_gcampx_false_by_plane{m}{p} = outlines_gcampx_false_plane;
                         data.gcamp_plane.outlines_gcampy_false_by_plane{m}{p} = outlines_gcampy_false_plane;

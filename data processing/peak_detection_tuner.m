@@ -1,4 +1,4 @@
-function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, focus_segs, opts, has_new_outputs] = ...
+function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, focus_segs, opts, has_new_outputs] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
 % GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
 %
@@ -21,13 +21,11 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         'min_n_peaks_cutoff', 10, ...
         'min_mask_um2', 50 ...
     );
-    
     opts = convert_opts_ms_to_frames(opts, fs);
     
     % ---- Inputs optionnels ----
-    iscell_in = [];
-    stat_in   = [];
-    speed     = [];
+    iscell_idx = [];
+    stat   = [];
     deviation = [];
     bad_frames = [];
     focus_segs = [];
@@ -41,16 +39,16 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     masks = [];
     blue_indices = [];
     stim_frames = [];
+    motion_energy = [];
 
-    DF_in = [];
-    F0_in = [];
-    noise_est_in = [];
-    SNR_in = [];
+    DF = [];
+    F0 = [];
+    noise_est = [];
 
-    Raster_in = [];
-    Acttmp2_in = [];
-    thresholds_in = [];
-    valid_cells_in = [];
+    Raster = [];
+    Acttmp2 = [];
+    thresholds = [];
+    valid_cells = [];
 
 
     if ~isempty(varargin)
@@ -77,28 +75,25 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
                     viewer_mode = logical(val);
 
                 case 'DF'
-                    DF_in = val;
+                    DF = val;
 
                 case 'F0'
-                    F0_in = val;
+                    F0 = val;
 
                 case 'noise_est'
-                    noise_est_in = val;
-
-                case 'SNR'
-                    SNR_in = val;
+                    noise_est = val;
 
                 case 'Raster'
-                    Raster_in = val;
+                    Raster = val;
 
                 case 'Acttmp2'
-                    Acttmp2_in = val;
+                    Acttmp2 = val;
 
                 case 'thresholds'
-                    thresholds_in = val;
+                    thresholds = val;
 
                 case 'valid_cells'
-                    valid_cells_in = val;
+                    valid_cells = val;
 
                 case 'cell_type'
                     cell_type = char(val);
@@ -106,11 +101,11 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
                 case 'ops'
                     ops = val;
 
-                case 'iscell'
-                    iscell_in = val;
+                case 'iscell_idx'
+                    iscell_idx = val;
 
                 case 'stat'
-                    stat_in = val;
+                    stat = val;
 
                  case 'masks'
                     masks = val;
@@ -124,43 +119,30 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
                 case 'gcamp_TSeries_path'
                     gcamp_TSeries_path = val;
 
-                case 'speed'
-                    speed = val;
+                case 'deviation'
+                    deviation = val;
+                
+                case 'bad_frames'
+                    bad_frames = val;
+
+                case 'focus_segs'
+                    focus_segs = val;
 
                 case 'metadata'
                     metadata = val;
 
                 case 'stim_frames'
                     stim_frames = val;
+
+                case 'motion_energy'
+                    motion_energy = val;
                  
                 case 'gcamp_output_folder'
                     gcamp_output_folder = val;
             end
         end
     end
-
-    % ---- Motion correction / bad frames ----
-    if ~viewer_mode && ~isempty(speed)
-        [deviation, bad_frames, ~, ~, F] = ...
-            motion_correction_substraction(F, ops, speed);
-
-        deviation  = deviation(:).';
-        bad_frames = bad_frames(:).';
-
-        bad_segs = badframes_to_segments(bad_frames, size(F,2));
-        segTable = sort_segments_by_deviation(bad_segs, deviation);
-        assignin('base', 'segTable', segTable);
-
-        user_focus_segs = [];
-        % [user_focus_segs, user_focus_frames] = enter_observed_deviations(gcamp_TSeries_path, size(F,2));
-
-        if ~isempty(user_focus_segs)
-            focus_segs = user_focus_segs;
-        else
-            focus_segs = bad_segs;
-        end
-    end
-
+    
     % ---- Prétraitement ----
     window_size = opts.window_size;
     
@@ -168,58 +150,49 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     
         % ============================================================
         % VIEWER MODE :
-        % aucun F_processing
-        % aucun SavGol
-        % aucune estimation du bruit
-        % aucun tri qualité
+        % pas de F_processing
+        % pas de SavGol
+        % mais recalcul du tri qualité sur DF sauvegardé
         % ============================================================
     
-        if ~isempty(DF_in) && size(DF_in,1) == size(F,1)
+        if ~isempty(DF) && size(DF,1) == size(F,1)
     
-            DF_sg = DF_in;
+            DF_sg = DF;
     
-            if ~isempty(F0_in) && size(F0_in,1) == size(F,1)
-                F0 = F0_in;
+            if ~isempty(F0) && size(F0,1) == size(F,1)
+                F0 = F0;
             else
                 F0 = nan(size(F));
             end
     
-            if ~isempty(noise_est_in) && numel(noise_est_in) == size(F,1)
-                noise_est = noise_est_in(:);
+            if ~isempty(noise_est) && numel(noise_est) == size(F,1)
+                noise_est = noise_est(:);
             else
-                noise_est = nan(size(F,1),1);
+                noise_est = estimate_noise(DF_sg);
             end
     
-            if ~isempty(SNR_in) && numel(SNR_in) == size(F,1)
-                SNR = SNR_in(:);
-            else
-                SNR = nan(size(F,1),1);
-            end
-    
-            cells_sorted_by_quality = (1:size(F,1)).';
+            [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+                compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
     
         else
     
             warning('viewer_mode demandé mais DF sauvegardé absent/incompatible. Recalcul normal.');
             viewer_mode = false;
+        end
+    end
     
-            %[DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
-            [DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
-            DF_sg = savgol_transform(DF, opts);
-            noise_est = estimate_noise(DF);
+    use_high_pass_filter = false;
+
+    if ~viewer_mode
     
-            [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
-                compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+        if use_high_pass_filter
+            [DF, F0, DF_raw, baseline_df] = ...
+                F_processing(F, bad_frames, fs, window_size);
+        else
+            [DF, F0] = ...
+                F_processing_JC(F, bad_frames, fs, window_size);
         end
     
-    else
-    
-        % ============================================================
-        % MODE NORMAL :
-        % preprocessing + détection actifs
-        % ============================================================
-        %[DF, F0] = F_processing_JC(F, bad_frames, fs, window_size);
-        [DF, F0, DF_raw, baseline_df] = F_processing(F, bad_frames, fs, window_size);
         DF_sg = savgol_transform(DF, opts);
         noise_est = estimate_noise(DF);
     
@@ -228,9 +201,6 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     end
 
     % ---- Titre fenêtre ----
-    winTitle = '';
-    
-        % ---- Titre fenêtre ----
     nCells = size(F,1);
     title_parts = {};
 
@@ -318,23 +288,6 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         'Tag','sldr_nav_cell', ...
         'Callback', @(src,~) update_current_cell(fig, round(get(src,'Value'))));
     
-    % ---- Cutoff ----
-    uicontrol('Parent',ctrl_panel,'Style','text', ...
-        'String','Cutoff', ...
-        'Units','normalized', ...
-        'Position',[0.05 0.315 0.50 0.03], ...
-        'HorizontalAlignment','left', ...
-        'BackgroundColor',[.97 .97 .98], ...
-        'FontWeight','bold');
-    
-    uicontrol('Parent',ctrl_panel,'Style','edit', ...
-        'String', '1', ...
-        'Units','normalized', ...
-        'Position',[0.58 0.305 0.17 0.045], ...
-        'Tag','edit_nav_rank', ...
-        'BackgroundColor','w', ...
-        'Callback', @(src,~) goto_navigation_index(fig, src));
-    
     uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
         'String','Appliquer cutoff', ...
         'Units','normalized', ...
@@ -389,6 +342,16 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.60 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Réfractaire (ms)','refrac_ms',0,5000,opts.refrac_ms,[0.05 0.52 0.90 0.06]);
     make_slider(ctrl_panel,fig,'SavGol window (ms)','savgol_win_ms',100,500,opts.savgol_win_ms,[0.05 0.44 0.90 0.06]);
+    
+    uicontrol('Parent',ctrl_panel,'Style','checkbox', ...
+    'String','High pass filter', ...
+    'Units','normalized', ...
+    'Position',[0.05 0.385 0.90 0.04], ...
+    'Value',0, ...
+    'Tag','chk_high_pass_filter', ...
+    'BackgroundColor',[.97 .97 .98], ...
+    'FontWeight','bold', ...
+    'Callback',@(src,~) toggle_high_pass_filter(fig, logical(get(src,'Value'))));
 
     % ---- Axe principal ----
     ax1 = axes('Parent',fig,'Position',[0.28 0.63 0.70 0.30]);
@@ -414,14 +377,22 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     cla(axDev);
     hold(axDev,'on');
 
+    % ---- Axe motion energy ----
+    axMotion = axes('Parent',fig,'Position',[0.28 0.41 0.70 0.045]);
+    box(axMotion,'on');
+    ylabel(axMotion,'Motion');
+    set(axMotion,'XTickLabel',[]);
+    cla(axMotion);
+    hold(axMotion,'on');
+
     % ---- ROI ----
-    axROI = axes('Parent',fig,'Position',[0.28 0.08 0.30 0.32]);
+    axROI = axes('Parent',fig,'Position',[0.28 0.06 0.30 0.30]);
     box(axROI,'on');
     title(axROI,'ROI (zoom)');
     axis(axROI,'image');
 
     % ---- Histogramme ----
-    axH = axes('Parent',fig,'Position',[0.62 0.08 0.35 0.32]);
+    axH   = axes('Parent',fig,'Position',[0.62 0.06 0.35 0.30]);
     box(axH,'on');
     title(axH,'# pics / cellule');
     xlabel(axH,'Nombre de pics');
@@ -435,10 +406,12 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'noise_est',noise_est);
     setappdata(fig,'SNR',SNR);
     setappdata(fig,'opts',opts);
+    setappdata(fig,'motion_energy',motion_energy);
     
     setappdata(fig,'ax1',ax1);
     setappdata(fig,'axF0',axF0);
     setappdata(fig,'axDev',axDev);
+    setappdata(fig,'axMotion',axMotion);
     setappdata(fig,'axROI',axROI);
     setappdata(fig,'axH',axH);
     
@@ -449,18 +422,48 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'stim_frames', stim_frames);
     
     setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
-    setappdata(fig,'iscell', iscell_in);
-    setappdata(fig,'stat', stat_in);
+
+    % ---- iscell_idx affichable, aligné sur les lignes de F ----
+    iscell_idx_display = nan(size(F,1),1);
+    
+    if ~isempty(iscell_idx)
+    
+        iscell_idx = iscell_idx(:);
+    
+        if strcmpi(cell_type,'combined') && ~isempty(blue_indices)
+    
+            blue_indices = round(blue_indices(:));
+            blue_indices = blue_indices(isfinite(blue_indices));
+            blue_indices = blue_indices(blue_indices >= 1 & blue_indices <= size(F,1));
+    
+            is_blue = false(size(F,1),1);
+            is_blue(blue_indices) = true;
+    
+            gcamp_rows = find(~is_blue);
+    
+            n = min(numel(gcamp_rows), numel(iscell_idx));
+            iscell_idx_display(gcamp_rows(1:n)) = iscell_idx(1:n);
+    
+        else
+    
+            n = min(size(F,1), numel(iscell_idx));
+            iscell_idx_display(1:n) = iscell_idx(1:n);
+        end
+    end
+
+    setappdata(fig,'iscell_idx_display', iscell_idx_display);
+
+    setappdata(fig,'stat', stat);
     setappdata(fig,'meanImg', meanImg);
     setappdata(fig,'metadata', metadata);
     setappdata(fig,'viewer_mode', viewer_mode);
     setappdata(fig,'blue_indices', blue_indices);
     
     % ---- Données de détection sauvegardées pour viewer mode ----
-    setappdata(fig,'Raster_saved', Raster_in);
-    setappdata(fig,'Acttmp2_saved', Acttmp2_in);
-    setappdata(fig,'thresholds_saved', thresholds_in);
-    setappdata(fig,'valid_cells_saved', valid_cells_in);
+    setappdata(fig,'Raster_saved', Raster);
+    setappdata(fig,'Acttmp2_saved', Acttmp2);
+    setappdata(fig,'thresholds_saved', thresholds);
+    setappdata(fig,'valid_cells_saved', valid_cells);
     
     % cell_status: 0 undecided, +1 keep, -1 exclude
     setappdata(fig,'cell_status', zeros(size(F,1),1));
@@ -468,6 +471,8 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     setappdata(fig,'gcamp_output_folder', gcamp_output_folder);
 
     setappdata(fig,'masks', masks);
+
+    setappdata(fig,'use_high_pass_filter', false);
     
     pixel_size_um = NaN;
     mask_sizes = [];
@@ -578,7 +583,28 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         end
     end
 
-    if ~isempty(focus_segs)
+    % Motion energy
+    motion_energy = getappdata(fig,'motion_energy');
+
+    if ~isempty(motion_energy)
+    
+        motion_energy = motion_energy(:).';
+    
+        plot(axMotion, ...
+             1:numel(motion_energy), ...
+             motion_energy, ...
+             'k-', ...
+             'HitTest','off');
+    
+    else
+    
+        text(axMotion,0.5,0.5,'motion energy vide', ...
+            'Units','normalized', ...
+            'HorizontalAlignment','center');
+    
+    end
+    
+   if ~isempty(focus_segs)
         hBad1 = create_badframe_patch(ax1, focus_segs);
         setappdata(fig,'hBadPatch_ax1', hBad1);
     
@@ -587,9 +613,12 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
     
         hBadDev = create_badframe_patch(axDev, focus_segs);
         setappdata(fig,'hBadPatch_axDev', hBadDev);
-    end
-    
-    linkaxes([ax1 axF0 axDev],'x');
+   end
+
+    hBadMotion = create_badframe_patch(axMotion, focus_segs);
+    setappdata(fig,'hBadPatch_axMotion', hBadMotion);
+
+    linkaxes([ax1 axF0 axDev axMotion],'x');
 
     % ---- Pics / sélection ----
     if viewer_mode
@@ -599,16 +628,16 @@ function [F0, noise_est, SNR, valid_cells, DF, Raster, Acttmp2, MAct, thresholds
         nCells = size(F,1);
         n_peaks_all = zeros(nCells,1);
 
-        if ~isempty(Acttmp2_in)
-            for cid = 1:min(nCells, numel(Acttmp2_in))
-                if iscell(Acttmp2_in)
-                    n_peaks_all(cid) = numel(Acttmp2_in{cid});
+        if ~isempty(Acttmp2)
+            for cid = 1:min(nCells, numel(Acttmp2))
+                if iscell(Acttmp2)
+                    n_peaks_all(cid) = numel(Acttmp2{cid});
                 else
                     n_peaks_all(cid) = 0;
                 end
             end
-        elseif ~isempty(Raster_in)
-            n_peaks_all = sum(logical(Raster_in), 2);
+        elseif ~isempty(Raster)
+            n_peaks_all = sum(logical(Raster), 2);
             n_peaks_all = n_peaks_all(:);
         end
 
@@ -780,7 +809,6 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
     end
     out.threshold = seuil_detection;
 
-    mpd  = max(1, round(opts.refrac_fr));
     prom = seuil_detection * opts.prominence_factor;
 
     if ~isfinite(prom) || prom < 0
@@ -816,15 +844,32 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
         if max(x_seg) <= seuil_detection
             continue;
         end
-
+        
+        mpd = max(1, round(opts.refrac_fr));
+        
+        warnState = warning('off','signal:findpeaks:largeMinPeakHeight');
+    
         try
-            [~, locs_seg] = findpeaks(x_seg, ...
-                'MinPeakHeight', seuil_detection, ...
-                'MinPeakProminence', prom, ...
-                'MinPeakDistance', mpd);
+            max_signal = max(x_seg, [], 'omitnan');
+        
+            if isempty(max_signal) || ...
+               ~isfinite(max_signal) || ...
+               max_signal <= seuil_detection
+        
+                locs_seg = [];
+        
+            else
+                [~, locs_seg] = findpeaks(x_seg, ...
+                    'MinPeakHeight', seuil_detection, ...
+                    'MinPeakProminence', prom, ...
+                    'MinPeakDistance', mpd);
+            end
+        
         catch
             locs_seg = [];
         end
+    
+        warning(warnState);
 
         if ~isempty(locs_seg)
             locs_all = [locs_all; idx(locs_seg(:))']; %#ok<AGROW>
@@ -1060,13 +1105,38 @@ function auto_detect_and_add(fig)
         bad_frames = [];
     end
 
-    x = DF(cid,:).';
+    use_high_pass_filter = false;
+    if isappdata(fig,'use_high_pass_filter')
+        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+    end
+    
+    if use_high_pass_filter && isappdata(fig,'F_raw')
+    
+        F_raw = getappdata(fig,'F_raw');
+        fs    = getappdata(fig,'fs');
+        opts  = getappdata(fig,'opts');
+    
+        trace_raw = F_raw(cid,:);
+    
+        [DF_cell, ~] = F_processing(trace_raw, bad_frames, fs, opts.window_size);
+        DF_cell_sg = savgol_transform(DF_cell, opts);
+    
+        x = DF_cell_sg(1,:).';
+    
+        sigma = estimate_noise(DF_cell);
+        sigma = sigma(1);
+    
+    else
+    
+        x = DF(cid,:).';
+        sigma = noise_est(cid);
+    end
 
-    out = detect_peaks_cell_core(x, noise_est(cid), opts, bad_frames);
+    out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
 
     setappdata(fig,'auto_peaks', out.locs_raw);
     setappdata(fig,'seuil_detection_last', out.threshold);
-
+    
     refresh_data(fig);
 end
 
@@ -1313,7 +1383,7 @@ function update_current_cell(fig, idx_slider)
         lbl.String = sprintf('Navigation cellule (%d / %d)', idx, numel(order_cells));
     end
 
-    setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'autotervals', []);
     if isappdata(fig,'seuil_detection_last')
         rmappdata(fig,'seuil_detection_last');
     end
@@ -1361,7 +1431,7 @@ function prev_cell(fig)
     update_current_cell(fig, idx);
 end
 
-function goto_navigation_index(fig, hEdit)
+function goto_navigationdex(fig, hEdit)
 
     if ~isappdata(fig,'order_cells')
         return;
@@ -1529,7 +1599,7 @@ function validate_selection_filter(fig)
         lbl.String = sprintf('Navigation cellule (%d / %d)', 1, numel(order_cells));
     end
 
-    setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'autotervals', []);
     setappdata(fig,'auto_peaks', []);
     if isappdata(fig,'seuil_detection_last')
         rmappdata(fig,'seuil_detection_last');
@@ -1753,6 +1823,43 @@ function finalize_and_close(fig, synchronous_frames)
         end
     end
 
+    use_high_pass_filter = false;
+    if isappdata(fig,'use_high_pass_filter')
+        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+    end
+    
+    if use_high_pass_filter
+    
+        F_raw = getappdata(fig,'F_raw');
+        fs    = getappdata(fig,'fs');
+        opts  = getappdata(fig,'opts');
+    
+        if isappdata(fig,'bad_frames')
+            bad_frames = getappdata(fig,'bad_frames');
+        else
+            bad_frames = [];
+        end
+    
+        fprintf('High pass filter actif : application à toutes les traces avant sauvegarde...\n');
+    
+        [DF, F0, ~, ~] = F_processing(F_raw, bad_frames, fs, opts.window_size);
+    
+        DF_sg = savgol_transform(DF, opts);
+        noise_est = estimate_noise(DF);
+    
+        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+    
+        setappdata(fig,'DF', DF_sg);
+        setappdata(fig,'F0', F0);
+        setappdata(fig,'noise_est', noise_est);
+        setappdata(fig,'SNR', SNR);
+        setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
+    
+        recompute_n_peaks_all(fig);
+        apply_auto_cutoff(fig);
+    end
+
     [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
         save_peak_matrix(fig, synchronous_frames);
 
@@ -1828,7 +1935,28 @@ function refresh_data(fig)
         delete(kidsF0);
     end
 
-    x = DF(cell_id,:);
+    use_high_pass_filter = false;
+    if isappdata(fig,'use_high_pass_filter')
+        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+    end
+    
+    if use_high_pass_filter && isappdata(fig,'F_raw')
+    
+        F_raw = getappdata(fig,'F_raw');
+        fs    = getappdata(fig,'fs');
+        opts  = getappdata(fig,'opts');
+    
+        trace_raw = F_raw(cell_id,:);
+    
+        [DF_cell, ~] = F_processing(trace_raw, [], fs, opts.window_size);
+        DF_cell_sg = savgol_transform(DF_cell, opts);
+    
+        x = DF_cell_sg(1,:);
+    
+    else
+        x = DF(cell_id,:);
+    end
+    
     x = x(:).';
     T = numel(x);
     t = 1:T;
@@ -2026,6 +2154,30 @@ function refresh_data(fig)
 
     update_roi_zoom(fig);
     update_peak_histogram(fig);
+end
+
+function toggle_high_pass_filter(fig, use_high_pass_filter)
+
+    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+        return;
+    end
+
+    setappdata(fig,'use_high_pass_filter', logical(use_high_pass_filter));
+
+    if isappdata(fig,'auto_peaks')
+        rmappdata(fig,'auto_peaks');
+    end
+    if isappdata(fig,'seuil_detection_last')
+        rmappdata(fig,'seuil_detection_last');
+    end
+
+    if isappdata(fig,'current_rank')
+        update_current_cell(fig, getappdata(fig,'current_rank'));
+    else
+        update_current_cell(fig, 1);
+    end
+
+    drawnow;
 end
 
 function update_peak_histogram(fig)
@@ -2288,7 +2440,21 @@ function update_roi_zoom(fig)
     % ----------------------------
     % Titre
     % ----------------------------
-    title(ax, sprintf('Cellule %d', cid));
+    iscell_label = '';
+
+    if isappdata(fig,'iscell_idx_display')
+        iscell_idx_display = getappdata(fig,'iscell_idx_display');
+    
+        if ~isempty(iscell_idx_display) && ...
+           cid >= 1 && cid <= numel(iscell_idx_display) && ...
+           isfinite(iscell_idx_display(cid))
+    
+            iscell_label = sprintf(' | iscell idx %d', round(iscell_idx_display(cid)- 1));
+        end
+    end
+    
+    title(ax, sprintf('Cellule %d%s', cid, iscell_label), ...
+        'Interpreter','none');
 
     hold(ax,'off');
 end
@@ -2420,22 +2586,29 @@ function update_param(fig, field, value)
             bad_frames = getappdata(fig,'bad_frames');
         end
 
-        [DF, F0] = F_processing(F_raw, bad_frames, fs, opts.window_size);
+        use_high_pass_filter = false;
+        if isappdata(fig,'use_high_pass_filter')
+            use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+        end
+        
+        [DF, F0] = ...
+            F_processing_JC(F_raw, bad_frames, fs, opts.window_size);
+        
         DF_sg = savgol_transform(DF, opts);
         noise_est = estimate_noise(DF);
-
+        
         setappdata(fig,'F0', F0);
         setappdata(fig,'DF', DF_sg);
         setappdata(fig,'noise_est', noise_est);
-
+        
         [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
-            compute_snr_quality(DF, noise_est, opts, bad_frames);
-
+            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+        
         setappdata(fig,'SNR', SNR);
         setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
     end
 
-    setappdata(fig,'auto_intervals', []);
+    setappdata(fig,'autotervals', []);
     setappdata(fig,'auto_peaks', []);
 
     if isappdata(fig,'seuil_detection_last')
@@ -2453,169 +2626,6 @@ function update_param(fig, field, value)
 end
 
 %% ===================== UTILITIES =====================
-
-function segs = badframes_to_segments(bad_frames, T)
-    if isempty(bad_frames) || T<=0
-        segs = zeros(0,2);
-        return;
-    end
-
-    if islogical(bad_frames)
-        bf = bad_frames(:).';
-        if numel(bf) ~= T
-            bf = bf(1:min(end,T));
-            if numel(bf) < T, bf(end+1:T) = false; end
-        end
-        idx = find(bf);
-    else
-        idx = bad_frames(:).';
-        idx = idx(isfinite(idx));
-        idx = unique(round(idx));
-        idx = idx(idx>=1 & idx<=T);
-    end
-
-    if isempty(idx)
-        segs = zeros(0,2);
-        return;
-    end
-
-    d = diff(idx);
-    cuts = [1 find(d>1)+1 numel(idx)+1];
-
-    segs = zeros(numel(cuts)-1,2);
-    for k = 1:numel(cuts)-1
-        a = idx(cuts(k));
-        b = idx(cuts(k+1)-1);
-        segs(k,:) = [a b];
-    end
-end
-
-function [user_segs, user_frames] = enter_observed_deviations(tifPath, T)
-
-    if nargin < 1
-        error('Usage: [user_segs,user_frames] = enter_observed_deviations(tifPath,T)');
-    end
-    if nargin < 2, T = []; end
-
-    if ~exist(tifPath,'file')
-        error('TIFF introuvable : %s', tifPath);
-    end
-
-    fprintf('\n=== OUVRIR MANUELLEMENT DANS FIJI ===\n');
-    fprintf('Fichier TIFF :\n%s\n\n', tifPath);
-    fprintf('Ouvre ce fichier dans Fiji, observe les déviations,\n');
-    fprintf('puis reviens ici pour entrer les frames correspondantes.\n\n');
-
-    fprintf('Entrée attendue (FRAMES uniquement) :\n');
-    fprintf('  ex: 120:140\n');
-    fprintf('      [120:140 300:320]\n');
-    fprintf('[] si aucune déviation.\n\n');
-
-    x = input('Frames observées = ');
-
-    if isempty(x)
-        fprintf('Aucune déviation saisie.\n');
-        user_segs = zeros(0,2);
-        user_frames = [];
-        return;
-    end
-
-    if ~isnumeric(x) || ~isvector(x)
-        error('Entrée invalide: entrer UNIQUEMENT un vecteur de frames.');
-    end
-
-    fr = round(x(:).');
-    fr = fr(isfinite(fr));
-
-    if ~isempty(T)
-        fr = fr(fr>=1 & fr<=T);
-    else
-        fr = fr(fr>=1);
-    end
-
-    fr = unique(fr);
-
-    user_segs = frames_to_segments(fr);
-    user_frames = fr;
-
-    fprintf('\n=== Enregistré ===\n');
-    fprintf('Segments détectés: %d\n', size(user_segs,1));
-    if ~isempty(user_segs)
-        disp(user_segs);
-    end
-end
-
-function segs = frames_to_segments(fr)
-    if isempty(fr)
-        segs = zeros(0,2);
-        return;
-    end
-    d = diff(fr);
-    cuts = [1 find(d>1)+1 numel(fr)+1];
-    segs = zeros(numel(cuts)-1,2);
-    for k = 1:numel(cuts)-1
-        segs(k,:) = [fr(cuts(k)) fr(cuts(k+1)-1)];
-    end
-end
-
-function segTable = sort_segments_by_deviation(bad_segs, deviation)
-
-    if nargin < 2
-        error('Usage: segTable = sort_segments_by_deviation(bad_segs, deviation)');
-    end
-
-    deviation = deviation(:).';
-    T = numel(deviation);
-
-    if isempty(bad_segs)
-        segTable = table([], [], [], [], ...
-            'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
-        disp(segTable);
-        return;
-    end
-
-    if size(bad_segs,2) ~= 2
-        error('bad_segs doit être une matrice Nx2 [start end].');
-    end
-
-    N = size(bad_segs,1);
-
-    startF = nan(N,1);
-    endF   = nan(N,1);
-    extent = nan(N,1);
-    valMax = nan(N,1);
-
-    for k = 1:N
-        a = round(bad_segs(k,1));
-        b = round(bad_segs(k,2));
-
-        if a > b
-            tmp = a; a = b; b = tmp;
-        end
-
-        a = max(1, min(T, a));
-        b = max(1, min(T, b));
-
-        startF(k) = a;
-        endF(k)   = b;
-        extent(k) = b - a + 1;
-
-        segVals = deviation(a:b);
-        segVals = segVals(isfinite(segVals));
-
-        if isempty(segVals)
-            valMax(k) = NaN;
-        else
-            valMax(k) = min(segVals);
-        end
-    end
-
-    segTable = table(startF, endF, extent, valMax, ...
-        'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
-
-    segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
-end
-
 function create_random_peak_preview(valid_cells, DF, Acttmp2, thresholds, outdir_preview)
 % Crée une figure avec jusqu'à 10 cellules tirées au hasard parmi
 % les cellules gardées, affiche leurs traces + pics détectés,

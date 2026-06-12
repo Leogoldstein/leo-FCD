@@ -5,658 +5,753 @@ function data = run_gcamp_peak_detection( ...
     data, meanImgs_gcamp, ...
     current_gcamp_TSeries_path)
 
-    numFolders = numel(gcamp_output_folders);
+numFolders = numel(gcamp_output_folders);
 
-    fields_detect_gcamp = { ...
-        'F0_gcamp_by_plane', 'noise_est_gcamp_by_plane', ...
-        'valid_gcamp_cells_by_plane', 'DF_gcamp_by_plane', ...
-        'Raster_gcamp_by_plane', 'Acttmp2_gcamp_by_plane', ...
-        'MAct_gcamp_by_plane', ...
-        'thresholds_gcamp_by_plane', 'bad_segs_gcamp_plane', ...
-        'opts_detection_gcamp_by_plane', ...
-        'isort1_gcamp_by_plane', 'isort2_gcamp_by_plane', 'Sm_gcamp_by_plane' ...
-    };
+fields_detect_gcamp = { ...
+    'F0_gcamp_by_plane', 'noise_est_gcamp_by_plane', ...
+    'valid_gcamp_cells_by_plane', 'DF_gcamp_by_plane', ...
+    'Raster_gcamp_by_plane', 'Acttmp2_gcamp_by_plane', ...
+    'MAct_gcamp_by_plane', ...
+    'thresholds_gcamp_by_plane', 'bad_segs_gcamp_plane', ...
+    'opts_detection_gcamp_by_plane', ...
+    'isort1_gcamp_by_plane', 'isort2_gcamp_by_plane', 'Sm_gcamp_by_plane' ...
+};
 
-    fields_detect_blue = { ...
-        'F0_blue_by_plane', 'noise_est_blue_by_plane', 'SNR_blue_by_plane', ...
-        'valid_blue_cells_by_plane', 'DF_blue_by_plane', ...
-        'Raster_blue_by_plane', 'Acttmp2_blue_by_plane', ...
-        'MAct_blue_by_plane', ...
-        'thresholds_blue_by_plane', 'bad_segs_blue_plane', ...
-        'opts_detection_blue_by_plane', ...
-        'isort1_blue_by_plane', 'isort2_blue_by_plane', 'Sm_blue_by_plane' ...
-    };
+fields_detect_blue = { ...
+    'F0_blue_by_plane', 'noise_est_blue_by_plane', ...
+    'valid_blue_cells_by_plane', 'DF_blue_by_plane', ...
+    'Raster_blue_by_plane', 'Acttmp2_blue_by_plane', ...
+    'MAct_blue_by_plane', ...
+    'thresholds_blue_by_plane', 'bad_segs_blue_plane', ...
+    'opts_detection_blue_by_plane', ...
+    'isort1_blue_by_plane', 'isort2_blue_by_plane', 'Sm_blue_by_plane' ...
+};
 
-    fields_detect_combined = { ...
-        'F0_combined_by_plane', 'noise_est_combined_by_plane', ...
-        'valid_combined_cells_by_plane', 'DF_combined_by_plane', ...
-        'Raster_combined_by_plane', 'Acttmp2_combined_by_plane', ...
-        'MAct_combined_by_plane', ...
-        'thresholds_combined_by_plane', 'bad_segs_combined_plane', ...
-        'opts_detection_combined_by_plane', ...
-        'isort1_combined_by_plane', 'isort2_combined_by_plane', 'Sm_combined_by_plane' ...
-    };
+fields_detect_combined = { ...
+    'F0_combined_by_plane', 'noise_est_combined_by_plane', ...
+    'valid_combined_cells_by_plane', 'DF_combined_by_plane', ...
+    'Raster_combined_by_plane', 'Acttmp2_combined_by_plane', ...
+    'MAct_combined_by_plane', ...
+    'thresholds_combined_by_plane', 'bad_segs_combined_plane', ...
+    'opts_detection_combined_by_plane', ...
+    'isort1_combined_by_plane', 'isort2_combined_by_plane', 'Sm_combined_by_plane' ...
+};
 
-    data = init_detection_branch_if_needed(data, 'gcamp_plane', numFolders, fields_detect_gcamp);
-    data = init_detection_branch_if_needed(data, 'blue_plane', numFolders, fields_detect_blue);
-    data = init_detection_branch_if_needed(data, 'combined_plane', numFolders, fields_detect_combined);
+fields_motion_group = { ...
+    'speed_active_group', ...
+    'bad_frames_group', ...
+    'bad_segs_group', ...
+    'deviation_group', ...
+    'focus_segs_group', ...
+    'motion_energy_group' ...
+};
 
-    for m = 1:numFolders
+data = init_detection_branch_if_needed(data, 'gcamp_plane', numFolders, fields_detect_gcamp);
+data = init_detection_branch_if_needed(data, 'blue_plane', numFolders, fields_detect_blue);
+data = init_detection_branch_if_needed(data, 'combined_plane', numFolders, fields_detect_combined);
+data = init_motion_group_if_needed(data, numFolders, fields_motion_group);
 
-        has_new_gcamp_group    = false;
-        has_new_blue_group     = false;
-        has_new_combined_group = false;
+for m = 1:numFolders
 
-        sampling_rate_m = sampling_rate_group{m};
-        sync_frames_m   = synchronous_frames_group{m};
-        metadata_m      = get_metadata_for_record(metadata, m);
+    has_new_gcamp_group    = false;
+    has_new_blue_group     = false;
+    has_new_combined_group = false;
+    has_new_motion_group   = false;
 
-        nPlanes = infer_nplanes_for_group_new(data, m);
+    sampling_rate_m = sampling_rate_group{m};
+    sync_frames_m   = synchronous_frames_group{m};
+    metadata_m      = get_metadata_for_record(metadata, m);
 
-        if nPlanes == 0
-            fprintf('Group %d: no planes found, skipping.\n', m);
+    if ~isfield(metadata_m,'NumPlanes') || isempty(metadata_m.NumPlanes)
+        error('Metadata missing NumPlanes for group %d.', m);
+    end
+
+    nPlanes = max(1, round(double(metadata_m.NumPlanes)));
+
+    for f = 1:numel(fields_detect_gcamp)
+        data = ensure_branch_plane_cell(data, 'gcamp_plane', fields_detect_gcamp{f}, m, nPlanes);
+    end
+
+    for f = 1:numel(fields_detect_blue)
+        data = ensure_branch_plane_cell(data, 'blue_plane', fields_detect_blue{f}, m, nPlanes);
+    end
+
+    for f = 1:numel(fields_detect_combined)
+        data = ensure_branch_plane_cell(data, 'combined_plane', fields_detect_combined{f}, m, nPlanes);
+    end
+
+    if m <= numel(meanImgs_gcamp) && ~isempty(meanImgs_gcamp{m})
+        meanImgs_m = meanImgs_gcamp{m};
+    else
+        meanImgs_m = cell(nPlanes,1);
+    end
+
+    if m <= numel(current_gcamp_TSeries_path) && ~isempty(current_gcamp_TSeries_path{m})
+        TSeries_m = current_gcamp_TSeries_path{m};
+    else
+        TSeries_m = '';
+    end
+
+    stim_frames_m = [];
+
+    if isfield(data, 'stim') && ...
+       isfield(data.stim, 'stim_frames_log_group') && ...
+       isfield(data.stim, 'stim_protocol_group') && ...
+       numel(data.stim.stim_frames_log_group) >= m && ...
+       numel(data.stim.stim_protocol_group) >= m
+
+        stim_frames_tmp   = data.stim.stim_frames_log_group{m};
+        stim_protocol_tmp = data.stim.stim_protocol_group{m};
+
+        if ~isempty(stim_frames_tmp) && ~isempty(stim_protocol_tmp)
+
+            stim_frames_tmp   = stim_frames_tmp(:);
+            stim_protocol_tmp = stim_protocol_tmp(:);
+
+            n = min(numel(stim_frames_tmp), numel(stim_protocol_tmp));
+
+            stim_frames_tmp   = stim_frames_tmp(1:n);
+            stim_protocol_tmp = stim_protocol_tmp(1:n);
+
+            stim_frames_m = stim_frames_tmp(stim_protocol_tmp == 0);
+        end
+    end
+
+    outdir_m = fileparts(gcamp_output_folders{m}{1});
+
+    filePath_gcamp    = fullfile(outdir_m, 'results_gcamp.mat');
+    filePath_blue     = fullfile(outdir_m, 'results_blue.mat');
+    filePath_combined = fullfile(outdir_m, 'results_combined.mat');
+    filePath_motion   = fullfile(outdir_m, 'results_motion.mat');
+
+    oldMotionPath = fullfile(outdir_m, 'results_movie.mat');
+
+    if exist(oldMotionPath, 'file') == 2 && exist(filePath_motion, 'file') ~= 2
+        movefile(oldMotionPath, filePath_motion);
+        fprintf('Group %d: renamed results_movie.mat -> results_motion.mat\n', m);
+    end
+
+    if exist(filePath_gcamp, 'file') == 2
+        loaded_gcamp = load(filePath_gcamp);
+        data = merge_loaded_branch_into_data(data, 'gcamp_plane', loaded_gcamp, fields_detect_gcamp, m, nPlanes);
+    end
+
+    if exist(filePath_blue, 'file') == 2
+        loaded_blue = load(filePath_blue);
+        data = merge_loaded_branch_into_data(data, 'blue_plane', loaded_blue, fields_detect_blue, m, nPlanes);
+    end
+
+    if exist(filePath_combined, 'file') == 2
+        loaded_combined = load(filePath_combined);
+        data = merge_loaded_branch_into_data(data, 'combined_plane', loaded_combined, fields_detect_combined, m, nPlanes);
+    end
+
+    if exist(filePath_motion, 'file') == 2
+        loaded_motion = load(filePath_motion);
+        data = merge_loaded_motion_group_into_data(data, loaded_motion, fields_motion_group, m);
+    end
+
+    % ============================================================
+    % MOTION GROUP : speed extrait de data.motion.speed_active_group{m}
+    % Motion calculée une seule fois par m, sans utiliser F.
+    % ============================================================
+
+    speed_active_group  = get_motion_group_or_empty(data, 'speed_active_group', m);
+    bad_frames_group    = get_motion_group_or_empty(data, 'bad_frames_group', m);
+    bad_segs_group      = get_motion_group_or_empty(data, 'bad_segs_group', m);
+    deviation_group     = get_motion_group_or_empty(data, 'deviation_group', m);
+    focus_segs_group    = get_motion_group_or_empty(data, 'focus_segs_group', m);
+    motion_energy_group = get_motion_group_or_empty(data, 'motion_energy_group', m);
+
+    ops_motion_ref = [];
+
+    for pp = 1:nPlanes
+        ops_motion_ref = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, pp);
+
+        if isempty(ops_motion_ref)
+            ops_motion_ref = get_branch_plane_or_empty(data, 'blue_plane', 'ops_suite2p_blue_by_plane', m, pp);
+        end
+
+        if ~isempty(ops_motion_ref)
+            break;
+        end
+    end
+
+    motion_group_incomplete = ...
+        isempty(bad_frames_group) || ...
+        isempty(bad_segs_group) || ...
+        isempty(deviation_group) || ...
+        isempty(focus_segs_group) || ...
+        isempty(motion_energy_group);
+
+    if motion_group_incomplete
+
+        if ~isempty(ops_motion_ref) && ...
+           isfield(ops_motion_ref, 'corrXY') && ...
+           ~isempty(ops_motion_ref.corrXY) && ...
+           ~isempty(speed_active_group)
+
+            corrXY = ops_motion_ref.corrXY(:);
+            speed  = speed_active_group(:);
+
+            N = min(numel(corrXY), numel(speed));
+
+            corrXY = corrXY(1:N);
+            speed  = speed(1:N);
+
+            rolling_median = movmedian(corrXY, 300);
+            deviation_group = corrXY - rolling_median;
+
+            sigma_dev = std(deviation_group(deviation_group < 0), 'omitnan');
+            seuil_bad = -3 * sigma_dev;
+
+            bad_frames_logical = deviation_group < seuil_bad;
+            bad_frames_logical = conv(double(bad_frames_logical), [1 1 1], 'same') > 0;
+
+            bad_frames_group = find(bad_frames_logical);
+            bad_frames_group = bad_frames_group(:).';
+
+            bad_frames_no_movement   = bad_frames_logical & (speed < 1);
+            bad_frames_with_movement = bad_frames_logical & (speed >= 1);
+
+            bad_segs_group   = badframes_to_segments(bad_frames_group, N);
+            focus_segs_group = bad_segs_group;
+
+            deviation_group = deviation_group(:).';
+
+            fprintf('Bad frames total : %d (%.2f%%)\n', ...
+                numel(bad_frames_group), 100*numel(bad_frames_group)/N);
+
+            fprintf('Bad frames SANS mouvement (speed < 1) : %d (%.2f%%)\n', ...
+                sum(bad_frames_no_movement), 100*sum(bad_frames_no_movement)/N);
+
+            fprintf('Bad frames AVEC mouvement (speed >= 1) : %d (%.2f%%)\n', ...
+                sum(bad_frames_with_movement), 100*sum(bad_frames_with_movement)/N);
+
+            data.motion.bad_frames_group{m}    = bad_frames_group;
+            data.motion.bad_segs_group{m}      = bad_segs_group;
+            data.motion.deviation_group{m}     = deviation_group;
+            data.motion.focus_segs_group{m}    = focus_segs_group;
+            data.motion.motion_energy_group{m} = motion_energy_group;
+
+            has_new_motion_group = true;
+
+        else
+            warning('Group %d: impossible de calculer motion group : corrXY ou speed_active_group manquant.', m);
+        end
+    end
+
+    has_any_detection_group = false;
+    has_gcamp_group = false;
+    has_blue_group = false;
+    has_combined_group = false;
+
+    for pp = 1:nPlanes
+
+        has_any_detection_group = has_any_detection_group || ...
+            has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, pp) || ...
+            has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, pp) || ...
+            has_existing_detection_new(data, 'combined_plane', 'DF_combined_by_plane', m, pp);
+
+        has_gcamp_group = has_gcamp_group || ...
+            ~isempty(get_branch_plane_or_empty(data, 'gcamp_plane', 'F_gcamp_by_plane', m, pp));
+
+        has_blue_group = has_blue_group || ...
+            ~isempty(get_branch_plane_or_empty(data, 'blue_plane', 'F_blue_by_plane', m, pp));
+
+        has_combined_group = has_combined_group || ...
+            ~isempty(get_branch_plane_or_empty(data, 'combined_plane', 'F_combined_by_plane', m, pp));
+    end
+
+    viewer_mode_requested_group = false;
+    force_auto_mode_group = false;
+    choice_group = '';
+
+    if has_any_detection_group
+
+        [viewer_mode_requested_group, skip_group] = ask_viewer(true, m, 0, 'group');
+
+        if skip_group
+            fprintf('Group %d: existing detection loaded only, skipping tuner for all planes.\n', m);
             continue;
         end
 
-        for f = 1:numel(fields_detect_gcamp)
-            data = ensure_branch_plane_cell(data, 'gcamp_plane', fields_detect_gcamp{f}, m, nPlanes);
+        group_choice_state = struct();
+        group_choice_state.mode = '';
+        group_choice_state.ask_each_plane = false;
+        group_choice_state.initialized = false;
+
+        [choice_group, group_choice_state] = choose_signal_mode_for_plane_groupwise( ...
+            has_gcamp_group, has_blue_group, has_combined_group, m, 0, group_choice_state);
+
+        if isempty(choice_group)
+            fprintf('Group %d: user cancelled signal mode selection.\n', m);
+            continue;
         end
 
-        for f = 1:numel(fields_detect_blue)
-            data = ensure_branch_plane_cell(data, 'blue_plane', fields_detect_blue{f}, m, nPlanes);
+    else
+        force_auto_mode_group = true;
+    end
+
+    for p = 1:nPlanes
+
+        Fg = get_branch_plane_or_empty(data, 'gcamp_plane', 'F_gcamp_by_plane', m, p);
+        Fb = get_branch_plane_or_empty(data, 'blue_plane', 'F_blue_by_plane', m, p);
+        Fc = get_branch_plane_or_empty(data, 'combined_plane', 'F_combined_by_plane', m, p);
+
+        has_gcamp    = ~isempty(Fg);
+        has_blue     = ~isempty(Fb);
+        has_combined = ~isempty(Fc);
+
+        if ~has_gcamp && ~has_blue && ~has_combined
+            fprintf('Group %d plane %d: no GCaMP, blue, or combined data.\n', m, p);
+            continue;
         end
 
-        for f = 1:numel(fields_detect_combined)
-            data = ensure_branch_plane_cell(data, 'combined_plane', fields_detect_combined{f}, m, nPlanes);
-        end
-
-        if m <= numel(meanImgs_gcamp) && ~isempty(meanImgs_gcamp{m})
-            meanImgs_m = meanImgs_gcamp{m};
+        if numel(meanImgs_m) >= p
+            meanImg = meanImgs_m{p};
         else
-            meanImgs_m = cell(nPlanes,1);
+            meanImg = [];
         end
 
-        if m <= numel(current_gcamp_TSeries_path) && ~isempty(current_gcamp_TSeries_path{m})
-            TSeries_m = current_gcamp_TSeries_path{m};
+        if ~isempty(TSeries_m)
+            tiff_path = fullfile(TSeries_m, sprintf('plane%d', p-1), 'Concatenated.tif');
         else
-            TSeries_m = '';
+            tiff_path = '';
         end
 
-        if isfield(data, 'movie') && ...
-           isfield(data.movie, 'speed_active_group') && ...
-           numel(data.movie.speed_active_group) >= m
-           
-            speed_m = data.movie.speed_active_group{m};
-        
-        else
-            speed_m = [];
-        end
-
-        if isfield(data, 'stim') && ...
-           isfield(data.stim, 'stim_frames_log_group') && ...
-           isfield(data.stim, 'stim_protocol_group') && ...
-           numel(data.stim.stim_frames_log_group) >= m && ...
-           numel(data.stim.stim_protocol_group) >= m
-        
-            stim_frames_m   = data.stim.stim_frames_log_group{m};
-            stim_protocol_m = data.stim.stim_protocol_group{m};
-        
-            if ~isempty(stim_frames_m) && ~isempty(stim_protocol_m)
-        
-                stim_frames_m   = stim_frames_m(:);
-                stim_protocol_m = stim_protocol_m(:);
-        
-                % Sécurité si tailles différentes
-                n = min(numel(stim_frames_m), numel(stim_protocol_m));
-        
-                stim_frames_m   = stim_frames_m(1:n);
-                stim_protocol_m = stim_protocol_m(1:n);
-        
-                % Garder uniquement les stimulations dont le protocole vaut 0
-                stim_frames_m = stim_frames_m(stim_protocol_m == 0);
-        
+        if force_auto_mode_group
+            if has_combined
+                choice = 'combined';
+            elseif has_gcamp
+                choice = 'gcamp';
+            elseif has_blue
+                choice = 'blue';
             else
-                stim_frames_m = [];
-            end
-        
-        else
-            stim_frames_m = [];
-        end
-
-        outdir_m = fileparts(gcamp_output_folders{m}{1});
-
-        filePath_gcamp    = fullfile(outdir_m, 'results_gcamp.mat');
-        filePath_blue     = fullfile(outdir_m, 'results_blue.mat');
-        filePath_combined = fullfile(outdir_m, 'results_combined.mat');
-
-        if exist(filePath_gcamp, 'file') == 2
-            loaded_gcamp = load(filePath_gcamp);
-            data = merge_loaded_branch_into_data(data, 'gcamp_plane', loaded_gcamp, fields_detect_gcamp, m, nPlanes);
-        end
-
-        if exist(filePath_blue, 'file') == 2
-            loaded_blue = load(filePath_blue);
-            data = merge_loaded_branch_into_data(data, 'blue_plane', loaded_blue, fields_detect_blue, m, nPlanes);
-        end
-
-        if exist(filePath_combined, 'file') == 2
-            loaded_combined = load(filePath_combined);
-            data = merge_loaded_branch_into_data(data, 'combined_plane', loaded_combined, fields_detect_combined, m, nPlanes);
-        end
-
-        has_any_detection_group = false;
-        has_gcamp_group = false;
-        has_blue_group = false;
-        has_combined_group = false;
-
-        for pp = 1:nPlanes
-
-            has_any_detection_group = has_any_detection_group || ...
-                has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, pp) || ...
-                has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, pp) || ...
-                has_existing_detection_new(data, 'combined_plane', 'DF_combined_by_plane', m, pp);
-
-            has_gcamp_group = has_gcamp_group || ...
-                ~isempty(get_branch_plane_or_empty(data, 'gcamp_plane', 'F_gcamp_by_plane', m, pp));
-
-            has_blue_group = has_blue_group || ...
-                ~isempty(get_branch_plane_or_empty(data, 'blue_plane', 'F_blue_by_plane', m, pp));
-
-            has_combined_group = has_combined_group || ...
-                ~isempty(get_branch_plane_or_empty(data, 'combined_plane', 'F_combined_by_plane', m, pp));
-        end
-
-        viewer_mode_requested_group = false;
-        force_auto_mode_group = false;
-        choice_group = '';
-
-        if has_any_detection_group
-
-            [viewer_mode_requested_group, skip_group] = ask_viewer(true, m, 0, 'group');
-
-            if skip_group
-                fprintf('Group %d: existing detection loaded only, skipping tuner for all planes.\n', m);
                 continue;
             end
+        else
+            choice = choice_group;
 
-            group_choice_state = struct();
-            group_choice_state.mode = '';
-            group_choice_state.ask_each_plane = false;
-            group_choice_state.initialized = false;
-
-            [choice_group, group_choice_state] = choose_signal_mode_for_plane_groupwise( ...
-                has_gcamp_group, has_blue_group, has_combined_group, m, 0, group_choice_state);
-
-            if isempty(choice_group)
-                fprintf('Group %d: user cancelled signal mode selection.\n', m);
+            if strcmp(choice, 'combined') && ~has_combined
+                fprintf('Group %d plane %d: combined unavailable, skipping.\n', m, p);
+                continue;
+            elseif strcmp(choice, 'gcamp') && ~has_gcamp
+                fprintf('Group %d plane %d: gcamp unavailable, skipping.\n', m, p);
+                continue;
+            elseif strcmp(choice, 'blue') && ~has_blue
+                fprintf('Group %d plane %d: blue unavailable, skipping.\n', m, p);
                 continue;
             end
-
-        else
-            force_auto_mode_group = true;
         end
 
-        for p = 1:nPlanes
+        blue_indices_in = [];
+        masks_in = [];
 
-            Fg = get_branch_plane_or_empty(data, 'gcamp_plane', 'F_gcamp_by_plane', m, p);
-            Fb = get_branch_plane_or_empty(data, 'blue_plane', 'F_blue_by_plane', m, p);
-            Fc = get_branch_plane_or_empty(data, 'combined_plane', 'F_combined_by_plane', m, p);
+        switch choice
 
-            has_gcamp    = ~isempty(Fg);
-            has_blue     = ~isempty(Fb);
-            has_combined = ~isempty(Fc);
+            case 'gcamp'
+                family      = 'gcamp';
+                cell_type   = 'gcamp';
+                F_in        = Fg;
+                stat_in     = get_branch_plane_or_empty(data, 'gcamp_plane', 'stat_by_plane', m, p);
+                iscell_idx  = get_branch_plane_or_empty(data, 'gcamp_plane', 'iscell_idx_gcamp_by_plane', m, p);
+                ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
+                masks_in    = get_branch_plane_or_empty(data, 'gcamp_plane', 'gcamp_mask_by_plane', m, p);
 
-            if ~has_gcamp && ~has_blue && ~has_combined
-                fprintf('Group %d plane %d: no GCaMP, blue, or combined data.\n', m, p);
-                continue;
-            end
+                viewer_mode = viewer_mode_requested_group && ...
+                    has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p);
 
-            if numel(meanImgs_m) >= p
-                meanImg = meanImgs_m{p};
-            else
-                meanImg = [];
-            end
+            case 'blue'
+                family      = 'blue';
+                cell_type   = 'electroporated';
+                F_in        = Fb;
+                stat_in     = [];
+                iscell_idx  = [];
+                ops_in      = get_branch_plane_or_empty(data, 'blue_plane', 'ops_suite2p_blue_by_plane', m, p);
+                masks_in    = get_branch_plane_or_empty(data, 'blue_plane', 'mask_cellpose_by_plane', m, p);
 
-            if ~isempty(TSeries_m)
-                tiff_path = fullfile(TSeries_m, sprintf('plane%d', p-1), 'Concatenated.tif');
-            else
-                tiff_path = '';
-            end
+                viewer_mode = viewer_mode_requested_group && ...
+                    has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, p);
 
-            if force_auto_mode_group
+            case 'combined'
+                family      = 'combined';
+                cell_type   = 'combined';
+                F_in        = Fc;
+                stat_in     = [];
+                iscell_idx  = get_branch_plane_or_empty(data, 'gcamp_plane', 'iscell_idx_gcamp_by_plane', m, p);
+                ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
+                masks_in    = get_branch_plane_or_empty(data, 'combined_plane', 'mask_combined_by_plane', m, p);
+                blue_idx    = get_branch_plane_or_empty(data, 'combined_plane', 'blue_indices_combined_by_plane', m, p);
 
-                if has_combined
-                    choice = 'combined';
-                elseif has_gcamp
-                    choice = 'gcamp';
-                elseif has_blue
-                    choice = 'blue';
-                else
-                    continue;
+                viewer_mode = viewer_mode_requested_group && ...
+                    has_existing_detection_new(data, 'combined_plane', 'DF_combined_by_plane', m, p);
+
+                if ~isempty(blue_idx)
+                    blue_indices_in = blue_idx(:);
                 end
+        end
 
-            else
-                choice = choice_group;
+        if isempty(F_in)
+            fprintf('Group %d plane %d: selected signal is empty.\n', m, p);
+            continue;
+        end
 
-                if strcmp(choice, 'combined') && ~has_combined
-                    fprintf('Group %d plane %d: combined unavailable, skipping.\n', m, p);
-                    continue;
+        Acttmp2_saved      = [];
+        Raster_saved       = [];
+        thresholds_saved   = [];
+        valid_cells_saved  = [];
+        DF_saved           = [];
+        F0_saved           = [];
+        noise_est_saved    = [];
 
-                elseif strcmp(choice, 'gcamp') && ~has_gcamp
-                    fprintf('Group %d plane %d: gcamp unavailable, skipping.\n', m, p);
-                    continue;
+        bad_frames    = bad_frames_group;
+        bad_segs      = bad_segs_group;
+        deviation     = deviation_group;
+        focus_segs    = focus_segs_group;
+        motion_energy = motion_energy_group;
 
-                elseif strcmp(choice, 'blue') && ~has_blue
-                    fprintf('Group %d plane %d: blue unavailable, skipping.\n', m, p);
-                    continue;
-                end
-            end
-
-            blue_indices_in = [];
-            masks_in = [];
-
-            switch choice
-
-                case 'gcamp'
-                    family      = 'gcamp';
-                    cell_type   = 'gcamp';
-                    F_in        = Fg;
-                    stat_in     = get_branch_plane_or_empty(data, 'gcamp_plane', 'stat_by_plane', m, p);
-                    iscell_in   = get_branch_plane_or_empty(data, 'gcamp_plane', 'iscell_gcamp_by_plane', m, p);
-                    ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
-                    masks_in    = get_branch_plane_or_empty(data, 'gcamp_plane', 'gcamp_mask_by_plane', m, p);
-
-                    viewer_mode = viewer_mode_requested_group && ...
-                        has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p);
-
-                case 'blue'
-                    family      = 'blue';
-                    cell_type   = 'electroporated';
-                    F_in        = Fb;
-                    stat_in     = [];
-                    iscell_in   = [];
-                    ops_in      = get_branch_plane_or_empty(data, 'blue_plane', 'ops_suite2p_blue_by_plane', m, p);
-                    masks_in    = get_branch_plane_or_empty(data, 'blue_plane', 'mask_cellpose_by_plane', m, p);
-
-                    viewer_mode = viewer_mode_requested_group && ...
-                        has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, p);
-
-                case 'combined'
-                    family      = 'combined';
-                    cell_type   = 'combined';
-                    F_in        = Fc;
-                    stat_in     = [];
-                    iscell_in   = [];
-                    ops_in      = get_branch_plane_or_empty(data, 'gcamp_plane', 'ops_suite2p_by_plane', m, p);
-                    masks_in    = get_branch_plane_or_empty(data, 'combined_plane', 'mask_combined_by_plane', m, p);
-                    blue_idx    = get_branch_plane_or_empty(data, 'combined_plane', 'blue_indices_combined_by_plane', m, p);
-
-                    viewer_mode = viewer_mode_requested_group && ...
-                        has_existing_detection_new(data, 'combined_plane', 'DF_combined_by_plane', m, p);
-
-                    if ~isempty(blue_idx)
-                        blue_indices_in = blue_idx(:);
-                    end
-            end
-
-            if isempty(F_in)
-                fprintf('Group %d plane %d: selected signal is empty.\n', m, p);
-                continue;
-            end
-
-            if viewer_mode
-
-                % ============================================================
-                % Charger les résultats sauvegardés
-                % ============================================================
-                Acttmp2_saved      = [];
-                Raster_saved       = [];
-                thresholds_saved   = [];
-                valid_cells_saved  = [];
-                DF_saved           = [];
-                F0_saved           = [];
-                noise_est_saved    = [];
-            
-                switch family
-            
-                    case 'gcamp'
-            
-                        valid_cells_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p);
-            
-                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'Acttmp2_gcamp_by_plane', m, p);
-            
-                        Raster_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'Raster_gcamp_by_plane', m, p);
-            
-                        thresholds_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'thresholds_gcamp_by_plane', m, p);
-            
-                        DF_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'DF_gcamp_by_plane', m, p);
-            
-                        F0_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'F0_gcamp_by_plane', m, p);
-            
-                        noise_est_saved = get_branch_plane_or_empty(data, ...
-                            'gcamp_plane', 'noise_est_gcamp_by_plane', m, p);
-            
-                    case 'blue'
-            
-                        valid_cells_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'valid_blue_cells_by_plane', m, p);
-            
-                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'Acttmp2_blue_by_plane', m, p);
-            
-                        Raster_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'Raster_blue_by_plane', m, p);
-            
-                        thresholds_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'thresholds_blue_by_plane', m, p);
-            
-                        DF_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'DF_blue_by_plane', m, p);
-            
-                        F0_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'F0_blue_by_plane', m, p);
-            
-                        noise_est_saved = get_branch_plane_or_empty(data, ...
-                            'blue_plane', 'noise_est_blue_by_plane', m, p);
-            
-                    case 'combined'
-            
-                        valid_cells_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'valid_combined_cells_by_plane', m, p);
-            
-                        Acttmp2_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'Acttmp2_combined_by_plane', m, p);
-            
-                        Raster_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'Raster_combined_by_plane', m, p);
-            
-                        thresholds_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'thresholds_combined_by_plane', m, p);
-            
-                        DF_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'DF_combined_by_plane', m, p);
-            
-                        F0_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'F0_combined_by_plane', m, p);
-            
-                        noise_est_saved = get_branch_plane_or_empty(data, ...
-                            'combined_plane', 'noise_est_combined_by_plane', m, p);
-                end
-            
-                % ============================================================
-                % Vérification cohérence
-                % ============================================================
-                valid_viewer_data = ...
-                    ~isempty(valid_cells_saved) && ...
-                    ~isempty(DF_saved) && ...
-                    size(DF_saved,1) == numel(valid_cells_saved) && ...
-                    all(valid_cells_saved >= 1) && ...
-                    all(valid_cells_saved <= size(F_in,1));
-            
-                if valid_viewer_data
-            
-                    % F_view limité aux cellules conservées
-                    F_view = F_in(valid_cells_saved,:);
-            
-                    % masques limités aux cellules conservées
-                    if ~isempty(masks_in) && ...
-                       ndims(masks_in) >= 3 && ...
-                       size(masks_in,1) >= max(valid_cells_saved)
-            
-                        masks_in = masks_in(valid_cells_saved,:,:);
-            
-                    else
-                        masks_in = [];
-                    end
-            
-                    % remapping indices bleus
-                    if strcmp(family,'combined') && ~isempty(blue_indices_in)
-            
-                        map_old_to_new = nan(size(F_in,1),1);
-                        map_old_to_new(valid_cells_saved) = 1:numel(valid_cells_saved);
-            
-                        blue_indices_in = blue_indices_in( ...
-                            blue_indices_in >= 1 & ...
-                            blue_indices_in <= size(F_in,1));
-            
-                        blue_indices_in = map_old_to_new(blue_indices_in);
-                        blue_indices_in = blue_indices_in(isfinite(blue_indices_in));
-                        blue_indices_in = blue_indices_in(:);
-                    end
-            
-                else
-            
-                    warning(['Group %d plane %d : viewer mode impossible ' ...
-                             '(DF/valid_cells manquants). Recalcul normal.'], ...
-                             m, p);
-            
-                    viewer_mode = false;
-            
-                    F_view = F_in;
-            
-                    Acttmp2_saved      = [];
-                    Raster_saved       = [];
-                    thresholds_saved   = [];
-                    valid_cells_saved  = [];
-                    DF_saved           = [];
-                    F0_saved           = [];
-                    noise_est_saved    = [];
-                end
-            
-            else
-            
-                F_view = F_in;
-            
-                Acttmp2_saved      = [];
-                Raster_saved       = [];
-                thresholds_saved   = [];
-                valid_cells_saved  = [];
-                DF_saved           = [];
-                F0_saved           = [];
-                noise_est_saved    = [];
-            end
-
-            if isempty(F_view)
-                fprintf('Group %d plane %d: F_view empty.\n', m, p);
-                continue;
-            end
-            
-            [F0, noise_est, SNR, valid_cells, DF, Raster, ...
-             Acttmp2, MAct, thresholds, bad_segs, ...
-             opts_det, has_new] = ...
-                peak_detection_tuner(F_view, ...
-                    sampling_rate_m, ...
-                    sync_frames_m, ...
-                    'viewer_mode', viewer_mode, ...
-                    'DF', DF_saved, ...
-                    'F0', F0_saved, ...
-                    'noise_est', noise_est_saved, ...
-                    'Acttmp2', Acttmp2_saved, ...
-                    'Raster', Raster_saved, ...
-                    'thresholds', thresholds_saved, ...
-                    'valid_cells', valid_cells_saved, ...
-                    'cell_type', cell_type, ...
-                    'ops', ops_in, ...
-                    'iscell', iscell_in, ...
-                    'stat', stat_in, ...
-                    'masks', masks_in, ...
-                    'blue_indices', blue_indices_in, ...
-                    'meanImg', meanImg, ...
-                    'gcamp_TSeries_path', tiff_path, ...
-                    'speed', speed_m, ...
-                    'metadata', metadata_m, ...
-                    'stim_frames', stim_frames_m, ...
-                    'gcamp_output_folder', gcamp_output_folders{m}{p});
-            
-            if viewer_mode
-                continue;
-            end
-            
-            if ~has_new
-                fprintf('Group %d plane %d: no new outputs for %s.\n', m, p, family);
-                continue;
-            end
-
-            [isort1_plane, isort2_plane, Sm_plane] = ...
-                compute_sort_outputs_from_df(DF, tiff_path, ops_in);
+        if viewer_mode
 
             switch family
 
                 case 'gcamp'
-                    has_new_gcamp_group = true;
-
-                    data.gcamp_plane.F0_gcamp_by_plane{m}{p} = F0;
-                    data.gcamp_plane.noise_est_gcamp_by_plane{m}{p} = noise_est;
-                    data.gcamp_plane.valid_gcamp_cells_by_plane{m}{p} = valid_cells;
-                    data.gcamp_plane.DF_gcamp_by_plane{m}{p} = DF;
-                    data.gcamp_plane.Raster_gcamp_by_plane{m}{p} = Raster;
-                    data.gcamp_plane.Acttmp2_gcamp_by_plane{m}{p} = Acttmp2;
-                    data.gcamp_plane.MAct_gcamp_by_plane{m}{p} = MAct;
-                    data.gcamp_plane.thresholds_gcamp_by_plane{m}{p} = thresholds;
-                    data.gcamp_plane.bad_segs_gcamp_plane{m}{p} = bad_segs;
-                    data.gcamp_plane.opts_detection_gcamp_by_plane{m}{p} = opts_det;
-                    data.gcamp_plane.isort1_gcamp_by_plane{m}{p} = isort1_plane;
-                    data.gcamp_plane.isort2_gcamp_by_plane{m}{p} = isort2_plane;
-                    data.gcamp_plane.Sm_gcamp_by_plane{m}{p} = Sm_plane;
+                    valid_cells_saved = get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p);
+                    Acttmp2_saved     = get_branch_plane_or_empty(data, 'gcamp_plane', 'Acttmp2_gcamp_by_plane', m, p);
+                    Raster_saved      = get_branch_plane_or_empty(data, 'gcamp_plane', 'Raster_gcamp_by_plane', m, p);
+                    thresholds_saved  = get_branch_plane_or_empty(data, 'gcamp_plane', 'thresholds_gcamp_by_plane', m, p);
+                    DF_saved          = get_branch_plane_or_empty(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p);
+                    F0_saved          = get_branch_plane_or_empty(data, 'gcamp_plane', 'F0_gcamp_by_plane', m, p);
+                    noise_est_saved   = get_branch_plane_or_empty(data, 'gcamp_plane', 'noise_est_gcamp_by_plane', m, p);
 
                 case 'blue'
-                    has_new_blue_group = true;
-
-                    data.blue_plane.F0_blue_by_plane{m}{p} = F0;
-                    data.blue_plane.noise_est_blue_by_plane{m}{p} = noise_est;
-                    data.blue_plane.SNR_blue_by_plane{m}{p} = SNR;
-                    data.blue_plane.valid_blue_cells_by_plane{m}{p} = valid_cells;
-                    data.blue_plane.DF_blue_by_plane{m}{p} = DF;
-                    data.blue_plane.Raster_blue_by_plane{m}{p} = Raster;
-                    data.blue_plane.Acttmp2_blue_by_plane{m}{p} = Acttmp2;
-                    data.blue_plane.MAct_blue_by_plane{m}{p} = MAct;
-                    data.blue_plane.thresholds_blue_by_plane{m}{p} = thresholds;
-                    data.blue_plane.bad_segs_blue_plane{m}{p} = bad_segs;
-                    data.blue_plane.opts_detection_blue_by_plane{m}{p} = opts_det;
-                    data.blue_plane.isort1_blue_by_plane{m}{p} = isort1_plane;
-                    data.blue_plane.isort2_blue_by_plane{m}{p} = isort2_plane;
-                    data.blue_plane.Sm_blue_by_plane{m}{p} = Sm_plane;
+                    valid_cells_saved = get_branch_plane_or_empty(data, 'blue_plane', 'valid_blue_cells_by_plane', m, p);
+                    Acttmp2_saved     = get_branch_plane_or_empty(data, 'blue_plane', 'Acttmp2_blue_by_plane', m, p);
+                    Raster_saved      = get_branch_plane_or_empty(data, 'blue_plane', 'Raster_blue_by_plane', m, p);
+                    thresholds_saved  = get_branch_plane_or_empty(data, 'blue_plane', 'thresholds_blue_by_plane', m, p);
+                    DF_saved          = get_branch_plane_or_empty(data, 'blue_plane', 'DF_blue_by_plane', m, p);
+                    F0_saved          = get_branch_plane_or_empty(data, 'blue_plane', 'F0_blue_by_plane', m, p);
+                    noise_est_saved   = get_branch_plane_or_empty(data, 'blue_plane', 'noise_est_blue_by_plane', m, p);
 
                 case 'combined'
-                    has_new_combined_group = true;
+                    valid_cells_saved = get_branch_plane_or_empty(data, 'combined_plane', 'valid_combined_cells_by_plane', m, p);
+                    Acttmp2_saved     = get_branch_plane_or_empty(data, 'combined_plane', 'Acttmp2_combined_by_plane', m, p);
+                    Raster_saved      = get_branch_plane_or_empty(data, 'combined_plane', 'Raster_combined_by_plane', m, p);
+                    thresholds_saved  = get_branch_plane_or_empty(data, 'combined_plane', 'thresholds_combined_by_plane', m, p);
+                    DF_saved          = get_branch_plane_or_empty(data, 'combined_plane', 'DF_combined_by_plane', m, p);
+                    F0_saved          = get_branch_plane_or_empty(data, 'combined_plane', 'F0_combined_by_plane', m, p);
+                    noise_est_saved   = get_branch_plane_or_empty(data, 'combined_plane', 'noise_est_combined_by_plane', m, p);
+            end
 
-                    data.combined_plane.F0_combined_by_plane{m}{p} = F0;
-                    data.combined_plane.noise_est_combined_by_plane{m}{p} = noise_est;
-                    data.combined_plane.valid_combined_cells_by_plane{m}{p} = valid_cells;
-                    data.combined_plane.DF_combined_by_plane{m}{p} = DF;
-                    data.combined_plane.Raster_combined_by_plane{m}{p} = Raster;
-                    data.combined_plane.Acttmp2_combined_by_plane{m}{p} = Acttmp2;
-                    data.combined_plane.MAct_combined_by_plane{m}{p} = MAct;
-                    data.combined_plane.thresholds_combined_by_plane{m}{p} = thresholds;
-                    data.combined_plane.bad_segs_combined_plane{m}{p} = bad_segs;
-                    data.combined_plane.opts_detection_combined_by_plane{m}{p} = opts_det;
-                    data.combined_plane.isort1_combined_by_plane{m}{p} = isort1_plane;
-                    data.combined_plane.isort2_combined_by_plane{m}{p} = isort2_plane;
-                    data.combined_plane.Sm_combined_by_plane{m}{p} = Sm_plane;
+            valid_viewer_data = ...
+                ~isempty(valid_cells_saved) && ...
+                ~isempty(DF_saved) && ...
+                size(DF_saved,1) == numel(valid_cells_saved) && ...
+                all(valid_cells_saved >= 1) && ...
+                all(valid_cells_saved <= size(F_in,1));
 
-                    should_rebuild_gcamp = ~viewer_mode && ...
-                        ( ~has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p) || ...
-                          isempty(get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p)) );
+            if valid_viewer_data
 
-                    if should_rebuild_gcamp
+                F_view = F_in(valid_cells_saved,:);
 
-                        [ok_gcamp, gcamp_from_combined] = ...
-                            reconstruct_gcamp_from_combined_outputs( ...
-                                valid_cells, F0, noise_est, DF, Raster, Acttmp2, ...
-                                thresholds, bad_segs, opts_det, blue_indices_in, sync_frames_m);
+                if ~isempty(masks_in) && ...
+                   ndims(masks_in) >= 3 && ...
+                   size(masks_in,1) >= max(valid_cells_saved)
+                    masks_in = masks_in(valid_cells_saved,:,:);
+                else
+                    masks_in = [];
+                end
 
-                        if ok_gcamp
+                if strcmp(family,'combined') && ~isempty(blue_indices_in)
 
-                            data.gcamp_plane.F0_gcamp_by_plane{m}{p} = gcamp_from_combined.F0;
-                            data.gcamp_plane.noise_est_gcamp_by_plane{m}{p} = gcamp_from_combined.noise_est;
-                            data.gcamp_plane.valid_gcamp_cells_by_plane{m}{p} = gcamp_from_combined.valid_cells;
-                            data.gcamp_plane.DF_gcamp_by_plane{m}{p} = gcamp_from_combined.DF;
-                            data.gcamp_plane.Raster_gcamp_by_plane{m}{p} = gcamp_from_combined.Raster;
-                            data.gcamp_plane.Acttmp2_gcamp_by_plane{m}{p} = gcamp_from_combined.Acttmp2;
-                            data.gcamp_plane.MAct_gcamp_by_plane{m}{p} = gcamp_from_combined.MAct;
-                            data.gcamp_plane.thresholds_gcamp_by_plane{m}{p} = gcamp_from_combined.thresholds;
-                            data.gcamp_plane.bad_segs_gcamp_plane{m}{p} = gcamp_from_combined.bad_segs;
-                            data.gcamp_plane.opts_detection_gcamp_by_plane{m}{p} = gcamp_from_combined.opts_det;
+                    map_old_to_new = nan(size(F_in,1),1);
+                    map_old_to_new(valid_cells_saved) = 1:numel(valid_cells_saved);
 
-                            [isort1_tmp, isort2_tmp, Sm_tmp] = ...
-                                compute_sort_outputs_from_df(gcamp_from_combined.DF, tiff_path, ops_in);
+                    blue_indices_in = blue_indices_in( ...
+                        blue_indices_in >= 1 & ...
+                        blue_indices_in <= size(F_in,1));
 
-                            data.gcamp_plane.isort1_gcamp_by_plane{m}{p} = isort1_tmp;
-                            data.gcamp_plane.isort2_gcamp_by_plane{m}{p} = isort2_tmp;
-                            data.gcamp_plane.Sm_gcamp_by_plane{m}{p} = Sm_tmp;
+                    blue_indices_in = map_old_to_new(blue_indices_in);
+                    blue_indices_in = blue_indices_in(isfinite(blue_indices_in));
+                    blue_indices_in = blue_indices_in(:);
+                end
 
-                            has_new_gcamp_group = true;
-
-                            fprintf('Group %d plane %d: GCaMP detection rebuilt from combined outputs.\n', m, p);
-                        end
-                    end
-
-                    should_rebuild_blue = ~viewer_mode && ...
-                        ( ~has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, p) || ...
-                          isempty(get_branch_plane_or_empty(data, 'blue_plane', 'valid_blue_cells_by_plane', m, p)) );
-
-                    if should_rebuild_blue
-
-                        [ok_blue, blue_from_combined] = ...
-                            reconstruct_blue_from_combined_outputs( ...
-                                valid_cells, F0, noise_est, SNR, DF, Raster, Acttmp2, ...
-                                thresholds, bad_segs, opts_det, blue_indices_in, sync_frames_m);
-
-                        if ok_blue
-
-                            data.blue_plane.F0_blue_by_plane{m}{p} = blue_from_combined.F0;
-                            data.blue_plane.noise_est_blue_by_plane{m}{p} = blue_from_combined.noise_est;
-                            data.blue_plane.SNR_blue_by_plane{m}{p} = blue_from_combined.SNR;
-                            data.blue_plane.valid_blue_cells_by_plane{m}{p} = blue_from_combined.valid_cells;
-                            data.blue_plane.DF_blue_by_plane{m}{p} = blue_from_combined.DF;
-                            data.blue_plane.Raster_blue_by_plane{m}{p} = blue_from_combined.Raster;
-                            data.blue_plane.Acttmp2_blue_by_plane{m}{p} = blue_from_combined.Acttmp2;
-                            data.blue_plane.MAct_blue_by_plane{m}{p} = blue_from_combined.MAct;
-                            data.blue_plane.thresholds_blue_by_plane{m}{p} = blue_from_combined.thresholds;
-                            data.blue_plane.bad_segs_blue_plane{m}{p} = blue_from_combined.bad_segs;
-                            data.blue_plane.opts_detection_blue_by_plane{m}{p} = blue_from_combined.opts_det;
-
-                            [isort1_tmp, isort2_tmp, Sm_tmp] = ...
-                                compute_sort_outputs_from_df(blue_from_combined.DF, tiff_path, ops_in);
-
-                            data.blue_plane.isort1_blue_by_plane{m}{p} = isort1_tmp;
-                            data.blue_plane.isort2_blue_by_plane{m}{p} = isort2_tmp;
-                            data.blue_plane.Sm_blue_by_plane{m}{p} = Sm_tmp;
-
-                            has_new_blue_group = true;
-
-                            fprintf('Group %d plane %d: BLUE detection rebuilt from combined outputs.\n', m, p);
-                        end
-                    end
+            else
+                warning(['Group %d plane %d : viewer mode impossible ' ...
+                         '(DF/valid_cells manquants). Recalcul normal.'], m, p);
+                viewer_mode = false;
             end
         end
 
-        if has_new_gcamp_group
-            save_branch_fields(filePath_gcamp, data, 'gcamp_plane', fields_detect_gcamp, m);
-            fprintf('Group %d: gcamp detection fields updated in %s.\n', m, filePath_gcamp);
+        if ~viewer_mode
+        
+            F_nostims = F_in;
+        
+            first_stim_frame = [];
+        
+            if ~isempty(stim_frames_m)
+                stim_tmp = double(stim_frames_m(:));
+                stim_tmp = stim_tmp(isfinite(stim_tmp));
+        
+                if ~isempty(stim_tmp)
+                    first_stim_frame = min(stim_tmp);
+                end
+            end
+        
+            if ~isempty(first_stim_frame) && isfinite(first_stim_frame)
+        
+                first_stim_frame_global = round(first_stim_frame);
+                first_stim_frame_plane  = ceil(first_stim_frame_global / nPlanes);
+        
+                if first_stim_frame_plane > 1 && first_stim_frame_plane <= size(F_in,2)
+                    last_frame = first_stim_frame_plane - 1;
+                    F_nostims = F_in(:, 1:last_frame);
+                end
+            end
+        
+            nT = size(F_nostims, 2);
+        
+            % ============================================================
+            % Crop motion variables sur la même longueur que F_nostims
+            % ============================================================
+        
+            bad_frames = bad_frames_group;
+            bad_segs = bad_segs_group;
+            deviation = deviation_group;
+            focus_segs = focus_segs_group;
+            motion_energy = motion_energy_group;
+
+            if ~isempty(motion_energy)
+                motion_energy = motion_energy( ...
+                    1:min(first_stim_frame_global-1, numel(motion_energy)));
+            end
+        
+            if ~isempty(bad_frames)
+                bad_frames = bad_frames(:).';
+                bad_frames = bad_frames( ...
+                    bad_frames >= 1 & ...
+                    bad_frames <= nT);
+            end
+        
+            if ~isempty(deviation)
+                deviation = deviation(:).';
+                deviation = deviation(1:min(numel(deviation), nT));
+            end
+        
+            if ~isempty(bad_frames)
+                bad_segs = badframes_to_segments(bad_frames, nT);
+                focus_segs = bad_segs;
+            else
+                bad_segs = [];
+                focus_segs = [];
+            end
+        
+            % ============================================================
+            % Nettoyage F avec bad_frames croppées
+            % ============================================================
+        
+            if ~isempty(bad_frames)
+        
+                F_clean = F_nostims;
+                F_clean(:, bad_frames) = NaN;
+                F_clean = fillmissing(F_clean, 'linear', 2, 'EndValues', 'nearest');
+                F_nostims = F_clean;
+            end
+        
+            F_view = F_nostims;
+        end
+        
+        if isempty(F_view)
+            fprintf('Group %d plane %d: F_view empty.\n', m, p);
+            continue;
         end
 
-        if has_new_blue_group
-            save_branch_fields(filePath_blue, data, 'blue_plane', fields_detect_blue, m);
-            fprintf('Group %d: blue detection fields updated in %s.\n', m, filePath_blue);
+        [F0, noise_est, valid_cells, DF, Raster, ...
+         Acttmp2, MAct, thresholds, bad_segs_det, ...
+         opts_det, has_new] = ...
+            peak_detection_tuner(F_view, ...
+                sampling_rate_m, ...
+                sync_frames_m, ...
+                'viewer_mode', viewer_mode, ...
+                'DF', DF_saved, ...
+                'F0', F0_saved, ...
+                'noise_est', noise_est_saved, ...
+                'Acttmp2', Acttmp2_saved, ...
+                'Raster', Raster_saved, ...
+                'thresholds', thresholds_saved, ...
+                'valid_cells', valid_cells_saved, ...
+                'cell_type', cell_type, ...
+                'ops', ops_in, ...
+                'iscell_idx', iscell_idx, ...
+                'stat', stat_in, ...
+                'masks', masks_in, ...
+                'blue_indices', blue_indices_in, ...
+                'meanImg', meanImg, ...
+                'gcamp_TSeries_path', tiff_path, ...
+                'deviation', deviation, ...
+                'bad_frames', bad_frames, ...
+                'focus_segs', focus_segs, ...
+                'motion_energy', motion_energy, ...
+                'metadata', metadata_m, ...
+                'stim_frames', stim_frames_m, ...
+                'gcamp_output_folder', gcamp_output_folders{m}{p});
+
+        if viewer_mode
+            continue;
         end
 
-        if has_new_combined_group
-            save_branch_fields(filePath_combined, data, 'combined_plane', fields_detect_combined, m);
-            fprintf('Group %d: combined detection fields updated in %s.\n', m, filePath_combined);
+        if ~has_new
+            fprintf('Group %d plane %d: no new outputs for %s.\n', m, p, family);
+            continue;
         end
 
-        if ~has_new_gcamp_group && ~has_new_blue_group && ~has_new_combined_group
-            fprintf('Group %d: no new detection data.\n', m);
+        [isort1_plane, isort2_plane, Sm_plane] = ...
+            compute_sort_outputs_from_df(DF, tiff_path, ops_in);
+
+        switch family
+
+            case 'gcamp'
+                has_new_gcamp_group = true;
+
+                data.gcamp_plane.F0_gcamp_by_plane{m}{p} = F0;
+                data.gcamp_plane.noise_est_gcamp_by_plane{m}{p} = noise_est;
+                data.gcamp_plane.valid_gcamp_cells_by_plane{m}{p} = valid_cells;
+                data.gcamp_plane.DF_gcamp_by_plane{m}{p} = DF;
+                data.gcamp_plane.Raster_gcamp_by_plane{m}{p} = Raster;
+                data.gcamp_plane.Acttmp2_gcamp_by_plane{m}{p} = Acttmp2;
+                data.gcamp_plane.MAct_gcamp_by_plane{m}{p} = MAct;
+                data.gcamp_plane.thresholds_gcamp_by_plane{m}{p} = thresholds;
+                data.gcamp_plane.bad_segs_gcamp_plane{m}{p} = bad_segs_det;
+                data.gcamp_plane.opts_detection_gcamp_by_plane{m}{p} = opts_det;
+                data.gcamp_plane.isort1_gcamp_by_plane{m}{p} = isort1_plane;
+                data.gcamp_plane.isort2_gcamp_by_plane{m}{p} = isort2_plane;
+                data.gcamp_plane.Sm_gcamp_by_plane{m}{p} = Sm_plane;
+
+            case 'blue'
+                has_new_blue_group = true;
+
+                data.blue_plane.F0_blue_by_plane{m}{p} = F0;
+                data.blue_plane.noise_est_blue_by_plane{m}{p} = noise_est;
+                data.blue_plane.valid_blue_cells_by_plane{m}{p} = valid_cells;
+                data.blue_plane.DF_blue_by_plane{m}{p} = DF;
+                data.blue_plane.Raster_blue_by_plane{m}{p} = Raster;
+                data.blue_plane.Acttmp2_blue_by_plane{m}{p} = Acttmp2;
+                data.blue_plane.MAct_blue_by_plane{m}{p} = MAct;
+                data.blue_plane.thresholds_blue_by_plane{m}{p} = thresholds;
+                data.blue_plane.bad_segs_blue_plane{m}{p} = bad_segs_det;
+                data.blue_plane.opts_detection_blue_by_plane{m}{p} = opts_det;
+                data.blue_plane.isort1_blue_by_plane{m}{p} = isort1_plane;
+                data.blue_plane.isort2_blue_by_plane{m}{p} = isort2_plane;
+                data.blue_plane.Sm_blue_by_plane{m}{p} = Sm_plane;
+
+            case 'combined'
+                has_new_combined_group = true;
+
+                data.combined_plane.F0_combined_by_plane{m}{p} = F0;
+                data.combined_plane.noise_est_combined_by_plane{m}{p} = noise_est;
+                data.combined_plane.valid_combined_cells_by_plane{m}{p} = valid_cells;
+                data.combined_plane.DF_combined_by_plane{m}{p} = DF;
+                data.combined_plane.Raster_combined_by_plane{m}{p} = Raster;
+                data.combined_plane.Acttmp2_combined_by_plane{m}{p} = Acttmp2;
+                data.combined_plane.MAct_combined_by_plane{m}{p} = MAct;
+                data.combined_plane.thresholds_combined_by_plane{m}{p} = thresholds;
+                data.combined_plane.bad_segs_combined_plane{m}{p} = bad_segs_det;
+                data.combined_plane.opts_detection_combined_by_plane{m}{p} = opts_det;
+                data.combined_plane.isort1_combined_by_plane{m}{p} = isort1_plane;
+                data.combined_plane.isort2_combined_by_plane{m}{p} = isort2_plane;
+                data.combined_plane.Sm_combined_by_plane{m}{p} = Sm_plane;
+
+                should_rebuild_gcamp = ...
+                    ~has_existing_detection_new(data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p) || ...
+                    isempty(get_branch_plane_or_empty(data, 'gcamp_plane', 'valid_gcamp_cells_by_plane', m, p));
+
+                if should_rebuild_gcamp
+
+                    [ok_gcamp, gcamp_from_combined] = ...
+                        reconstruct_gcamp_from_combined_outputs( ...
+                            valid_cells, F0, noise_est, DF, Raster, Acttmp2, ...
+                            thresholds, bad_segs_det, opts_det, blue_indices_in, sync_frames_m);
+
+                    if ok_gcamp
+
+                        data.gcamp_plane.F0_gcamp_by_plane{m}{p} = gcamp_from_combined.F0;
+                        data.gcamp_plane.noise_est_gcamp_by_plane{m}{p} = gcamp_from_combined.noise_est;
+                        data.gcamp_plane.valid_gcamp_cells_by_plane{m}{p} = gcamp_from_combined.valid_cells;
+                        data.gcamp_plane.DF_gcamp_by_plane{m}{p} = gcamp_from_combined.DF;
+                        data.gcamp_plane.Raster_gcamp_by_plane{m}{p} = gcamp_from_combined.Raster;
+                        data.gcamp_plane.Acttmp2_gcamp_by_plane{m}{p} = gcamp_from_combined.Acttmp2;
+                        data.gcamp_plane.MAct_gcamp_by_plane{m}{p} = gcamp_from_combined.MAct;
+                        data.gcamp_plane.thresholds_gcamp_by_plane{m}{p} = gcamp_from_combined.thresholds;
+                        data.gcamp_plane.bad_segs_gcamp_plane{m}{p} = gcamp_from_combined.bad_segs;
+                        data.gcamp_plane.opts_detection_gcamp_by_plane{m}{p} = gcamp_from_combined.opts_det;
+
+                        [isort1_tmp, isort2_tmp, Sm_tmp] = ...
+                            compute_sort_outputs_from_df(gcamp_from_combined.DF, tiff_path, ops_in);
+
+                        data.gcamp_plane.isort1_gcamp_by_plane{m}{p} = isort1_tmp;
+                        data.gcamp_plane.isort2_gcamp_by_plane{m}{p} = isort2_tmp;
+                        data.gcamp_plane.Sm_gcamp_by_plane{m}{p} = Sm_tmp;
+
+                        has_new_gcamp_group = true;
+                    end
+                end
+
+                should_rebuild_blue = ...
+                    ~has_existing_detection_new(data, 'blue_plane', 'DF_blue_by_plane', m, p) || ...
+                    isempty(get_branch_plane_or_empty(data, 'blue_plane', 'valid_blue_cells_by_plane', m, p));
+
+                if should_rebuild_blue
+
+                    [ok_blue, blue_from_combined] = ...
+                        reconstruct_blue_from_combined_outputs( ...
+                            valid_cells, F0, noise_est, DF, Raster, Acttmp2, ...
+                            thresholds, bad_segs_det, opts_det, blue_indices_in, sync_frames_m);
+
+                    if ok_blue
+
+                        data.blue_plane.F0_blue_by_plane{m}{p} = blue_from_combined.F0;
+                        data.blue_plane.noise_est_blue_by_plane{m}{p} = blue_from_combined.noise_est;
+                        data.blue_plane.valid_blue_cells_by_plane{m}{p} = blue_from_combined.valid_cells;
+                        data.blue_plane.DF_blue_by_plane{m}{p} = blue_from_combined.DF;
+                        data.blue_plane.Raster_blue_by_plane{m}{p} = blue_from_combined.Raster;
+                        data.blue_plane.Acttmp2_blue_by_plane{m}{p} = blue_from_combined.Acttmp2;
+                        data.blue_plane.MAct_blue_by_plane{m}{p} = blue_from_combined.MAct;
+                        data.blue_plane.thresholds_blue_by_plane{m}{p} = blue_from_combined.thresholds;
+                        data.blue_plane.bad_segs_blue_plane{m}{p} = blue_from_combined.bad_segs;
+                        data.blue_plane.opts_detection_blue_by_plane{m}{p} = blue_from_combined.opts_det;
+
+                        [isort1_tmp, isort2_tmp, Sm_tmp] = ...
+                            compute_sort_outputs_from_df(blue_from_combined.DF, tiff_path, ops_in);
+
+                        data.blue_plane.isort1_blue_by_plane{m}{p} = isort1_tmp;
+                        data.blue_plane.isort2_blue_by_plane{m}{p} = isort2_tmp;
+                        data.blue_plane.Sm_blue_by_plane{m}{p} = Sm_tmp;
+
+                        has_new_blue_group = true;
+                    end
+                end
         end
     end
+
+    if has_new_gcamp_group
+        save_branch_fields(filePath_gcamp, data, 'gcamp_plane', fields_detect_gcamp, m);
+    end
+
+    if has_new_blue_group
+        save_branch_fields(filePath_blue, data, 'blue_plane', fields_detect_blue, m);
+    end
+
+    if has_new_combined_group
+        save_branch_fields(filePath_combined, data, 'combined_plane', fields_detect_combined, m);
+    end
+
+    if has_new_motion_group
+        save_motion_group_fields(filePath_motion, data, fields_motion_group, m);
+    end
 end
+
+end
+
 % =========================================================
 % ==================== UTILITAIRES ========================
 % =========================================================
@@ -715,28 +810,248 @@ function out = coerce_to_plane_cell(val, nPlanes)
         end
     end
 end
+function data = init_motion_group_if_needed(data, numFolders, fields_motion_group)
 
-function nPlanes = infer_nplanes_for_group_new(data, m)
-    nPlanes = 0;
+    if ~isfield(data,'motion') || ~isstruct(data.motion)
+        data.motion = struct();
+    end
 
-    candidates = { ...
-        {'gcamp_plane','F_gcamp_by_plane'}, ...
-        {'blue_plane','F_blue_by_plane'}, ...
-        {'combined_plane','F_combined_by_plane'}, ...
-        {'gcamp_plane','gcamp_mask_by_plane'}, ...
-        {'blue_plane','mask_cellpose_by_plane'}, ...
-        {'combined_plane','mask_combined_by_plane'} ...
-    };
+    for f = 1:numel(fields_motion_group)
+        fn = fields_motion_group{f};
 
-    for i = 1:numel(candidates)
-        br = candidates{i}{1};
-        fn = candidates{i}{2};
-        if isfield(data, br) && isfield(data.(br), fn) && ...
-           numel(data.(br).(fn)) >= m && ~isempty(data.(br).(fn){m})
-            nPlanes = max(nPlanes, numel(data.(br).(fn){m}));
+        if ~isfield(data.motion, fn) || ~iscell(data.motion.(fn))
+            data.motion.(fn) = cell(numFolders,1);
+
+        elseif numel(data.motion.(fn)) < numFolders
+            old = data.motion.(fn);
+            tmp = cell(numFolders,1);
+            tmp(1:numel(old)) = old(:);
+            data.motion.(fn) = tmp;
         end
     end
 end
+
+function data = merge_loaded_motion_group_into_data(data, loaded, fields_motion_group, m)
+
+    for f = 1:numel(fields_motion_group)
+
+        fn = fields_motion_group{f};
+
+        if ~isfield(loaded, fn)
+            continue;
+        end
+
+        if ~isfield(data.motion, fn) || numel(data.motion.(fn)) < m
+            data.motion.(fn) = cell(m,1);
+        end
+
+        if isempty(data.motion.(fn){m})
+            data.motion.(fn){m} = loaded.(fn);
+        end
+    end
+end
+
+function v = get_motion_group_or_empty(data, fieldName, m)
+
+    v = [];
+
+    if isfield(data,'motion') && ...
+       isfield(data.motion, fieldName) && ...
+       numel(data.motion.(fieldName)) >= m
+
+        v = data.motion.(fieldName){m};
+    end
+end
+
+function save_motion_group_fields(filePath_motion, data, fields_motion_group, m)
+
+    saveStruct = struct();
+
+    for f = 1:numel(fields_motion_group)
+        fn = fields_motion_group{f};
+
+        if isfield(data,'motion') && ...
+           isfield(data.motion, fn) && ...
+           numel(data.motion.(fn)) >= m
+
+            saveStruct.(fn) = data.motion.(fn){m};
+        end
+    end
+
+    outdir = fileparts(filePath_motion);
+    if ~exist(outdir,'dir')
+        mkdir(outdir);
+    end
+
+    if exist(filePath_motion,'file') == 2
+        save(filePath_motion, '-struct', 'saveStruct', '-append');
+    else
+        save(filePath_motion, '-struct', 'saveStruct');
+    end
+end
+
+function segs = badframes_to_segments(bad_frames, T)
+    if isempty(bad_frames) || T<=0
+        segs = zeros(0,2);
+        return;
+    end
+
+    if islogical(bad_frames)
+        bf = bad_frames(:).';
+        if numel(bf) ~= T
+            bf = bf(1:min(end,T));
+            if numel(bf) < T, bf(end+1:T) = false; end
+        end
+        idx = find(bf);
+    else
+        idx = bad_frames(:).';
+        idx = idx(isfinite(idx));
+        idx = unique(round(idx));
+        idx = idx(idx>=1 & idx<=T);
+    end
+
+    if isempty(idx)
+        segs = zeros(0,2);
+        return;
+    end
+
+    d = diff(idx);
+    cuts = [1 find(d>1)+1 numel(idx)+1];
+
+    segs = zeros(numel(cuts)-1,2);
+    for k = 1:numel(cuts)-1
+        a = idx(cuts(k));
+        b = idx(cuts(k+1)-1);
+        segs(k,:) = [a b];
+    end
+end
+
+function [user_segs, user_frames] = enter_observed_deviations(tifPath, T)
+
+    if nargin < 1
+        error('Usage: [user_segs,user_frames] = enter_observed_deviations(tifPath,T)');
+    end
+    if nargin < 2, T = []; end
+
+    if ~exist(tifPath,'file')
+        error('TIFF introuvable : %s', tifPath);
+    end
+
+    fprintf('\n=== OUVRIR MANUELLEMENT DANS FIJI ===\n');
+    fprintf('Fichier TIFF :\n%s\n\n', tifPath);
+    fprintf('Ouvre ce fichier dans Fiji, observe les déviations,\n');
+    fprintf('puis reviens ici pour entrer les frames correspondantes.\n\n');
+
+    fprintf('Entrée attendue (FRAMES uniquement) :\n');
+    fprintf('  ex: 120:140\n');
+    fprintf('      [120:140 300:320]\n');
+    fprintf('[] si aucune déviation.\n\n');
+
+    x = input('Frames observées = ');
+
+    if isempty(x)
+        fprintf('Aucune déviation saisie.\n');
+        user_segs = zeros(0,2);
+        user_frames = [];
+        return;
+    end
+
+    if ~isnumeric(x) || ~isvector(x)
+        error('Entrée invalide: entrer UNIQUEMENT un vecteur de frames.');
+    end
+
+    fr = round(x(:).');
+    fr = fr(isfinite(fr));
+
+    if ~isempty(T)
+        fr = fr(fr>=1 & fr<=T);
+    else
+        fr = fr(fr>=1);
+    end
+
+    fr = unique(fr);
+
+    user_segs = frames_to_segments(fr);
+    user_frames = fr;
+
+    fprintf('\n=== Enregistré ===\n');
+    fprintf('Segments détectés: %d\n', size(user_segs,1));
+    if ~isempty(user_segs)
+        disp(user_segs);
+    end
+end
+
+function segs = frames_to_segments(fr)
+    if isempty(fr)
+        segs = zeros(0,2);
+        return;
+    end
+    d = diff(fr);
+    cuts = [1 find(d>1)+1 numel(fr)+1];
+    segs = zeros(numel(cuts)-1,2);
+    for k = 1:numel(cuts)-1
+        segs(k,:) = [fr(cuts(k)) fr(cuts(k+1)-1)];
+    end
+end
+
+function segTable = sort_segments_by_deviation(bad_segs, deviation)
+
+    if nargin < 2
+        error('Usage: segTable = sort_segments_by_deviation(bad_segs, deviation)');
+    end
+
+    deviation = deviation(:).';
+    T = numel(deviation);
+
+    if isempty(bad_segs)
+        segTable = table([], [], [], [], ...
+            'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
+        disp(segTable);
+        return;
+    end
+
+    if size(bad_segs,2) ~= 2
+        error('bad_segs doit être une matrice Nx2 [start end].');
+    end
+
+    N = size(bad_segs,1);
+
+    startF = nan(N,1);
+    endF   = nan(N,1);
+    extent = nan(N,1);
+    valMax = nan(N,1);
+
+    for k = 1:N
+        a = round(bad_segs(k,1));
+        b = round(bad_segs(k,2));
+
+        if a > b
+            tmp = a; a = b; b = tmp;
+        end
+
+        a = max(1, min(T, a));
+        b = max(1, min(T, b));
+
+        startF(k) = a;
+        endF(k)   = b;
+        extent(k) = b - a + 1;
+
+        segVals = deviation(a:b);
+        segVals = segVals(isfinite(segVals));
+
+        if isempty(segVals)
+            valMax(k) = NaN;
+        else
+            valMax(k) = min(segVals);
+        end
+    end
+
+    segTable = table(startF, endF, extent, valMax, ...
+        'VariableNames', {'StartFrame','EndFrame','FrameExtent','ValMaxDeviation'});
+
+    segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
+end
+
 
 function v = get_branch_plane_or_empty(data, branchName, fieldName, m, p)
     v = [];
@@ -953,18 +1268,23 @@ function [ok, out] = reconstruct_gcamp_from_combined_outputs( ...
 end
 
 function [ok, out] = reconstruct_blue_from_combined_outputs( ...
-    valid_combined, F0_combined, noise_est_combined, SNR_combined, DF_combined, Raster_combined, ...
+    valid_combined, F0_combined, noise_est_combined, DF_combined, Raster_combined, ...
     Acttmp2_combined, thresholds_combined, bad_segs_combined, ...
     opts_det_combined, blue_indices_combined, synchronous_frames)
 
     ok = false;
     out = struct( ...
-        'F0', [], 'noise_est', [], 'SNR', [], ...
+        'F0', [], ...
+        'noise_est', [], ...
         'valid_cells', [], ...
         'valid_cells_combined', [], ...
-        'DF', [], 'Raster', [], ...
-        'Acttmp2', {{}}, 'MAct', [], ...
-        'thresholds', [], 'bad_segs', [], 'opts_det', []);
+        'DF', [], ...
+        'Raster', [], ...
+        'Acttmp2', {{}}, ...
+        'MAct', [], ...
+        'thresholds', [], ...
+        'bad_segs', [], ...
+        'opts_det', []);
 
     if isempty(valid_combined) || isempty(blue_indices_combined)
         return;
@@ -988,12 +1308,6 @@ function [ok, out] = reconstruct_blue_from_combined_outputs( ...
     out.valid_cells_combined = valid_blue_combined(:);
     out.F0         = safe_take_rows(F0_combined, row_keep);
     out.noise_est  = safe_take_rows(noise_est_combined, row_keep);
-
-    if ~isempty(SNR_combined)
-        out.SNR = safe_take_rows(SNR_combined, row_keep);
-    else
-        out.SNR = [];
-    end
 
     out.DF         = safe_take_rows(DF_combined, row_keep);
     out.Raster     = safe_take_rows(Raster_combined, row_keep);

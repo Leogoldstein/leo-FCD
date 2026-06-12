@@ -1,19 +1,19 @@
-function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] = load_data(suite2p_path)
+function [F_raw, F, F_deconv, ops, stat, ...
+          iscell_cells, iscell_cells_idx, ...
+          stat_false, iscell_false] = load_data(suite2p_path)
 
     % ---- Sorties par défaut : tout optionnel ----
-    F_unsorted   = [];
+    F_raw   = [];
     F            = [];
     F_deconv     = [];
     ops          = [];
     stat         = [];
-    iscell       = [];
+    iscell_raw   = [];
+    iscell_cells = [];
+    iscell_cells_idx = [];
     stat_false   = [];
     iscell_false = [];
-
-    F_deconv_unsorted = [];
-    iscell_raw = [];
-    keepMask = [];
-    falseMask = [];
+    F_deconv_raw = [];
 
     [~, ~, ext] = fileparts(suite2p_path);
 
@@ -30,11 +30,11 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
 
         % ---- Chargement indépendant de chaque fichier ----
         if isfile(newFPath)
-            F_unsorted = readNPY(newFPath);
+            F_raw = readNPY(newFPath);
         end
 
         if isfile(newSpksPath)
-            F_deconv_unsorted = readNPY(newSpksPath);
+            F_deconv_raw = readNPY(newSpksPath);
         end
 
         if isfile(newIscellPath)
@@ -62,9 +62,9 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
         end
 
         % ---- Séparation cellules / non-cellules si possible ----
-        if ~isempty(F_unsorted) && ~isempty(iscell_raw)
+        if ~isempty(F_raw) && ~isempty(iscell_raw)
 
-            nF = size(F_unsorted, 1);
+            nF = size(F_raw, 1);
             nI = size(iscell_raw, 1);
             nMin = min(nF, nI);
 
@@ -73,14 +73,14 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
                     nF, nI, nMin);
             end
 
-            F_unsorted = F_unsorted(1:nMin, :);
+            F_raw = F_raw(1:nMin, :);
             iscell_raw = iscell_raw(1:nMin, :);
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv_unsorted = F_deconv_unsorted(1:min(size(F_deconv_unsorted,1), nMin), :);
-                if size(F_deconv_unsorted,1) ~= nMin
-                    nMin2 = min(size(F_deconv_unsorted,1), nMin);
-                    F_unsorted = F_unsorted(1:nMin2, :);
+            if ~isempty(F_deconv_raw)
+                F_deconv_raw = F_deconv_raw(1:min(size(F_deconv_raw,1), nMin), :);
+                if size(F_deconv_raw,1) ~= nMin
+                    nMin2 = min(size(F_deconv_raw,1), nMin);
+                    F_raw = F_raw(1:nMin2, :);
                     iscell_raw = iscell_raw(1:nMin2, :);
                     nMin = nMin2;
                 end
@@ -88,13 +88,15 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
 
             keepMask  = logical(iscell_raw(:,1));
             falseMask = ~keepMask;
+            
+            iscell_cells_idx = find(keepMask);
 
-            F = double(F_unsorted(keepMask, :));
-            iscell = iscell_raw(keepMask, :);
+            F = double(F_raw(keepMask, :));
+            iscell_cells = iscell_raw(keepMask, :);
             iscell_false = iscell_raw(falseMask, :);
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv = double(F_deconv_unsorted(keepMask, :));
+            if ~isempty(F_deconv_raw)
+                F_deconv = double(F_deconv_raw(keepMask, :));
             end
 
             if ~isempty(stat)
@@ -116,12 +118,12 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
 
         else
             % Pas de séparation possible
-            if ~isempty(F_unsorted)
-                F = double(F_unsorted);
+            if ~isempty(F_raw)
+                F = double(F_raw);
             end
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv = double(F_deconv_unsorted);
+            if ~isempty(F_deconv_raw)
+                F_deconv = double(F_deconv_raw);
             end
 
             if ~isempty(iscell_raw)
@@ -137,11 +139,11 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
         data = load(suite2p_path);
 
         if isfield(data, 'F')
-            F_unsorted = data.F;
+            F_raw = data.F;
         end
 
         if isfield(data, 'spks')
-            F_deconv_unsorted = data.spks;
+            F_deconv_raw = data.spks;
         end
 
         if isfield(data, 'iscell')
@@ -156,9 +158,9 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
             stat = data.stat;
         end
 
-        if ~isempty(F_unsorted) && ~isempty(iscell_raw)
+        if ~isempty(F_raw) && ~isempty(iscell_raw)
 
-            nF = size(F_unsorted, 1);
+            nF = size(F_raw, 1);
             nI = size(iscell_raw, 1);
             nMin = min(nF, nI);
 
@@ -167,14 +169,14 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
                     nF, nI, nMin);
             end
 
-            F_unsorted = F_unsorted(1:nMin, :);
+            F_raw = F_raw(1:nMin, :);
             iscell_raw = iscell_raw(1:nMin, :);
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv_unsorted = F_deconv_unsorted(1:min(size(F_deconv_unsorted,1), nMin), :);
-                if size(F_deconv_unsorted,1) ~= nMin
-                    nMin2 = min(size(F_deconv_unsorted,1), nMin);
-                    F_unsorted = F_unsorted(1:nMin2, :);
+            if ~isempty(F_deconv_raw)
+                F_deconv_raw = F_deconv_raw(1:min(size(F_deconv_raw,1), nMin), :);
+                if size(F_deconv_raw,1) ~= nMin
+                    nMin2 = min(size(F_deconv_raw,1), nMin);
+                    F_raw = F_raw(1:nMin2, :);
                     iscell_raw = iscell_raw(1:nMin2, :);
                     nMin = nMin2;
                 end
@@ -183,12 +185,14 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
             keepMask  = iscell_raw(:,1) > 0;
             falseMask = ~keepMask;
 
-            F = double(F_unsorted(keepMask, :));
-            iscell = iscell_raw(keepMask, :);
+            iscell_cells_idx = find(keepMask);
+
+            F = double(F_raw(keepMask, :));
+            iscell_cells = iscell_raw(keepMask, :);
             iscell_false = iscell_raw(falseMask, :);
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv = double(F_deconv_unsorted(keepMask, :));
+            if ~isempty(F_deconv_raw)
+                F_deconv = double(F_deconv_raw(keepMask, :));
             end
 
             if ~isempty(stat)
@@ -201,12 +205,12 @@ function [F_unsorted, F, F_deconv, ops, stat, iscell, stat_false, iscell_false] 
             end
 
         else
-            if ~isempty(F_unsorted)
-                F = double(F_unsorted);
+            if ~isempty(F_raw)
+                F = double(F_raw);
             end
 
-            if ~isempty(F_deconv_unsorted)
-                F_deconv = double(F_deconv_unsorted);
+            if ~isempty(F_deconv_raw)
+                F_deconv = double(F_deconv_raw);
             end
 
             if ~isempty(iscell_raw)
