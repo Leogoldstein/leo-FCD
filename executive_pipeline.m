@@ -8,6 +8,7 @@ setup_python_env()
 
 %% Choix du ou des animaux
 clearvars -except choices group_order animal_date_list
+clc
 dataFolders_by_group = select_data_folders_by_group(choices, group_order);
 
 [selected_groups, animal_date_list] = folder_selection(choices, group_order, dataFolders_by_group);
@@ -32,10 +33,17 @@ recap_all = create_summary_sheets(selected_groups);
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '1';
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-%%
+
 selected_groups = DF_peak_detection(selected_groups);
-%%
+
 selected_groups = compute_DF(selected_groups);
+
+%%
+
+plot_traces_sorted_by_burst_rate(selected_groups)
+
+
+close all
 
 %% Data visualization (Grouped by layers)
 

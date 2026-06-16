@@ -1518,6 +1518,52 @@ end
 
 function validate_selection_filter(fig)
 
+    if ~ishandle(fig)
+        return;
+    end
+
+    % =====================================================
+    % HIGH PASS FILTER -> recalcul global avant cutoff
+    % =====================================================
+
+    use_high_pass_filter = false;
+    if isappdata(fig,'use_high_pass_filter')
+        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+    end
+
+    if use_high_pass_filter
+
+        F_raw = getappdata(fig,'F_raw');
+        fs    = getappdata(fig,'fs');
+        opts  = getappdata(fig,'opts');
+
+        if isappdata(fig,'bad_frames')
+            bad_frames = getappdata(fig,'bad_frames');
+        else
+            bad_frames = [];
+        end
+
+        fprintf('High pass filter actif : recalcul global avant cutoff...\n');
+
+        [DF, F0, ~, ~] = ...
+            F_processing(F_raw, bad_frames, fs, opts.window_size);
+
+        DF_sg = savgol_transform(DF, opts);
+        noise_est = estimate_noise(DF);
+
+        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+
+        setappdata(fig,'DF', DF_sg);
+        setappdata(fig,'F0', F0);
+        setappdata(fig,'noise_est', noise_est);
+        setappdata(fig,'SNR', SNR);
+        setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
+
+        recompute_n_peaks_all(fig);
+        setappdata(fig,'high_pass_filter_applied_globally', true);
+    end
+
     if ~isappdata(fig,'cells_sorted_by_quality') || ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
         return;
     end
@@ -1828,7 +1874,15 @@ function finalize_and_close(fig, synchronous_frames)
         use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
     end
     
-    if use_high_pass_filter
+    already_applied = false;
+
+    if isappdata(fig,'high_pass_filter_applied_globally')
+        already_applied = getappdata(fig,'high_pass_filter_applied_globally');
+    end
+    
+    if use_high_pass_filter && ~already_applied
+    
+        fprintf('High pass filter actif : application globale avant sauvegarde...\n');
     
         F_raw = getappdata(fig,'F_raw');
         fs    = getappdata(fig,'fs');
@@ -1839,8 +1893,6 @@ function finalize_and_close(fig, synchronous_frames)
         else
             bad_frames = [];
         end
-    
-        fprintf('High pass filter actif : application à toutes les traces avant sauvegarde...\n');
     
         [DF, F0, ~, ~] = F_processing(F_raw, bad_frames, fs, opts.window_size);
     
@@ -1857,7 +1909,8 @@ function finalize_and_close(fig, synchronous_frames)
         setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
     
         recompute_n_peaks_all(fig);
-        apply_auto_cutoff(fig);
+    
+        setappdata(fig,'high_pass_filter_applied_globally', true);
     end
 
     [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
@@ -2163,6 +2216,7 @@ function toggle_high_pass_filter(fig, use_high_pass_filter)
     end
 
     setappdata(fig,'use_high_pass_filter', logical(use_high_pass_filter));
+    setappdata(fig,'high_pass_filter_applied_globally', false);
 
     if isappdata(fig,'auto_peaks')
         rmappdata(fig,'auto_peaks');
