@@ -550,20 +550,26 @@ function [aligned_image, T, source_used] = align_blue_locally_and_confirm( ...
     end
 
     % ----------------------------------------------------------
-    % Recherche locale autour de (0,0), rayon max = 15 px
+    % Recalage par phase correlation (imregcorr)
     % ----------------------------------------------------------
-    max_radius = 15;
-    [bestTx, bestTy, bestScore] = estimate_local_translation_from_zero( ...
-        moving_for_estimation, ref_img, max_radius, 1);
+    moving_reg = mat2gray(double(moving_for_estimation));
+    ref_reg    = mat2gray(double(ref_img));
+    
+    try
+        reg_obj = imregcorr(moving_reg, ref_reg, 'translation');
+    
+        T = reg_obj.T;
+    
+        fprintf('%s -> GCaMP | imregcorr translation\n', source_used);
+        fprintf('dx = %.3f px\n', T(3,1));
+        fprintf('dy = %.3f px\n', T(3,2));
+    
+    catch ME
+        warning('imregcorr failed: %s', ME.message);
+        T = eye(3);
+    end
 
-    T = eye(3);
-    T(3,1) = bestTx;
-    T(3,2) = bestTy;
-
-    fprintf('%s -> GCaMP | local translation from zero: dx = %.3f px, dy = %.3f px\n', ...
-        source_used, bestTx, bestTy);
-    fprintf('Local correlation score = %.6f\n', bestScore);
-
+aligned_image = apply_transform_with_phasecorr(moving_img, T, ref_img);
     aligned_image = apply_transform_with_phasecorr(moving_img, T, ref_img);
 
     if isempty(aligned_image)
@@ -1331,7 +1337,8 @@ function aligned_img = apply_transform_with_phasecorr(channel_img, T, ref_img)
 
     try
         aligned_raw = imwarp(double(channel_img), affine2d(T), ...
-            'OutputView', imref2d(ref_size));
+            'OutputView', imref2d(ref_size), ...
+            'Interp', 'linear');
     catch ME
         warning('apply_transform_with_phasecorr: imwarp a échoué (%s).', ME.message);
         return;

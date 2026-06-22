@@ -1,25 +1,18 @@
-function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, focus_segs, opts, has_new_outputs] = ...
+function [F0, noise_est, valid_cells, DF_sg, DF_raw, drift_score, Raster, Acttmp2, MAct, thresholds, focus_segs, opts, has_new_outputs] = ...
     peak_detection_tuner(F, fs, synchronous_frames, varargin)
-% GUI CalTrig — interactive tuning and saving of Ca²⁺ transient detection
-%
-% Inputs:
-%   F   : raw fluorescence (n_cells x T)
-%   fs  : sampling rate (Hz)
-%   synchronous_frames : fenêtre pour activité synchrone
-%
-% Outputs:
-%   DF, F0, noise_est, SNR : preprocessing
-%   Raster, Acttmp2, MAct, thresholds : détection de pics
 
     % ---- Options détection (valeurs initiales) ----
     opts = struct( ...
-        'window_size_s', 120, ...      % detrending window
+        'window_size_s', 60, ...
         'savgol_win_ms', 300, ...
         'savgol_poly', 3, ...
-        'refrac_ms', 300, ...            % période réfractaire
-        'prominence_factor', 0.8, ...
+        'refrac_ms', 300, ...
+        'prominence_factor', 1, ...
         'min_n_peaks_cutoff', 10, ...
-        'min_mask_um2', 50 ...
+        'min_mask_um2', 50, ...
+        'max_drift_score', 0.15, ...
+        'min_mask_connectivity', 0.80, ...
+        'min_quality_percentile_for_high_drift', 70 ...
     );
     opts = convert_opts_ms_to_frames(opts, fs);
     
@@ -40,8 +33,10 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
     blue_indices = [];
     stim_frames = [];
     motion_energy = [];
-
-    DF = [];
+    
+    DF_raw = [];
+    drift_score = [];
+    DF_sg = [];
     F0 = [];
     noise_est = [];
 
@@ -74,8 +69,14 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
                 case 'viewer_mode'
                     viewer_mode = logical(val);
 
-                case 'DF'
-                    DF = val;
+                case 'DF_sg'
+                    DF_sg = val;
+                
+                case 'DF_raw'
+                    DF_raw = val;
+                
+                case 'drift_score'
+                    drift_score = val;
 
                 case 'F0'
                     F0 = val;
@@ -148,20 +149,9 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
     
     if viewer_mode
     
-        % ============================================================
-        % VIEWER MODE :
-        % pas de F_processing
-        % pas de SavGol
-        % mais recalcul du tri qualité sur DF sauvegardé
-        % ============================================================
+        if ~isempty(DF_sg) && size(DF_sg,1) == size(F,1)
     
-        if ~isempty(DF) && size(DF,1) == size(F,1)
-    
-            DF_sg = DF;
-    
-            if ~isempty(F0) && size(F0,1) == size(F,1)
-                F0 = F0;
-            else
+            if isempty(F0) || size(F0,1) ~= size(F,1)
                 F0 = nan(size(F));
             end
     
@@ -171,32 +161,35 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
                 noise_est = estimate_noise(DF_sg);
             end
     
-            [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+            if isempty(DF_raw) || size(DF_raw,1) ~= size(F,1)
+                DF_raw = [];
+            end
+    
+            if isempty(drift_score) || numel(drift_score) ~= size(F,1)
+                drift_score = zeros(size(F,1),1);
+            else
+                drift_score = drift_score(:);
+            end
+    
+            [~, SNR, score, cells_sorted_by_quality, ~, ~, ~] = ...
                 compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
     
         else
-    
-            warning('viewer_mode demandé mais DF sauvegardé absent/incompatible. Recalcul normal.');
+            warning('viewer_mode demandé mais DF_sg sauvegardé absent/incompatible. Recalcul normal.');
             viewer_mode = false;
         end
     end
     
-    use_high_pass_filter = false;
-
     if ~viewer_mode
+
+        %results = optimize_F0_window_from_F(F, bad_frames, fs);
     
-        if use_high_pass_filter
-            [DF, F0, DF_raw, baseline_df] = ...
-                F_processing(F, bad_frames, fs, window_size);
-        else
-            [DF, F0] = ...
-                F_processing_JC(F, bad_frames, fs, window_size);
-        end
+        [DF_raw, F0] = F_processing(F, bad_frames, fs, window_size);
+
+        DF_sg = savgol_transform(DF_raw, opts);
+        noise_est = estimate_noise(DF_raw);
     
-        DF_sg = savgol_transform(DF, opts);
-        noise_est = estimate_noise(DF);
-    
-        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+        [~, SNR, score, cells_sorted_by_quality, ~, ~, ~] = ...
             compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
     end
 
@@ -339,20 +332,14 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
 
     % ---- Contrôles détection ----
     make_slider(ctrl_panel,fig,'Window size (sec)','window_size_s',1,300,opts.window_size_s,[0.05 0.76 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Prominence','prominence_factor',0,3,opts.prominence_factor,[0.05 0.60 0.90 0.06]);
+    make_slider(ctrl_panel,fig, ...
+    'Prominence', ...
+    'prominence_factor', ...
+    0,1,1, ...
+    [0.05 0.60 0.90 0.06]);
     make_slider(ctrl_panel,fig,'Réfractaire (ms)','refrac_ms',0,5000,opts.refrac_ms,[0.05 0.52 0.90 0.06]);
     make_slider(ctrl_panel,fig,'SavGol window (ms)','savgol_win_ms',100,500,opts.savgol_win_ms,[0.05 0.44 0.90 0.06]);
     
-    uicontrol('Parent',ctrl_panel,'Style','checkbox', ...
-    'String','High pass filter', ...
-    'Units','normalized', ...
-    'Position',[0.05 0.385 0.90 0.04], ...
-    'Value',0, ...
-    'Tag','chk_high_pass_filter', ...
-    'BackgroundColor',[.97 .97 .98], ...
-    'FontWeight','bold', ...
-    'Callback',@(src,~) toggle_high_pass_filter(fig, logical(get(src,'Value'))));
-
     % ---- Axe principal ----
     ax1 = axes('Parent',fig,'Position',[0.28 0.63 0.70 0.30]);
     box(ax1,'on');
@@ -399,14 +386,31 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
     ylabel(axH,'Nombre de cellules');
 
    % ---- Appdata ----
-    setappdata(fig,'fs',fs);
+    setappdata(fig,'fs',fs);   
     setappdata(fig,'F_raw',F);
-    setappdata(fig,'DF',DF_sg);
+    setappdata(fig,'DF_sg', DF_sg);
+    setappdata(fig,'DF_raw', DF_raw);
+    setappdata(fig,'drift_score', drift_score);
     setappdata(fig,'F0',F0);
     setappdata(fig,'noise_est',noise_est);
     setappdata(fig,'SNR',SNR);
+    setappdata(fig,'score_quality', score);
+
+    score_quality_percentile = nan(size(score));
+
+    valid_score = isfinite(score);
+    [~, order_score] = sort(score(valid_score), 'ascend');
+    
+    tmp = nan(sum(valid_score),1);
+    tmp(order_score) = linspace(0,100,sum(valid_score));
+    
+    score_quality_percentile(valid_score) = tmp;
+    
+    setappdata(fig,'score_quality_percentile', score_quality_percentile);
+
     setappdata(fig,'opts',opts);
     setappdata(fig,'motion_energy',motion_energy);
+    
     
     setappdata(fig,'ax1',ax1);
     setappdata(fig,'axF0',axF0);
@@ -471,23 +475,22 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
     setappdata(fig,'gcamp_output_folder', gcamp_output_folder);
 
     setappdata(fig,'masks', masks);
-
-    setappdata(fig,'use_high_pass_filter', false);
     
     pixel_size_um = NaN;
     mask_sizes = [];
-
+    mask_connectivity_ratio = [];
+    
     if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
-
-        % ----------------------------
-        % Pixel size depuis metadata
-        % ----------------------------
+    
         pixel_size_um = NaN;
+    
         if isappdata(fig,'metadata')
             metadata = getappdata(fig,'metadata');
+    
             try
-                if isstruct(metadata) && isfield(metadata, 'PixelSize_um') && ~isempty(metadata.PixelSize_um)           
+                if isstruct(metadata) && isfield(metadata, 'PixelSize_um') && ~isempty(metadata.PixelSize_um)
                     px = metadata.PixelSize_um;
+    
                     if isnumeric(px)
                         pixel_size_um = double(px(1));
                     elseif iscell(px) && ~isempty(px)
@@ -500,26 +503,40 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
                 pixel_size_um = NaN;
             end
         end
-
+    
         nCells_masks = size(masks,1);
-        mask_sizes = zeros(nCells_masks,1);
-        
+        mask_sizes = nan(nCells_masks,1);
+        mask_connectivity_ratio = nan(nCells_masks,1);
+    
         for i = 1:nCells_masks
-            m = squeeze(masks(i,:,:));
-            if ~isempty(m)
-                npix = sum(m(:) > 0);
-                if isfinite(pixel_size_um) && pixel_size_um > 0
-                    mask_sizes(i) = npix * (pixel_size_um^2);
-                else
-                    mask_sizes(i) = NaN;
-                end
+    
+            m = squeeze(masks(i,:,:)) > 0;
+    
+            if isempty(m) || ~any(m(:))
+                continue;
+            end
+    
+            npix = sum(m(:));
+    
+            if isfinite(pixel_size_um) && pixel_size_um > 0
+                mask_sizes(i) = npix * (pixel_size_um^2);
+            else
+                mask_sizes(i) = NaN;
+            end
+    
+            CC = bwconncomp(m, 8);
+    
+            if CC.NumObjects > 0
+                comp_sizes = cellfun(@numel, CC.PixelIdxList);
+                mask_connectivity_ratio(i) = max(comp_sizes) / sum(comp_sizes);
             end
         end
     end
     
     setappdata(fig,'pixel_size_um', pixel_size_um);
     setappdata(fig,'mask_sizes', mask_sizes);
-    
+    setappdata(fig,'mask_connectivity_ratio', mask_connectivity_ratio);
+
     if viewer_mode
         % en mode viewer : toutes les cellules sont visibles directement
         order_cells_all = (1:size(F,1)).';
@@ -669,7 +686,9 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
 
         has_new_outputs = true;
         valid_cells = out.valid_cells;
-        DF          = out.DF;
+        DF_raw      = out.DF_raw;
+        DF_sg       = out.DF_sg;
+        drift_score = out.drift_score;
         F0          = out.F0;
         Raster      = out.Raster;
         Acttmp2     = out.Acttmp2;
@@ -706,7 +725,9 @@ function [F0, noise_est, valid_cells, DF, Raster, Acttmp2, MAct, thresholds, foc
         MAct       = [];
         thresholds = nan(size(F,1),1);
         valid_cells = [];
-        DF = [];
+        DF_sg = [];
+        DF_raw = [];
+        drift_score = [];
         F0 = [];
     end
 
@@ -803,7 +824,9 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
     bad_mask = make_bad_mask(bad_frames, Nx);
     out.bad_mask = bad_mask;
 
-    seuil_detection = 2.33 * sigma;
+    %seuil_detection = 2.33 * sigma;
+    seuil_detection= 3.09 * sigma ;
+
     if ~isfinite(seuil_detection) || seuil_detection <= 0
         seuil_detection = 0;
     end
@@ -889,22 +912,6 @@ end
 
 function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, quality_thr0] = ...
     compute_snr_quality(DF, noise_est, opts, bad_frames)
-% compute_snr_quality
-% Classe les cellules selon une amplitude robuste des pics détectés
-% directement avec detect_peaks_cell_core.
-%
-% Inputs:
-%   DF      : [NCell x Nz]
-%   noise_est  : [NCell x 1]
-%   opts       : struct de détection
-%   bad_frames : indices/logical des frames à exclure (optionnel)
-%
-% Outputs:
-%   A                     : amplitude robuste des pics par cellule
-%   SNR                   : A / bruit
-%   score                 : score final
-%   cells_sorted_by_quality : ids triés du pire au meilleur
-%   quality_min/max/thr0  : bornes UI
 
     if nargin < 3 || isempty(opts)
         error('compute_snr_quality requires DF, noise_est, and opts.');
@@ -921,32 +928,29 @@ function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, qual
     [NCell, ~] = size(DF);
 
     noise_est = noise_est(:);
+
     if numel(noise_est) ~= NCell
         error('noise_est must have one value per cell (%d expected).', NCell);
     end
 
     noise_est(~isfinite(noise_est) | noise_est <= 0) = eps;
 
-    A   = zeros(NCell,1);
-    SNR = zeros(NCell,1);
+    A     = zeros(NCell,1);
+    SNR   = zeros(NCell,1);
     score = zeros(NCell,1);
 
     for cid = 1:NCell
+
         x_detect = DF(cid,:).';
         sigma = noise_est(cid);
 
         if isempty(x_detect) || all(~isfinite(x_detect))
-            A(cid) = 0;
-            SNR(cid) = 0;
-            score(cid) = 0;
             continue;
         end
+
         out = detect_peaks_cell_core(x_detect, sigma, opts, bad_frames);
 
         if isempty(out.locs_raw)
-            A(cid) = 0;
-            SNR(cid) = 0;
-            score(cid) = 0;
             continue;
         end
 
@@ -954,13 +958,9 @@ function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, qual
         peak_vals = peak_vals(isfinite(peak_vals));
 
         if isempty(peak_vals)
-            A(cid) = 0;
-            SNR(cid) = 0;
-            score(cid) = 0;
             continue;
         end
 
-        % amplitude robuste des événements détectés
         A(cid) = median(peak_vals);
 
         if ~isfinite(A(cid)) || A(cid) < 0
@@ -968,25 +968,26 @@ function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, qual
         end
 
         SNR(cid) = A(cid) / sigma;
+
         if ~isfinite(SNR(cid)) || SNR(cid) < 0
             SNR(cid) = 0;
         end
 
-        % score final
-        % on peut ensuite enrichir ce score avec d'autres critères si besoin
-        score(cid) = SNR(cid);
+        n_peaks = numel(out.locs_raw);        
+
+        score(cid) = SNR(cid) .* log1p(n_peaks);
+
+        if ~isfinite(score(cid)) || score(cid) < 0
+            score(cid) = 0;
+        end
     end
 
     [~, cells_sorted_by_quality] = sort(score, 'ascend');
     cells_sorted_by_quality = cells_sorted_by_quality(:);
 
-    quality_min  = 1;
-    quality_max  = NCell;
-    quality_thr0 = max(1, round(0.5 * NCell));
-
-    quality_min  = double(quality_min);
-    quality_max  = double(quality_max);
-    quality_thr0 = double(quality_thr0);
+    quality_min  = double(1);
+    quality_max  = double(NCell);
+    quality_thr0 = double(max(1, round(0.5 * NCell)));
 end
 
 function noise_est = estimate_noise(DF)
@@ -1037,11 +1038,11 @@ end
 %% ===================== DETECTION / SAVE =====================
 function auto_detect_and_add(fig)
 
-    if ~isappdata(fig,'DF') || ~isappdata(fig,'cell_id')
+    if ~isappdata(fig,'DF_sg') || ~isappdata(fig,'cell_id')
         return;
     end
 
-    DF  = getappdata(fig,'DF');
+    DF  = getappdata(fig,'DF_sg');
     cid = getappdata(fig,'cell_id');
 
     if isempty(cid) || ~isscalar(cid) || ~isfinite(cid)
@@ -1056,6 +1057,9 @@ function auto_detect_and_add(fig)
 
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
+    % =====================================================
+    % VIEWER MODE : uniquement pics/seuils sauvegardés
+    % =====================================================
     if viewer_mode
 
         auto_peaks = [];
@@ -1092,6 +1096,9 @@ function auto_detect_and_add(fig)
         return;
     end
 
+    % =====================================================
+    % MODE NORMAL : détection active
+    % =====================================================
     if ~isappdata(fig,'opts') || ~isappdata(fig,'noise_est')
         return;
     end
@@ -1105,43 +1112,26 @@ function auto_detect_and_add(fig)
         bad_frames = [];
     end
 
-    use_high_pass_filter = false;
-    if isappdata(fig,'use_high_pass_filter')
-        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+    x = DF(cid,:).';
+    sigma = noise_est(cid);
+
+    if ~isfinite(sigma) || sigma <= 0
+        sigma = std(x,'omitnan');
     end
-    
-    if use_high_pass_filter && isappdata(fig,'F_raw')
-    
-        F_raw = getappdata(fig,'F_raw');
-        fs    = getappdata(fig,'fs');
-        opts  = getappdata(fig,'opts');
-    
-        trace_raw = F_raw(cid,:);
-    
-        [DF_cell, ~] = F_processing(trace_raw, bad_frames, fs, opts.window_size);
-        DF_cell_sg = savgol_transform(DF_cell, opts);
-    
-        x = DF_cell_sg(1,:).';
-    
-        sigma = estimate_noise(DF_cell);
-        sigma = sigma(1);
-    
-    else
-    
-        x = DF(cid,:).';
-        sigma = noise_est(cid);
+    if ~isfinite(sigma) || sigma <= 0
+        sigma = eps;
     end
 
     out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
 
     setappdata(fig,'auto_peaks', out.locs_raw);
     setappdata(fig,'seuil_detection_last', out.threshold);
-    
+
     refresh_data(fig);
 end
 
 function recompute_n_peaks_all(fig)
-    DF     = getappdata(fig,'DF');
+    DF     = getappdata(fig,'DF_sg');
     noise_est = getappdata(fig,'noise_est');
     opts      = getappdata(fig,'opts');
 
@@ -1175,7 +1165,7 @@ end
 function [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
     save_peak_matrix(fig, synchronous_frames)
 
-    DF     = getappdata(fig,'DF');
+    DF     = getappdata(fig,'DF_sg');
     opts      = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
     F0        = getappdata(fig,'F0');
@@ -1209,22 +1199,64 @@ function [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds,
     cutoff_validated = isappdata(fig,'cutoff_validated') && getappdata(fig,'cutoff_validated');
 
     if isappdata(fig,'n_peaks_all') && isappdata(fig,'opts')
+
         n_peaks_all = getappdata(fig,'n_peaks_all');
         opts = getappdata(fig,'opts');
+    
         mask_sizes = [];
         if isappdata(fig,'mask_sizes')
             mask_sizes = getappdata(fig,'mask_sizes');
         end
-        
+    
         good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
-        
+    
         if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-            good_by_mask  = mask_sizes >= opts.min_mask_um2;
+            good_by_mask = mask_sizes >= opts.min_mask_um2;
         else
             good_by_mask = true(size(n_peaks_all));
         end
+
+        mask_connectivity_ratio = [];
+        if isappdata(fig,'mask_connectivity_ratio')
+            mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
+        end
         
-        selected_cells_from_cutoff = find(good_by_peaks & good_by_mask);
+        if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
+            good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
+        else
+            good_by_connectivity = true(size(n_peaks_all));
+        end
+
+        drift_score = [];
+        if isappdata(fig,'drift_score')
+            drift_score = getappdata(fig,'drift_score');
+        end
+        
+        score_quality_percentile = [];
+        if isappdata(fig,'score_quality_percentile')
+            score_quality_percentile = getappdata(fig,'score_quality_percentile');
+        end
+        
+        if ~isempty(drift_score) && ...
+           ~isempty(score_quality_percentile) && ...
+           numel(drift_score) == numel(n_peaks_all) && ...
+           numel(score_quality_percentile) == numel(n_peaks_all)
+        
+            good_by_drift = ...
+                (drift_score <= opts.max_drift_score) | ...
+                (score_quality_percentile >= opts.min_quality_percentile_for_high_drift);
+        
+        else
+        
+            good_by_drift = true(size(n_peaks_all));
+        end
+
+        selected_cells_from_cutoff = find( ...
+            good_by_peaks & ...
+            good_by_mask & ...
+            good_by_connectivity & ...
+            good_by_drift);
+    
     else
         selected_cells_from_cutoff = [];
     end
@@ -1498,70 +1530,72 @@ function apply_auto_cutoff(fig)
         mask_sizes = getappdata(fig,'mask_sizes');
     end
 
+    drift_score = [];
+    if isappdata(fig,'drift_score')
+        drift_score = getappdata(fig,'drift_score');
+    end
+    
+    score_quality_percentile = [];
+    if isappdata(fig,'score_quality_percentile')
+        score_quality_percentile = getappdata(fig,'score_quality_percentile');
+    end
+    
+    if ~isempty(drift_score) && ...
+       ~isempty(score_quality_percentile) && ...
+       numel(drift_score) == numel(n_peaks_all) && ...
+       numel(score_quality_percentile) == numel(n_peaks_all)
+    
+        good_by_drift = ...
+            (drift_score <= opts.max_drift_score) | ...
+            (score_quality_percentile >= opts.min_quality_percentile_for_high_drift);
+    
+    else
+    
+        good_by_drift = true(size(n_peaks_all));
+    end
+
     good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
 
     if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-        good_by_mask  = mask_sizes >= opts.min_mask_um2;
+        good_by_mask = mask_sizes >= opts.min_mask_um2;
     else
         good_by_mask = true(size(n_peaks_all));
     end
 
-    selected_cells_from_cutoff = find(good_by_peaks & good_by_mask);
+    mask_connectivity_ratio = [];
+    if isappdata(fig,'mask_connectivity_ratio')
+        mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
+    end
+    
+    if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
+        good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
+    else
+        good_by_connectivity = true(size(n_peaks_all));
+    end
+
+    selected_cells_from_cutoff = find( ...
+        good_by_peaks & ...
+        good_by_mask & ...
+        good_by_connectivity & ...
+        good_by_drift);
 
     setappdata(fig,'selected_cells_from_cutoff', selected_cells_from_cutoff);
     setappdata(fig,'cutoff_validated', true);
     setappdata(fig,'cutoff_locked', true);
 
-    fprintf('Cutoff auto : >= %d pics ET masque >= %.1f um^2.\n', ...
-        opts.min_n_peaks_cutoff, opts.min_mask_um2);
+    fprintf(['Cutoff auto : >= %d pics ET masque >= %.1f um^2 ' ...
+        'ET connectivité >= %.2f ET drift <= %.2f sauf si quality >= %.0f/100.\n'], ...
+        opts.min_n_peaks_cutoff, ...
+        opts.min_mask_um2, ...
+        opts.min_mask_connectivity, ...
+        opts.max_drift_score, ...
+        opts.min_quality_percentile_for_high_drift);
 end
 
 function validate_selection_filter(fig)
 
     if ~ishandle(fig)
         return;
-    end
-
-    % =====================================================
-    % HIGH PASS FILTER -> recalcul global avant cutoff
-    % =====================================================
-
-    use_high_pass_filter = false;
-    if isappdata(fig,'use_high_pass_filter')
-        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
-    end
-
-    if use_high_pass_filter
-
-        F_raw = getappdata(fig,'F_raw');
-        fs    = getappdata(fig,'fs');
-        opts  = getappdata(fig,'opts');
-
-        if isappdata(fig,'bad_frames')
-            bad_frames = getappdata(fig,'bad_frames');
-        else
-            bad_frames = [];
-        end
-
-        fprintf('High pass filter actif : recalcul global avant cutoff...\n');
-
-        [DF, F0, ~, ~] = ...
-            F_processing(F_raw, bad_frames, fs, opts.window_size);
-
-        DF_sg = savgol_transform(DF, opts);
-        noise_est = estimate_noise(DF);
-
-        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
-            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
-
-        setappdata(fig,'DF', DF_sg);
-        setappdata(fig,'F0', F0);
-        setappdata(fig,'noise_est', noise_est);
-        setappdata(fig,'SNR', SNR);
-        setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
-
-        recompute_n_peaks_all(fig);
-        setappdata(fig,'high_pass_filter_applied_globally', true);
     end
 
     if ~isappdata(fig,'cells_sorted_by_quality') || ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
@@ -1600,7 +1634,7 @@ function validate_selection_filter(fig)
     if isappdata(fig,'mask_sizes')
         mask_sizes = getappdata(fig,'mask_sizes');
     end
-
+    
     good_by_peaks = n_peaks_all >= min_n_peaks;
 
     if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
@@ -1609,7 +1643,47 @@ function validate_selection_filter(fig)
         good_by_mask = true(size(n_peaks_all));
     end
 
-    auto_keep   = find(good_by_peaks & good_by_mask);
+    mask_connectivity_ratio = [];
+    if isappdata(fig,'mask_connectivity_ratio')
+        mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
+    end
+    
+    if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
+        good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
+    else
+        good_by_connectivity = true(size(n_peaks_all));
+    end
+    
+    drift_score = [];
+    if isappdata(fig,'drift_score')
+        drift_score = getappdata(fig,'drift_score');
+    end
+    
+    score_quality_percentile = [];
+    if isappdata(fig,'score_quality_percentile')
+        score_quality_percentile = getappdata(fig,'score_quality_percentile');
+    end
+    
+    if ~isempty(drift_score) && ...
+       ~isempty(score_quality_percentile) && ...
+       numel(drift_score) == numel(n_peaks_all) && ...
+       numel(score_quality_percentile) == numel(n_peaks_all)
+    
+        good_by_drift = ...
+            (drift_score <= opts.max_drift_score) | ...
+            (score_quality_percentile >= opts.min_quality_percentile_for_high_drift);
+    
+    else
+    
+        good_by_drift = true(size(n_peaks_all));
+    end
+
+    auto_keep = find( ...
+        good_by_peaks & ...
+        good_by_mask & ...
+        good_by_connectivity & ...
+        good_by_drift);
+
     manual_keep = find(st == +1);
     manual_excl = find(st == -1);
 
@@ -1627,6 +1701,7 @@ function validate_selection_filter(fig)
     setappdata(fig,'order_cells', order_cells);
     setappdata(fig,'cutoff_validated', true);
     setappdata(fig,'cutoff_locked', true);
+    setappdata(fig,'selected_cells_from_cutoff', auto_keep);
 
     setappdata(fig,'current_rank', 1);
     setappdata(fig,'nav_rank', 1);
@@ -1647,14 +1722,22 @@ function validate_selection_filter(fig)
 
     setappdata(fig,'autotervals', []);
     setappdata(fig,'auto_peaks', []);
+
     if isappdata(fig,'seuil_detection_last')
         rmappdata(fig,'seuil_detection_last');
     end
 
     update_current_cell(fig, 1);
-
-    fprintf('Validation appliquée : %d cellules affichées (manual keep + >= %d pics + masque >= %.1f um^2).\n', ...
-        numel(order_cells), min_n_peaks, min_mask_um2);
+    
+    fprintf(['Validation appliquée : %d cellules affichées ' ...
+        '(%d pics min, masque >= %.1f um^2, connectivité >= %.2f, ' ...
+        'drift <= %.2f sauf si quality >= %.0f/100).\n'], ...
+        numel(order_cells), ...
+        opts.min_n_peaks_cutoff, ...
+        opts.min_mask_um2, ...
+        opts.min_mask_connectivity, ...
+        opts.max_drift_score, ...
+        opts.min_quality_percentile_for_high_drift);
 end
 
 function refresh_selection_order(fig)
@@ -1827,8 +1910,10 @@ function finalize_and_close(fig, synchronous_frames)
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
     if viewer_mode
-
-        DF = getappdata(fig,'DF');
+        
+        DF_raw = getappdata(fig,'DF_raw');
+        DF_sg = getappdata(fig,'DF_sg');
+        drift_score = getappdata(fig,'drift_score');
         F0 = getappdata(fig,'F0');
 
         Raster = getappdata(fig,'Raster_saved');
@@ -1837,14 +1922,16 @@ function finalize_and_close(fig, synchronous_frames)
         valid_cells = getappdata(fig,'valid_cells_saved');
 
         if isempty(valid_cells)
-            valid_cells = (1:size(DF,1)).';
+            valid_cells = (1:size(DF_sg,1)).';
         end
 
         setappdata(fig,'last_save_outputs', struct( ...
             'invalid_cells', [], ...
             'valid_cells', valid_cells, ...
             'orig2new', [], ...
-            'DF', DF, ...
+            'DF_raw', DF_raw, ...
+            'DF_sg', DF_sg, ...
+            'drift_score', drift_score, ...
             'F0', F0, ...
             'Raster', Raster, ...
             'Acttmp2', {Acttmp2}, ...
@@ -1867,50 +1954,6 @@ function finalize_and_close(fig, synchronous_frames)
         if numel(order_cells) == numel(order_cells_all)
             validate_selection_filter(fig);
         end
-    end
-
-    use_high_pass_filter = false;
-    if isappdata(fig,'use_high_pass_filter')
-        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
-    end
-    
-    already_applied = false;
-
-    if isappdata(fig,'high_pass_filter_applied_globally')
-        already_applied = getappdata(fig,'high_pass_filter_applied_globally');
-    end
-    
-    if use_high_pass_filter && ~already_applied
-    
-        fprintf('High pass filter actif : application globale avant sauvegarde...\n');
-    
-        F_raw = getappdata(fig,'F_raw');
-        fs    = getappdata(fig,'fs');
-        opts  = getappdata(fig,'opts');
-    
-        if isappdata(fig,'bad_frames')
-            bad_frames = getappdata(fig,'bad_frames');
-        else
-            bad_frames = [];
-        end
-    
-        [DF, F0, ~, ~] = F_processing(F_raw, bad_frames, fs, opts.window_size);
-    
-        DF_sg = savgol_transform(DF, opts);
-        noise_est = estimate_noise(DF);
-    
-        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
-            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
-    
-        setappdata(fig,'DF', DF_sg);
-        setappdata(fig,'F0', F0);
-        setappdata(fig,'noise_est', noise_est);
-        setappdata(fig,'SNR', SNR);
-        setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
-    
-        recompute_n_peaks_all(fig);
-    
-        setappdata(fig,'high_pass_filter_applied_globally', true);
     end
 
     [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
@@ -1941,7 +1984,9 @@ function finalize_and_close(fig, synchronous_frames)
         'invalid_cells', invalid_cells, ...
         'valid_cells', valid_cells, ...
         'orig2new', orig2new, ...
-        'DF', DF, ...
+        'DF_sg', DF, ...
+        'DF_raw', getappdata(fig,'DF_raw'), ...
+        'drift_score', getappdata(fig,'drift_score'), ...
         'F0', F0, ...
         'Raster', Raster, ...
         'Acttmp2', {Acttmp2}, ...
@@ -1955,32 +2000,32 @@ function finalize_and_close(fig, synchronous_frames)
     end
 end
 %% ===================== DISPLAY =====================
-
 function refresh_data(fig)
-    DF   = getappdata(fig,'DF');
+
+    DF      = getappdata(fig,'DF_sg');
     F0      = getappdata(fig,'F0');
     cell_id = getappdata(fig,'cell_id');
-    
-    ax = getappdata(fig,'ax1');
+
+    ax   = getappdata(fig,'ax1');
     axF0 = getappdata(fig,'axF0');
-    
+
     hBad = [];
     if isappdata(fig,'hBadPatch_ax1')
         hBad = getappdata(fig,'hBadPatch_ax1');
     end
-    
+
     kids = allchild(ax);
     if ~isempty(hBad) && isgraphics(hBad)
         delete(kids(kids ~= hBad));
     else
         delete(kids);
     end
-    
+
     hBadF0 = [];
     if isappdata(fig,'hBadPatch_axF0')
         hBadF0 = getappdata(fig,'hBadPatch_axF0');
     end
-    
+
     kidsF0 = allchild(axF0);
     if ~isempty(hBadF0) && isgraphics(hBadF0)
         delete(kidsF0(kidsF0 ~= hBadF0));
@@ -1988,56 +2033,32 @@ function refresh_data(fig)
         delete(kidsF0);
     end
 
-    use_high_pass_filter = false;
-    if isappdata(fig,'use_high_pass_filter')
-        use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
-    end
-    
-    if use_high_pass_filter && isappdata(fig,'F_raw')
-    
-        F_raw = getappdata(fig,'F_raw');
-        fs    = getappdata(fig,'fs');
-        opts  = getappdata(fig,'opts');
-    
-        trace_raw = F_raw(cell_id,:);
-    
-        [DF_cell, ~] = F_processing(trace_raw, [], fs, opts.window_size);
-        DF_cell_sg = savgol_transform(DF_cell, opts);
-    
-        x = DF_cell_sg(1,:);
-    
-    else
-        x = DF(cell_id,:);
-    end
-    
+    x = DF(cell_id,:);
     x = x(:).';
+
     T = numel(x);
     t = 1:T;
 
     xlim(ax,[1 max(1,T)]);
     plot(ax,t,x,'k-');
     hold(ax,'on');
-    
+
     % ---- Stim frames ----
     if isappdata(fig,'stim_frames')
-    
+
         stim_frames = getappdata(fig,'stim_frames');
-    
+
         if ~isempty(stim_frames)
-    
+
             stim_frames = round(stim_frames(:).');
             stim_frames = stim_frames(isfinite(stim_frames));
-    
-            % garder seulement les stim frames dans la trace
             stim_frames = stim_frames(stim_frames >= 1 & stim_frames <= T);
-    
+
             if ~isempty(stim_frames)
-    
+
                 yl = ylim(ax);
-    
-                % position légèrement au-dessus du bord inférieur
                 y_stim = yl(1) + 0.03 * diff(yl);
-    
+
                 plot(ax, ...
                     stim_frames, ...
                     repmat(y_stim, size(stim_frames)), ...
@@ -2055,20 +2076,31 @@ function refresh_data(fig)
     % ---- Trace F0 ----
     if ~isempty(F0) && cell_id >= 1 && cell_id <= size(F0,1)
         f0 = F0(cell_id,:);
+    else
+        f0 = [];
+    end
+
+    if ~isempty(f0)
+
         f0 = f0(:).';
-    
+
+        L = min(numel(t), numel(f0));
+        t_f0 = t(1:L);
+        f0   = f0(1:L);
+
         xlim(axF0,[1 max(1,T)]);
-        plot(axF0, t, f0, 'b-');
-        hold(axF0,'on');
-    
+        plot(axF0, t_f0, f0, 'b-');
+
         if ~isempty(hBadF0) && isgraphics(hBadF0) && isappdata(fig,'focus_segs')
             focus_segs = getappdata(fig,'focus_segs');
             update_badframe_patch(hBadF0, focus_segs, ylim(axF0));
             uistack(hBadF0,'bottom');
         end
-    
+
         ylabel(axF0,'F0');
+
     else
+
         cla(axF0);
         text(axF0,0.5,0.5,'F0 indisponible', ...
             'Units','normalized', ...
@@ -2083,23 +2115,26 @@ function refresh_data(fig)
     end
 
     xlabel(ax,'Frames');
-    ylabel(ax,'\DeltaF/F (SavGol)');
+    ylabel(ax,'\DeltaF/F raw (SavGol)');
 
     % ---- Seuil ----
     if isappdata(fig,'seuil_detection_last')
         seuil_detection = getappdata(fig,'seuil_detection_last');
+
         if isfinite(seuil_detection)
             plot(ax,[1 max(1,T)],[seuil_detection seuil_detection],':', ...
-                'Color',[.7 .1 .1],'LineWidth',1);
+                'Color',[.7 .1 .1], ...
+                'LineWidth',1);
         end
     end
-    
+
     % ---- Pics détectés ----
     if isappdata(fig,'auto_peaks')
+
         pk = getappdata(fig,'auto_peaks');
         pk = pk(:).';
         pk = pk(isfinite(pk) & pk >= 1 & pk <= T);
-    
+
         if ~isempty(pk)
             plot(ax, pk, x(pk), '*', ...
                 'Color', [0.85 0.1 0.1], ...
@@ -2108,13 +2143,12 @@ function refresh_data(fig)
         end
     end
 
-    % ---- Labels GOOD/BAD (désactivés en viewer_mode) ----
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
-    % ---- Label électroporée si cellule courante dans blue_indices ----
     is_blue_cell = false;
     if isappdata(fig,'blue_indices')
         blue_indices = getappdata(fig,'blue_indices');
+
         if ~isempty(blue_indices)
             blue_indices = blue_indices(:);
             blue_indices = blue_indices(isfinite(blue_indices));
@@ -2134,6 +2168,7 @@ function refresh_data(fig)
     end
 
     if ~viewer_mode
+
         label_txt   = '';
         label_color = [0 0 0];
 
@@ -2145,13 +2180,17 @@ function refresh_data(fig)
         cutoff_validated = isappdata(fig,'cutoff_validated') && getappdata(fig,'cutoff_validated');
 
         if isappdata(fig,'cell_status')
+
             st = getappdata(fig,'cell_status');
 
             if cell_id >= 1 && cell_id <= numel(st)
 
-                % priorité au manuel
                 if st(cell_id) == -1
-                    if ~isempty(n_peaks_all) && cell_id <= numel(n_peaks_all) && n_peaks_all(cell_id) == 0
+
+                    if ~isempty(n_peaks_all) && ...
+                       cell_id <= numel(n_peaks_all) && ...
+                       n_peaks_all(cell_id) == 0
+
                         label_txt   = 'AUTO BAD (0 pics)';
                         label_color = [0.6 0.6 0.6];
                     else
@@ -2160,35 +2199,73 @@ function refresh_data(fig)
                     end
 
                 elseif st(cell_id) == +1
+
                     label_txt   = 'GOOD MANUEL';
                     label_color = [0.1 0.6 0.1];
 
                 else
-                    if cutoff_validated && ~isempty(n_peaks_all) && isappdata(fig,'opts')
+
+                   if cutoff_validated && ~isempty(n_peaks_all) && isappdata(fig,'opts')
+
                         opts = getappdata(fig,'opts');
                         min_n_peaks = opts.min_n_peaks_cutoff;
                     
                         if cell_id <= numel(n_peaks_all)
-
+                    
                             cond_peaks = n_peaks_all(cell_id) >= min_n_peaks;
-                        
+                    
                             cond_mask = true;
                             if isappdata(fig,'mask_sizes')
                                 mask_sizes = getappdata(fig,'mask_sizes');
+                    
                                 if cell_id <= numel(mask_sizes)
-                                    cond_mask = isfinite(mask_sizes(cell_id)) && (mask_sizes(cell_id) >= opts.min_mask_um2);
+                                    cond_mask = isfinite(mask_sizes(cell_id)) && ...
+                                        (mask_sizes(cell_id) >= opts.min_mask_um2);
                                 end
                             end
-                        
-                            if cond_peaks && cond_mask
-                                label_txt   = sprintf('GOOD (peaks+mask)');
+                    
+                            cond_connectivity = true;
+                            if isappdata(fig,'mask_connectivity_ratio')
+                                mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
+                    
+                                if cell_id <= numel(mask_connectivity_ratio)
+                                    cond_connectivity = isfinite(mask_connectivity_ratio(cell_id)) && ...
+                                        (mask_connectivity_ratio(cell_id) >= opts.min_mask_connectivity);
+                                end
+                            end
+
+                            cond_drift = true;
+                            drift_score = [];
+                            if isappdata(fig,'drift_score')
+                                drift_score = getappdata(fig,'drift_score');
+                            end
+                            
+                            score_quality_percentile = [];
+                            if isappdata(fig,'score_quality_percentile')
+                                score_quality_percentile = getappdata(fig,'score_quality_percentile');
+                            end
+                            
+                            if ~isempty(drift_score) && ...
+                               ~isempty(score_quality_percentile) && ...
+                               cell_id <= numel(drift_score) && ...
+                               cell_id <= numel(score_quality_percentile) && ...
+                               isfinite(drift_score(cell_id)) && ...
+                               isfinite(score_quality_percentile(cell_id))
+                            
+                                cond_drift = ...
+                                    (drift_score(cell_id) <= opts.max_drift_score) || ...
+                                    (score_quality_percentile(cell_id) >= opts.min_quality_percentile_for_high_drift);
+                            end
+                    
+                            if cond_peaks && cond_mask && cond_connectivity && cond_drift
+                                label_txt   = 'GOOD (peaks+mask+conn+drift)';
                                 label_color = [0.1 0.6 0.1];
                             else
-                                label_txt   = sprintf('BAD (peaks/mask)');
+                                label_txt   = 'BAD (peaks/mask/conn)';
                                 label_color = [0.85 0.1 0.1];
                             end
                         end
-                    end
+                   end
                 end
 
                 if ~isempty(label_txt)
@@ -2205,33 +2282,47 @@ function refresh_data(fig)
         end
     end
 
+    if isappdata(fig,'drift_score')
+
+        drift_score = getappdata(fig,'drift_score');
+    
+        if ~isempty(drift_score) && ...
+           cell_id >= 1 && ...
+           cell_id <= numel(drift_score) && ...
+           isfinite(drift_score(cell_id))
+    
+            text(ax, 0.02, 0.84, ...
+                sprintf('Drift = %.2f', drift_score(cell_id)), ...
+                'Units','normalized', ...
+                'Color',[0.15 0.15 0.15], ...
+                'FontWeight','bold', ...
+                'FontSize',11, ...
+                'VerticalAlignment','top', ...
+                'BackgroundColor',[1 1 1 0.6], ...
+                'Margin',4);
+        end
+    end
+
+    if isappdata(fig,'score_quality_percentile')
+
+        q = getappdata(fig,'score_quality_percentile');
+    
+        if ~isempty(q) && cell_id <= numel(q) && isfinite(q(cell_id))
+    
+            text(ax, 0.02, 0.78, ...
+                sprintf('Quality = %.0f / 100', q(cell_id)), ...
+                'Units','normalized', ...
+                'Color',[0.15 0.15 0.15], ...
+                'FontWeight','bold', ...
+                'FontSize',11, ...
+                'VerticalAlignment','top', ...
+                'BackgroundColor',[1 1 1 0.6], ...
+                'Margin',4);
+        end
+    end
+
     update_roi_zoom(fig);
     update_peak_histogram(fig);
-end
-
-function toggle_high_pass_filter(fig, use_high_pass_filter)
-
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
-        return;
-    end
-
-    setappdata(fig,'use_high_pass_filter', logical(use_high_pass_filter));
-    setappdata(fig,'high_pass_filter_applied_globally', false);
-
-    if isappdata(fig,'auto_peaks')
-        rmappdata(fig,'auto_peaks');
-    end
-    if isappdata(fig,'seuil_detection_last')
-        rmappdata(fig,'seuil_detection_last');
-    end
-
-    if isappdata(fig,'current_rank')
-        update_current_cell(fig, getappdata(fig,'current_rank'));
-    else
-        update_current_cell(fig, 1);
-    end
-
-    drawnow;
 end
 
 function update_peak_histogram(fig)
@@ -2583,9 +2674,7 @@ end
 
 function update_param(fig, field, value)
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
-        return;
-    end
+    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
     opts = getappdata(fig,'opts');
     fs   = getappdata(fig,'fs');
@@ -2594,26 +2683,14 @@ function update_param(fig, field, value)
 
     if ismember(field,intFields)
         value = round(value);
-
-        if strcmp(field,'savgol_win')
-            if value < 3
-                value = 3;
-            end
-            if mod(value,2)==0
-                value = value + 1;
-            end
-        else
-            value = max(0, value);
-        end
+        value = max(0, value);
     else
         value = max(0, value);
     end
 
     opts.(field) = value;
 
-    % reconvertit les options temporelles ms -> frames
     opts = convert_opts_ms_to_frames(opts, fs);
-
     setappdata(fig,'opts',opts);
 
     lbl = findobj(fig,'Tag',['lbl_' field]);
@@ -2632,33 +2709,59 @@ function update_param(fig, field, value)
         end
     end
 
-    % Recalcul si window_size_s ou SavGol changent
-    if ismember(field, {'window_size_s','savgol_win_ms'})
-        F_raw = getappdata(fig,'F_raw');
-        bad_frames = [];
-        if isappdata(fig,'bad_frames')
-            bad_frames = getappdata(fig,'bad_frames');
+    if viewer_mode
+
+        setappdata(fig,'autotervals', []);
+
+        if isappdata(fig,'current_rank')
+            update_current_cell(fig, getappdata(fig,'current_rank'));
+        else
+            update_current_cell(fig, 1);
         end
 
-        use_high_pass_filter = false;
-        if isappdata(fig,'use_high_pass_filter')
-            use_high_pass_filter = getappdata(fig,'use_high_pass_filter');
+        drawnow;
+        return;
+    end
+
+    if ismember(field, {'window_size_s','savgol_win_ms'})
+
+        F = getappdata(fig,'F_raw');
+
+        if isappdata(fig,'bad_frames')
+            bad_frames = getappdata(fig,'bad_frames');
+        else
+            bad_frames = [];
         end
         
-        [DF, F0] = ...
-            F_processing_JC(F_raw, bad_frames, fs, opts.window_size);
+        [DF_raw, F0] = F_processing(F, bad_frames, fs, opts.window_size);
         
-        DF_sg = savgol_transform(DF, opts);
-        noise_est = estimate_noise(DF);
+        DF_sg = savgol_transform(DF_raw, opts);
+        noise_est = estimate_noise(DF_raw);
         
         setappdata(fig,'F0', F0);
-        setappdata(fig,'DF', DF_sg);
+        setappdata(fig,'DF_sg', DF_sg);
+        setappdata(fig,'DF_raw', DF_raw);
         setappdata(fig,'noise_est', noise_est);
+        setappdata(fig,'drift_score', drift_score);
         
-        [~, SNR, ~, cells_sorted_by_quality, ~, ~, ~] = ...
+        [~, SNR, score, cells_sorted_by_quality, ~, ~, ~] = ...
             compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
         
         setappdata(fig,'SNR', SNR);
+        setappdata(fig,'score_quality', score);
+
+        score_quality_percentile = nan(size(score));
+
+        valid_score = isfinite(score);
+        [~, order_score] = sort(score(valid_score), 'ascend');
+        
+        tmp = nan(sum(valid_score),1);
+        tmp(order_score) = linspace(0,100,sum(valid_score));
+        
+        score_quality_percentile(valid_score) = tmp;
+        
+        setappdata(fig,'score_quality_percentile', score_quality_percentile);
+
         setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
     end
 
@@ -2678,7 +2781,6 @@ function update_param(fig, field, value)
 
     drawnow;
 end
-
 %% ===================== UTILITIES =====================
 function create_random_peak_preview(valid_cells, DF, Acttmp2, thresholds, outdir_preview)
 % Crée une figure avec jusqu'à 10 cellules tirées au hasard parmi

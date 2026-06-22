@@ -5,7 +5,7 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
         return;
     end
 
-    daytime_date = datestr(datetime('now'), 'yy_mm_dd');
+    daytime_date = datestr(datetime('now'), 'yy_mm_dd_HH_MM');
     daytime = ['v' get_next_version_number_from_suite2p(selected_groups) '_' daytime_date];
 
     processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
@@ -107,7 +107,7 @@ function rename_old_processing_folders_from_suite2p(current_gcamp_folders_group)
     for d = 1:numel(current_gcamp_folders_group)
 
         this_suite2p_path = current_gcamp_folders_group{d};
-        
+
         while iscell(this_suite2p_path)
             if isempty(this_suite2p_path)
                 this_suite2p_path = '';
@@ -122,9 +122,11 @@ function rename_old_processing_folders_from_suite2p(current_gcamp_folders_group)
         
         this_suite2p_path = char(string(this_suite2p_path));
         
-        fprintf('Version scan path: %s\n', this_suite2p_path);
+        [~, last_name] = fileparts(this_suite2p_path);
         
-        this_suite2p_path = fileparts(this_suite2p_path);
+        if startsWith(lower(last_name), 'plane')
+            this_suite2p_path = fileparts(this_suite2p_path);
+        end
 
         if isempty(this_suite2p_path)
             fprintf('      suite2p vide -> skip.\n');
@@ -257,16 +259,12 @@ function vstr = get_next_version_number_from_suite2p(selected_groups)
                 
                 this_suite2p_path = char(string(this_suite2p_path));
                 
-                fprintf('Version scan path: %s\n', this_suite2p_path);
+                [~, last_name] = fileparts(this_suite2p_path);
                 
-                disp(class(this_suite2p_path))
-                disp(this_suite2p_path)
-
-                this_suite2p_path = fileparts(this_suite2p_path);
-                if isempty(this_suite2p_path) || ~isfolder(this_suite2p_path)
-                    continue;
+                if startsWith(lower(last_name), 'plane')
+                    this_suite2p_path = fileparts(this_suite2p_path);
                 end
-
+                
                 proc_root = fullfile(this_suite2p_path, 'after processing');
 
                 if ~isfolder(proc_root)

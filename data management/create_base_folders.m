@@ -82,7 +82,7 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
                 fprintf('  Aucun sous-dossier trouvé.\n');
             else
                 mask_v = ~cellfun('isempty', regexp({subfolders_gcamp.name}, ...
-                    '^v\d+_\d{2}_\d{2}_\d{2}$', 'once'));
+                    '^v\d+_\d{2}_\d{2}_\d{2}(_\d{2}_\d{2})?$', 'once'));
 
                 specificSubfolders_gcamp = subfolders_gcamp(mask_v);
 
@@ -139,31 +139,57 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
 
         if isempty(existing_subfolders)
 
-            current_root_folder = fullfile(after_processing_root, daytime);
+            fprintf('\nAucune ancienne version trouvée pour %s\n', current_animal_group);
+
+            version_number = input('Entrer un numéro de version : ', 's');
+            version_number = strtrim(version_number);
+
+            if isempty(regexp(version_number, '^\d+$', 'once'))
+                error('Le numéro de version doit être un nombre, exemple : 4');
+            end
+
+            daytime_parts = regexp(daytime, '^v\d+_(.*)$', 'tokens', 'once');
+
+            if isempty(daytime_parts)
+                error('Format inattendu pour daytime : %s', daytime);
+            end
+
+            daytime_custom = sprintf('v%s_%s', version_number, daytime_parts{1});
+            current_root_folder = fullfile(after_processing_root, daytime_custom);
 
             if ~isfolder(current_root_folder)
                 mkdir(current_root_folder);
             end
 
-            fprintf('  Aucun dossier vX trouvé -> nouveau dossier créé : %s\n', current_root_folder);
+            fprintf('  Nouveau dossier créé : %s\n', current_root_folder);
 
         elseif ~isempty(user_choice1) && strcmpi(user_choice1, '2')
 
             if ~isempty(user_choice2) && strcmpi(user_choice2, '1')
 
-                disp(['Available subfolders for ', current_animal_group, ':']);
+                disp(['Available versions for ', current_animal_group, ':']);
 
-                for j = 1:length(unique_subfolders)
-                    fprintf('Subfolder %d: %s\n', j, unique_subfolders{j});
+                versions_available = get_versions_from_vfolders(unique_subfolders);
+
+                valid_idx = ~isnan(versions_available);
+
+                versions_available = versions_available(valid_idx);
+                unique_subfolders_valid = unique_subfolders(valid_idx);
+
+                [versions_available, sort_idx] = sort(versions_available);
+                unique_subfolders_valid = unique_subfolders_valid(sort_idx);
+
+                for j = 1:numel(versions_available)
+                    fprintf('%d : version %d\n', j, versions_available(j));
                 end
 
                 selectedIndex = input('Enter the number corresponding to your choice: ');
 
-                if selectedIndex < 1 || selectedIndex > length(unique_subfolders)
+                if selectedIndex < 1 || selectedIndex > numel(unique_subfolders_valid)
                     error('Invalid choice.');
                 end
 
-                selected_subfolder_name = unique_subfolders{selectedIndex};
+                selected_subfolder_name = unique_subfolders_valid{selectedIndex};
                 current_root_folder = fullfile(after_processing_root, selected_subfolder_name);
 
                 if ~isfolder(current_root_folder)
@@ -199,9 +225,18 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
                     recover_processing = true;
 
                     versions_gcamp = get_versions_from_vfolders({existing_subfolders.name});
-                    [~, idx_gcamp] = max(versions_gcamp);
+                    valid_versions = ~isnan(versions_gcamp);
 
-                    most_recent_gcamp = existing_subfolders(idx_gcamp);
+                    if ~any(valid_versions)
+                        error('Aucune version valide trouvée pour récupérer les anciens results.');
+                    end
+
+                    versions_valid = versions_gcamp(valid_versions);
+                    folders_valid = existing_subfolders(valid_versions);
+
+                    [~, idx_gcamp] = max(versions_valid);
+
+                    most_recent_gcamp = folders_valid(idx_gcamp);
                     source_root_folder = fullfile(after_processing_root, most_recent_gcamp.name);
 
                     fprintf('  Récupération depuis le dossier le plus récent : %s\n', source_root_folder);
@@ -217,9 +252,18 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
         elseif strcmpi(user_choice1, '1')
 
             versions_gcamp = get_versions_from_vfolders({existing_subfolders.name});
-            [~, idx_gcamp] = max(versions_gcamp);
+            valid_versions = ~isnan(versions_gcamp);
 
-            most_recent_gcamp = existing_subfolders(idx_gcamp);
+            if ~any(valid_versions)
+                error('Aucune version valide trouvée.');
+            end
+
+            versions_valid = versions_gcamp(valid_versions);
+            folders_valid = existing_subfolders(valid_versions);
+
+            [~, idx_gcamp] = max(versions_valid);
+
+            most_recent_gcamp = folders_valid(idx_gcamp);
             current_root_folder = fullfile(after_processing_root, most_recent_gcamp.name);
 
             fprintf('  Choix 1 -> dossier vX le plus récent sélectionné : %s\n', current_root_folder);
@@ -251,8 +295,7 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
             files_to_copy = { ...
                 'results_gcamp.mat', ...
                 'results_blue.mat', ...
-                'results_combined.mat', ...
-                'results_movie.mat' ...
+                'results_combined.mat' ...
             };
 
             for f = 1:numel(files_to_copy)
@@ -268,8 +311,76 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
                 end
             end
 
+            source_motion = fullfile(source_root_folder, 'results_motion.mat');
+            source_movie  = fullfile(source_root_folder, 'results_movie.mat');
+
+            dest_motion = fullfile(current_root_folder, 'results_motion.mat');
+
+            if isfile(source_motion)
+
+                copyfile(source_motion, dest_motion);
+                fprintf('  Copié : %s -> %s\n', source_motion, dest_motion);
+
+            elseif isfile(source_movie)
+
+                copyfile(source_movie, dest_motion);
+                fprintf('  Copié : %s -> %s (renommé)\n', source_movie, dest_motion);
+
+            else
+                warning('  Aucun fichier motion trouvé (results_motion.mat ou results_movie.mat)');
+            end
+
             clear_detection_outputs(chosen_folder_processing_gcamp(m), {'gcamp','blue','combined'});
         end
+
+        %======================================================
+        % Suppression des anciennes versions
+        %======================================================
+        if ~isempty(user_choice2) && strcmpi(user_choice2,'2')
+        
+            fprintf('\nAnciennes versions trouvées :\n');
+        
+            folders_to_delete = {};
+        
+            for j = 1:numel(existing_subfolders)
+        
+                old_folder = fullfile(after_processing_root, ...
+                                      existing_subfolders(j).name);
+        
+                if ~strcmp(old_folder, current_root_folder)
+        
+                    fprintf('  %s\n', old_folder);
+                    folders_to_delete{end+1} = old_folder; %#ok<AGROW>
+        
+                end
+            end
+        
+            if ~isempty(folders_to_delete)
+        
+                delete_choice = input( ...
+                    'Supprimer toutes les anciennes versions ? (y/n) : ', ...
+                    's');
+        
+                if strcmpi(delete_choice,'y')
+        
+                    for j = 1:numel(folders_to_delete)
+        
+                        try
+                            rmdir(folders_to_delete{j}, 's');
+                            fprintf('  Supprimé : %s\n', folders_to_delete{j});
+        
+                        catch ME
+                            warning('Impossible de supprimer %s : %s', ...
+                                folders_to_delete{j}, ME.message);
+                        end
+                    end
+        
+                else
+                    fprintf('Suppression annulée.\n');
+                end
+            end
+        end
+
     end
 
     fprintf('\n[create_base_folders] Terminé.\n');
@@ -312,7 +423,8 @@ function versions = get_versions_from_vfolders(folder_names)
 
     for i = 1:numel(folder_names)
 
-        tok = regexp(folder_names{i}, '^v(\d+)_\d{2}_\d{2}_\d{2}$', ...
+        tok = regexp(folder_names{i}, ...
+            '^v(\d+)_\d{2}_\d{2}_\d{2}(_\d{2}_\d{2})?$', ...
             'tokens', 'once');
 
         if ~isempty(tok)
@@ -335,6 +447,7 @@ function clear_vars_in_matfile(filePath, vars_to_remove)
 
     for k = 1:numel(vars_to_remove)
         fn = vars_to_remove{k};
+
         if isfield(S, fn)
             S = rmfield(S, fn);
             removed_any = true;
@@ -358,33 +471,57 @@ function clear_detection_outputs(gcamp_output_folders, branches_to_clear)
     end
 
     fields_detect_gcamp = { ...
-        'F0_gcamp_by_plane', 'noise_est_gcamp_by_plane', ...
-        'valid_gcamp_cells_by_plane', 'DF_gcamp_by_plane', ...
-        'Raster_gcamp_by_plane', 'Acttmp2_gcamp_by_plane', ...
+        'F0_gcamp_by_plane', ...
+        'noise_est_gcamp_by_plane', ...
+        'valid_gcamp_cells_by_plane', ...
+        'DF_gcamp_by_plane', ...
+        'DF_raw_gcamp_by_plane', ...
+        'drift_score_gcamp_by_plane', ...
+        'Raster_gcamp_by_plane', ...
+        'Acttmp2_gcamp_by_plane', ...
         'MAct_gcamp_by_plane', ...
-        'thresholds_gcamp_by_plane', 'bad_segs_gcamp_plane', ...
+        'thresholds_gcamp_by_plane', ...
+        'bad_segs_gcamp_plane', ...
         'opts_detection_gcamp_by_plane', ...
-        'isort1_gcamp_by_plane', 'isort2_gcamp_by_plane', 'Sm_gcamp_by_plane' ...
+        'isort1_gcamp_by_plane', ...
+        'isort2_gcamp_by_plane', ...
+        'Sm_gcamp_by_plane' ...
     };
 
     fields_detect_blue = { ...
-        'F0_blue_by_plane', 'noise_est_blue_by_plane', 'SNR_blue_by_plane', ...
-        'valid_blue_cells_by_plane', 'DF_blue_by_plane', ...
-        'Raster_blue_by_plane', 'Acttmp2_blue_by_plane', ...
+        'F0_blue_by_plane', ...
+        'noise_est_blue_by_plane', ...
+        'valid_blue_cells_by_plane', ...
+        'DF_blue_by_plane', ...
+        'DF_raw_blue_by_plane', ...
+        'drift_score_blue_by_plane', ...
+        'Raster_blue_by_plane', ...
+        'Acttmp2_blue_by_plane', ...
         'MAct_blue_by_plane', ...
-        'thresholds_blue_by_plane', 'bad_segs_blue_plane', ...
+        'thresholds_blue_by_plane', ...
+        'bad_segs_blue_plane', ...
         'opts_detection_blue_by_plane', ...
-        'isort1_blue_by_plane', 'isort2_blue_by_plane', 'Sm_blue_by_plane' ...
+        'isort1_blue_by_plane', ...
+        'isort2_blue_by_plane', ...
+        'Sm_blue_by_plane' ...
     };
 
     fields_detect_combined = { ...
-        'F0_combined_by_plane', 'noise_est_combined_by_plane', ...
-        'valid_combined_cells_by_plane', 'DF_combined_by_plane', ...
-        'Raster_combined_by_plane', 'Acttmp2_combined_by_plane', ...
+        'F0_combined_by_plane', ...
+        'noise_est_combined_by_plane', ...
+        'valid_combined_cells_by_plane', ...
+        'DF_combined_by_plane', ...
+        'DF_raw_combined_by_plane', ...
+        'drift_score_combined_by_plane', ...
+        'Raster_combined_by_plane', ...
+        'Acttmp2_combined_by_plane', ...
         'MAct_combined_by_plane', ...
-        'thresholds_combined_by_plane', 'bad_segs_combined_plane', ...
+        'thresholds_combined_by_plane', ...
+        'bad_segs_combined_plane', ...
         'opts_detection_combined_by_plane', ...
-        'isort1_combined_by_plane', 'isort2_combined_by_plane', 'Sm_combined_by_plane' ...
+        'isort1_combined_by_plane', ...
+        'isort2_combined_by_plane', ...
+        'Sm_combined_by_plane' ...
     };
 
     for m = 1:numel(gcamp_output_folders)

@@ -17,8 +17,8 @@ selected_groups = create_data(selected_groups);
 selected_groups = create_metadata(selected_groups);
 
 recap_all = create_summary_sheets(selected_groups);
-
-%% Data processing
+%%
+% Data processing
 
 %checking_choice1 = input('Do you want to check your data? (1/2): ', 's');
 % checking_choice1 = '2';
@@ -33,20 +33,14 @@ recap_all = create_summary_sheets(selected_groups);
 %check_data = input('Do you want to analyse blue cells? (1/2): ', 's');
 include_blue_cells = '1';
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-
+%%
 selected_groups = DF_peak_detection(selected_groups);
-
+%%
 selected_groups = compute_DF(selected_groups);
 
-%%
+%plot_traces_sorted_by_burst_rate(selected_groups)
 
-plot_traces_sorted_by_burst_rate(selected_groups)
-
-
-close all
-
-%% Data visualization (Grouped by layers)
-
+% Data visualization (Grouped by layers)
 figs_by_type = visualize_data(selected_groups);
 
 

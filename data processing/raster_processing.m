@@ -1,4 +1,4 @@
-function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
+function [isort1, isort2, Sm] = raster_processing(DF, ops)
     
     % Initialisation des sorties en cas d'erreur
     isort1 = [];
@@ -8,7 +8,7 @@ function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
     try 
         % Vérification de la taille de DF
         if isempty(DF) || size(DF, 1) < 2 || size(DF, 2) < 2
-            fprintf('DF est vide ou ses dimensions sont incorrectes pour: %s\n', path);
+            fprintf('DF est vide ou ses dimensions sont incorrectes');
             return
         end
         
@@ -30,7 +30,7 @@ function [isort1, isort2, Sm] = raster_processing(DF, path, ops)
 
     catch ME
         % Affichage de l'erreur et assignation de NaN aux sorties
-        warning('Erreur lors du traitement du raster pour %s: %s', path, ME.message);
+        warning('Erreur lors du traitement du raster : %s', ME.message);
         isort1 = []; isort2 = NaN; Sm = NaN;
         Raster = NaN; MAct = NaN; Acttmp2 = NaN;
     end
