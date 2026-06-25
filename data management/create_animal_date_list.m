@@ -1,19 +1,15 @@
 function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSave)
 % create_animal_date_list
-% Extrait les informations depuis les chemins TSeries et sauvegarde
-% une liste structurée :
-%   {type, group, animal, date, age, sex}
+% Structure sauvegardée :
+%   {type, group, animal, date, age, sex, birth_date}
 %
-% INPUTS:
-%   TSeriesPaths : cell array N x M contenant les chemins TSeries
-%   PathSave     : dossier racine de sauvegarde
+% birth_date :
+%   - demandée une seule fois par group_part si group_part existe
+%   - sinon demandée par animal
 %
-% OUTPUT:
-%   updated_animal_date_list : cell array final fusionné par type
+% age :
+%   - inféré automatiquement pour chaque date
 
-    %===================%
-    %   Vérifications
-    %===================%
     if nargin < 1 || isempty(TSeriesPaths)
         updated_animal_date_list = {};
         return;
@@ -27,13 +23,18 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
         error('PathSave doit être fourni.');
     end
 
-    %===================%
-    %   Initialisation
-    %===================%
     nRows = size(TSeriesPaths, 1);
-    animal_date_list = cell(nRows, 6); % {type, group, animal, date, age, sex}
 
-    % Patterns adaptés aux chemins TSeries
+    % Colonnes :
+    % 1 type
+    % 2 group
+    % 3 animal
+    % 4 date acquisition
+    % 5 age
+    % 6 sex
+    % 7 birth_date
+    animal_date_list = cell(nRows, 7);
+
     pattern_mTOR = ['D:\\Imaging\\([^\\]+)\\([^\\]+)\\([^\\]+)\\([^\\]+)' ...
                     '\\TSeries-[^\\]+'];
 
@@ -43,19 +44,19 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
     pattern_jm = ['D:\\Imaging\\jm\\([^\\]+)\\([^\\]+)' ...
                   '\\TSeries-[^\\]+'];
 
-    %===================%
-    %   Extraction des infos
-    %===================%
+    %======================================================
+    % Extraction des infos depuis les chemins
+    %======================================================
     for k = 1:nRows
 
         file_path = '';
 
-        % Prendre colonne 1 si possible, sinon premier chemin non vide
         if size(TSeriesPaths, 2) >= 1 && ~isempty(TSeriesPaths{k, 1})
             file_path = TSeriesPaths{k, 1};
         else
             row_paths = TSeriesPaths(k, :);
             non_empty_idx = find(~cellfun(@isempty, row_paths), 1, 'first');
+
             if ~isempty(non_empty_idx)
                 file_path = row_paths{non_empty_idx};
             end
@@ -69,28 +70,30 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
             file_path = char(file_path);
         end
 
-        tokens = [];
-
-        % --- Cas mTOR ---
         tokens = regexp(file_path, pattern_mTOR, 'tokens');
+
         if ~isempty(tokens)
+
             type_part   = tokens{1}{1};
             group_part  = tokens{1}{2};
             animal_part = tokens{1}{3};
             date_part   = tokens{1}{4};
 
         else
-            % --- Cas sans groupe ---
+
             tokens = regexp(file_path, pattern_ani, 'tokens');
+
             if ~isempty(tokens)
+
                 type_part   = tokens{1}{1};
                 group_part  = '';
                 animal_part = tokens{1}{2};
                 date_part   = tokens{1}{3};
 
             else
-                % --- Cas JM ---
+
                 tokens = regexp(file_path, pattern_jm, 'tokens');
+
                 if ~isempty(tokens)
                     type_part   = 'jm';
                     group_part  = '';
@@ -107,12 +110,13 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
             animal_date_list{k, 4} = date_part;
             animal_date_list{k, 5} = NaN;
             animal_date_list{k, 6} = NaN;
+            animal_date_list{k, 7} = '';
         end
     end
 
-    %===================%
-    %   Nettoyage lignes vides
-    %===================%
+    %======================================================
+    % Nettoyage lignes vides
+    %======================================================
     non_empty_type = ~cellfun('isempty', animal_date_list(:, 1));
     animal_date_list = animal_date_list(non_empty_type, :);
 
@@ -124,12 +128,13 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
     unique_types = unique(animal_date_list(:, 1));
     updated_animal_date_list = {};
 
-    %===================%
-    %   Gestion par type
-    %===================%
+    %======================================================
+    % Gestion par type
+    %======================================================
     for h = 1:length(unique_types)
 
         current_type = unique_types{h};
+
         type_indices = strcmp(animal_date_list(:, 1), current_type);
         animal_date_list_type = animal_date_list(type_indices, :);
 
@@ -141,13 +146,13 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
             mkdir(save_folder);
         end
 
-        % Toujours initialiser proprement
-        existing_data = cell(0,6);
+        existing_data = cell(0, 7);
 
-        %===================%
-        %   Charger existant
-        %===================%
+        %======================================================
+        % Charger fichier existant
+        %======================================================
         if exist(type_save_path, 'file')
+
             fprintf('File "%s" exists. Loading existing data...\n', type_save_path);
 
             loaded_data = load(type_save_path);
@@ -158,178 +163,239 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
             end
 
             if isempty(existing_data)
-                existing_data = cell(0,6);
+                existing_data = cell(0, 7);
             end
 
-            if size(existing_data, 2) < 6
-                existing_data(:, end+1:6) = {''};
+            % Compatibilité anciens fichiers à 6 colonnes
+            if size(existing_data, 2) < 7
+                existing_data(:, end+1:7) = {''};
             end
 
+            % Reprendre infos existantes
             for i = 1:size(animal_date_list_type, 1)
+
                 current_group  = animal_date_list_type{i, 2};
                 current_animal = animal_date_list_type{i, 3};
                 current_date   = animal_date_list_type{i, 4};
 
-                idx = [];
-
-                if ~isempty(existing_data) && size(existing_data,2) >= 6
-                    group_col  = existing_data(:, 2);
-                    animal_col = existing_data(:, 3);
-                    date_col   = existing_data(:, 4);
-
-                    group_col(cellfun(@isempty, group_col))   = {''};
-                    animal_col(cellfun(@isempty, animal_col)) = {''};
-                    date_col(cellfun(@isempty, date_col))     = {''};
-
-                    idx = find(strcmp(group_col, current_group) & ...
-                               strcmp(animal_col, current_animal) & ...
-                               strcmp(date_col, current_date), 1);
-                end
+                idx = find_existing_row(existing_data, ...
+                    current_group, current_animal, current_date);
 
                 if ~isempty(idx)
                     animal_date_list_type{i, 5} = existing_data{idx, 5};
                     animal_date_list_type{i, 6} = existing_data{idx, 6};
+                    animal_date_list_type{i, 7} = existing_data{idx, 7};
                 end
             end
+
         else
             fprintf('No existing file found. Creating new file...\n');
         end
 
-        %===================%
-        %   Construction des groupes
-        %===================%
-        group_names = cell(size(animal_date_list_type, 1), 1);
+        %======================================================
+        % Birth keys : group_part si présent, sinon animal
+        %======================================================
+        birth_keys = cell(size(animal_date_list_type, 1), 1);
 
         for i = 1:size(animal_date_list_type, 1)
-            if isempty(animal_date_list_type{i, 2})
-                group_names{i, 1} = animal_date_list_type{i, 3};
+            if ~isempty(animal_date_list_type{i, 2})
+                birth_keys{i} = animal_date_list_type{i, 2};
             else
-                group_names{i, 1} = animal_date_list_type{i, 2};
+                birth_keys{i} = animal_date_list_type{i, 3};
             end
         end
 
-        unique_groups = unique(group_names);
+        unique_birth_keys = unique(birth_keys);
 
-        %===================%
-        %   Demande âge / sexe
-        %===================%
-        for g = 1:length(unique_groups)
-            group = unique_groups{g};
+        %======================================================
+        % Date de naissance par groupe
+        %======================================================
+        for b = 1:length(unique_birth_keys)
 
-            group_indices = strcmp(animal_date_list_type(:, 2), group);
+            current_birth_key = unique_birth_keys{b};
 
-            if any(cellfun(@isempty, animal_date_list_type(:, 2)))
-                empty_group_indices = strcmp(animal_date_list_type(:, 3), group);
-                group_indices = group_indices | empty_group_indices;
+            key_indices = strcmp(birth_keys, current_birth_key);
+            key_rows = find(key_indices);
+
+            type_name = animal_date_list_type{key_rows(1), 1};
+            group_name = animal_date_list_type{key_rows(1), 2};
+
+            if isempty(group_name)
+                group_name = 'No group';
             end
 
-            unique_animals_in_group = unique(animal_date_list_type(group_indices, 3));
+            animals_in_key = unique(animal_date_list_type(key_rows, 3));
+            dates_in_key   = unique(animal_date_list_type(key_rows, 4));
 
-            for a = 1:length(unique_animals_in_group)
-                animal_group = unique_animals_in_group{a};
-                animal_indices = strcmp(animal_date_list_type(:, 3), animal_group);
+            birth_date_str = '';
 
-                nan_age_indices = find(animal_indices & ...
-                    cellfun(@(x) (isnumeric(x) && isnan(x)) || ...
-                                 (ischar(x) && strcmpi(x, 'nan')), ...
-                                 animal_date_list_type(:, 5)));
+            % Chercher birth_date déjà présente dans animal_date_list_type
+            existing_birth_rows = key_rows(~cellfun(@is_empty_or_nan, ...
+                animal_date_list_type(key_rows, 7)));
 
-                nan_sex_indices = find(animal_indices & ...
-                    cellfun(@(x) isempty(x) || ...
-                                 (isnumeric(x) && isnan(x)) || ...
-                                 (ischar(x) && strcmpi(x, 'nan')), ...
-                                 animal_date_list_type(:, 6)));
+            if ~isempty(existing_birth_rows)
+                birth_date_str = animal_date_list_type{existing_birth_rows(1), 7};
+            end
 
-                for i = nan_age_indices'
-                    if strcmp(animal_date_list_type{i, 3}, animal_group)
+            % Chercher birth_date dans existing_data
+            if isempty(birth_date_str) && ~isempty(existing_data)
 
-                        if ~isempty(animal_date_list_type{i, 5}) && ...
-                           ~((isnumeric(animal_date_list_type{i, 5}) && isnan(animal_date_list_type{i, 5})) || ...
-                             (ischar(animal_date_list_type{i, 5}) && strcmpi(animal_date_list_type{i, 5}, 'nan')))
-                            continue;
-                        end
+                for r = 1:size(existing_data, 1)
 
-                        fprintf('For animal "%s" in group "%s", the dates are:\n', ...
-                            animal_date_list_type{i, 3}, animal_date_list_type{i, 2});
-                        disp(animal_date_list_type(i, 4));
-
-                        age_input = input(sprintf( ...
-                            'Enter age(s) for animal "%s" (e.g., 8:10 or 8 9): ', ...
-                            animal_date_list_type{i, 3}), 's');
-
-                        if contains(age_input, ':')
-                            age_range = str2double(strsplit(age_input, ':'));
-                            age_list = num2cell(age_range(1):age_range(2));
-                        else
-                            age_list = num2cell(str2double(strsplit(strtrim(age_input))));
-                        end
-
-                        for j = 1:length(age_list)
-                            if isnan(age_list{j})
-                                continue;
-                            end
-                            if i + j - 1 <= size(animal_date_list_type, 1)
-                                animal_date_list_type{i + j - 1, 5} = sprintf('P%d', age_list{j});
-                            end
-                        end
+                    if size(existing_data, 2) < 7
+                        continue;
                     end
-                end
 
-                if ~isempty(nan_sex_indices)
-                    sexe_input = input(sprintf('Enter sex for animal "%s" (M/F/IND): ', animal_group), 's');
-                    sexe_input = upper(strtrim(sexe_input));
+                    existing_group  = existing_data{r, 2};
+                    existing_animal = existing_data{r, 3};
 
-                    if ismember(sexe_input, {'M', 'F', 'IND'})
-                        [animal_date_list_type{nan_sex_indices, 6}] = deal(sexe_input);
+                    if ~isempty(existing_group)
+                        existing_key = existing_group;
                     else
-                        warning('Invalid sex entered. Please use "M", "F", or "IND".');
+                        existing_key = existing_animal;
                     end
+
+                    if strcmp_safe(existing_key, current_birth_key) && ...
+                       ~is_empty_or_nan(existing_data{r, 7})
+
+                        birth_date_str = existing_data{r, 7};
+                        break;
+                    end
+                end
+            end
+
+            % Demander birth_date si absente
+            if isempty(birth_date_str)
+
+                fprintf('\n====================================\n');
+                fprintf('Type   : %s\n', type_name);
+                fprintf('Group  : %s\n', group_name);
+                fprintf('Animals: ');
+                fprintf('%s ', animals_in_key{:});
+                fprintf('\nDates  :\n');
+                disp(dates_in_key);
+                fprintf('====================================\n');
+
+                valid_birth = false;
+
+                while ~valid_birth
+
+                    birth_input = input(sprintf( ...
+                        'Enter birth date for group "%s" (dd/mm/yyyy or dd_mm_yy): ', ...
+                        current_birth_key), 's');
+
+                    birth_input = strtrim(birth_input);
+
+                    try
+                        birth_dt = parse_date_flexible(birth_input);
+                        birth_date_str = datestr(birth_dt, 'dd/mm/yyyy');
+                        valid_birth = true;
+
+                    catch
+                        warning('Date de naissance invalide. Exemple valide : 01/11/2025');
+                    end
+                end
+
+            else
+                birth_dt = parse_date_flexible(birth_date_str);
+                birth_date_str = datestr(birth_dt, 'dd/mm/yyyy');
+            end
+
+            % Appliquer birth_date à toutes les lignes du groupe
+            [animal_date_list_type{key_rows, 7}] = deal(birth_date_str);
+
+            % Calculer âge pour chaque date
+            for rr = key_rows'
+
+                acq_date_str = animal_date_list_type{rr, 4};
+
+                try
+                    acq_dt = parse_date_flexible(acq_date_str);
+                    age_days = round(days(acq_dt - birth_dt));
+
+                    if age_days < 0
+                        warning('Âge négatif détecté pour group "%s", date "%s".', ...
+                            current_birth_key, acq_date_str);
+
+                        animal_date_list_type{rr, 5} = NaN;
+                    else
+                        animal_date_list_type{rr, 5} = sprintf('P%d', age_days);
+                    end
+
+                catch ME
+                    warning('Impossible de calculer l''âge pour group "%s", date "%s" : %s', ...
+                        current_birth_key, acq_date_str, ME.message);
                 end
             end
         end
 
-        %===================%
-        %   Fusion avec existant
-        %===================%
+        %======================================================
+        % Sexe : demandé par animal
+        %======================================================
+        unique_animals = unique(animal_date_list_type(:, 3));
+
+        for a = 1:length(unique_animals)
+
+            animal_name = unique_animals{a};
+            animal_indices = strcmp(animal_date_list_type(:, 3), animal_name);
+
+            nan_sex_indices = find(animal_indices & ...
+                cellfun(@is_empty_or_nan, animal_date_list_type(:, 6)));
+
+            if ~isempty(nan_sex_indices)
+
+                group_for_display = animal_date_list_type{nan_sex_indices(1), 2};
+
+                if isempty(group_for_display)
+                    group_for_display = 'No group';
+                end
+
+                fprintf('\nAnimal "%s" | Group "%s"\n', ...
+                    animal_name, group_for_display);
+
+                sexe_input = input(sprintf( ...
+                    'Enter sex for animal "%s" (M/F/IND): ', animal_name), 's');
+
+                sexe_input = upper(strtrim(sexe_input));
+
+                if ismember(sexe_input, {'M', 'F', 'IND'})
+                    [animal_date_list_type{nan_sex_indices, 6}] = deal(sexe_input);
+                else
+                    warning('Invalid sex entered. Please use "M", "F", or "IND".');
+                end
+            end
+        end
+
+        %======================================================
+        % Fusion avec existing_data
+        %======================================================
         for i = 1:size(animal_date_list_type, 1)
 
-            current_animal = animal_date_list_type{i, 3};
             current_group  = animal_date_list_type{i, 2};
+            current_animal = animal_date_list_type{i, 3};
             current_date   = animal_date_list_type{i, 4};
 
-            duplicate_idx = [];
-
-            if ~isempty(existing_data) && size(existing_data,2) >= 6
-                group_col  = existing_data(:, 2);
-                animal_col = existing_data(:, 3);
-                date_col   = existing_data(:, 4);
-
-                group_col(cellfun(@isempty, group_col))   = {''};
-                animal_col(cellfun(@isempty, animal_col)) = {''};
-                date_col(cellfun(@isempty, date_col))     = {''};
-
-                duplicate_idx = find(strcmp(animal_col, current_animal) & ...
-                                     strcmp(group_col, current_group) & ...
-                                     strcmp(date_col, current_date), 1);
-            end
+            duplicate_idx = find_existing_row(existing_data, ...
+                current_group, current_animal, current_date);
 
             if ~isempty(duplicate_idx)
-                if isempty(existing_data{duplicate_idx, 6}) || ...
-                   (ischar(existing_data{duplicate_idx, 6}) && strcmpi(existing_data{duplicate_idx, 6}, 'nan')) || ...
-                   (isnumeric(existing_data{duplicate_idx, 6}) && isnan(existing_data{duplicate_idx, 6}))
+
+                % Age recalculé automatiquement
+                existing_data{duplicate_idx, 5} = animal_date_list_type{i, 5};
+
+                % Sexe seulement si absent dans existing_data
+                if is_empty_or_nan(existing_data{duplicate_idx, 6})
                     existing_data{duplicate_idx, 6} = animal_date_list_type{i, 6};
                 end
 
-                if isempty(existing_data{duplicate_idx, 5}) || ...
-                   (ischar(existing_data{duplicate_idx, 5}) && strcmpi(existing_data{duplicate_idx, 5}, 'nan')) || ...
-                   (isnumeric(existing_data{duplicate_idx, 5}) && isnan(existing_data{duplicate_idx, 5}))
-                    existing_data{duplicate_idx, 5} = animal_date_list_type{i, 5};
-                end
+                % birth_date mise à jour
+                existing_data{duplicate_idx, 7} = animal_date_list_type{i, 7};
+
             else
-                % Condition d'ajout robuste
-                if ~isempty(animal_date_list_type{i,1}) && ...
-                   ~isempty(animal_date_list_type{i,3}) && ...
-                   ~isempty(animal_date_list_type{i,4})
+
+                if ~isempty(animal_date_list_type{i, 1}) && ...
+                   ~isempty(animal_date_list_type{i, 3}) && ...
+                   ~isempty(animal_date_list_type{i, 4})
 
                     existing_data = [existing_data; animal_date_list_type(i, :)]; %#ok<AGROW>
                 else
@@ -339,9 +405,100 @@ function updated_animal_date_list = create_animal_date_list(TSeriesPaths, PathSa
         end
 
         disp(animal_date_list_type);
+
         save(type_save_path, 'existing_data');
         fprintf('Data saved to "%s".\n', type_save_path);
 
         updated_animal_date_list = [updated_animal_date_list; animal_date_list_type]; %#ok<AGROW>
     end
+end
+
+%==========================================================
+% HELPERS
+%==========================================================
+
+function idx = find_existing_row(existing_data, current_group, current_animal, current_date)
+
+    idx = [];
+
+    if isempty(existing_data) || size(existing_data, 2) < 4
+        return;
+    end
+
+    group_col  = existing_data(:, 2);
+    animal_col = existing_data(:, 3);
+    date_col   = existing_data(:, 4);
+
+    group_col(cellfun(@isempty, group_col))   = {''};
+    animal_col(cellfun(@isempty, animal_col)) = {''};
+    date_col(cellfun(@isempty, date_col))     = {''};
+
+    idx = find(strcmp(group_col, current_group) & ...
+               strcmp(animal_col, current_animal) & ...
+               strcmp(date_col, current_date), 1);
+end
+
+function tf = is_empty_or_nan(x)
+
+    tf = isempty(x) || ...
+         (isnumeric(x) && isnan(x)) || ...
+         (ischar(x) && strcmpi(strtrim(x), 'nan')) || ...
+         (isstring(x) && (strlength(x) == 0 || strcmpi(strtrim(x), "nan")));
+end
+
+function tf = strcmp_safe(a, b)
+
+    if isempty(a)
+        a = '';
+    end
+
+    if isempty(b)
+        b = '';
+    end
+
+    if isstring(a)
+        a = char(a);
+    end
+
+    if isstring(b)
+        b = char(b);
+    end
+
+    tf = strcmp(a, b);
+end
+
+function dt = parse_date_flexible(date_str)
+
+    if isstring(date_str)
+        date_str = char(date_str);
+    end
+
+    date_str = strtrim(date_str);
+
+    formats = { ...
+        'dd/MM/yyyy', ...
+        'dd_MM_yyyy', ...
+        'dd-MM-yyyy', ...
+        'dd/MM/yy', ...
+        'dd_MM_yy', ...
+        'dd-MM-yy', ...
+        'yyyy-MM-dd', ...
+        'yyyy_MM_dd' ...
+    };
+
+    last_err = [];
+
+    for f = 1:numel(formats)
+
+        try
+            dt = datetime(date_str, 'InputFormat', formats{f});
+            return;
+
+        catch ME
+            last_err = ME;
+        end
+    end
+
+    error('Date format not recognized: %s. Last error: %s', ...
+        date_str, last_err.message);
 end

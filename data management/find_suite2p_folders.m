@@ -287,13 +287,12 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
         end
 
         % ------------------------------------------------------------
-        % Condition demandée :
-        % si aucun dossier suite2p/plane* pour Gcamp => on ignore la ligne
+        % Ne jamais ignorer la ligne si GCaMP n'a pas de suite2p/plane*
+        % On garde la date dans selected_groups, avec chemins vides si besoin
         % ------------------------------------------------------------
         if isempty(planeFolders_by_channel{1})
-            warning('Aucun dossier suite2p/plane* trouvé pour Gcamp dans %s. Dossier ignoré.', ...
+            warning('Aucun dossier suite2p/plane* trouvé pour Gcamp dans %s. Ligne conservée avec suite2p vide.', ...
                 to_char_path(TSeriesPathsTemp{1}));
-            continue;
         end
 
         % ------------------------------------------------------------
@@ -370,18 +369,18 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFold
             end
         end
     end
-
-    % ============================================================
-    % Filtrage final : garder uniquement les lignes valides Gcamp
-    % ============================================================
-    valid_rows = ~cellfun(@isempty, TSeriesPaths(:, 1));
-
-    suite2p_folders = suite2p_folders(valid_rows, :);
-    TSeriesPaths    = TSeriesPaths(valid_rows, :);
-    xml_paths_all   = xml_paths_all(valid_rows, :);
-    true_xml_paths  = true_xml_paths(valid_rows, :);
-    lastFolderNames = lastFolderNames(valid_rows, :);
-    Fallmat_paths   = Fallmat_paths(valid_rows, :);
+    % 
+    % % ============================================================
+    % % Filtrage final : garder uniquement les lignes valides Gcamp
+    % % ============================================================
+    % valid_rows = ~cellfun(@isempty, TSeriesPaths(:, 1));
+    % 
+    % suite2p_folders = suite2p_folders(valid_rows, :);
+    % TSeriesPaths    = TSeriesPaths(valid_rows, :);
+    % xml_paths_all   = xml_paths_all(valid_rows, :);
+    % true_xml_paths  = true_xml_paths(valid_rows, :);
+    % lastFolderNames = lastFolderNames(valid_rows, :);
+    % Fallmat_paths   = Fallmat_paths(valid_rows, :);
 end
 
 

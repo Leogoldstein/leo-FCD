@@ -329,6 +329,27 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
             else
                 warning('  Aucun fichier motion trouvé (results_motion.mat ou results_movie.mat)');
             end
+            
+            % --------------------------------------------------
+            % Copier tous les recording_summary*
+            % --------------------------------------------------
+            summary_files = dir(fullfile(source_root_folder, 'recording_summary*'));
+            
+            for s = 1:numel(summary_files)
+            
+                source_summary = fullfile(source_root_folder, summary_files(s).name);
+                dest_summary   = fullfile(current_root_folder, summary_files(s).name);
+            
+                copyfile(source_summary, dest_summary);
+            
+                fprintf('  Copié : %s -> %s\n', ...
+                    source_summary, dest_summary);
+            end
+            
+            if isempty(summary_files)
+                warning('  Aucun fichier recording_summary* trouvé dans : %s', ...
+                    source_root_folder);
+            end
 
             clear_detection_outputs(chosen_folder_processing_gcamp(m), {'gcamp','blue','combined'});
         end

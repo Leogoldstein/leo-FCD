@@ -2,132 +2,60 @@ function [F_raw, F, F_deconv, ops, stat, ...
           iscell_cells, iscell_cells_idx, ...
           stat_false, iscell_false] = load_data(suite2p_path)
 
-    % ---- Sorties par défaut : tout optionnel ----
-    F_raw   = [];
-    F            = [];
-    F_deconv     = [];
-    ops          = [];
-    stat         = [];
-    iscell_raw   = [];
-    iscell_cells = [];
+    % ---- Sorties par défaut ----
+    F_raw           = [];
+    F               = [];
+    F_deconv        = [];
+    ops             = [];
+    stat            = [];
+    iscell_raw      = [];
+    iscell_cells    = [];
     iscell_cells_idx = [];
-    stat_false   = [];
-    iscell_false = [];
-    F_deconv_raw = [];
+    stat_false      = [];
+    iscell_false    = [];
+    F_deconv_raw    = [];
 
     [~, ~, ext] = fileparts(suite2p_path);
 
     % =========================================================
-    % CAS 1 : dossier contenant des .npy
+    % CAS 1 : dossier Suite2p contenant des .npy
     % =========================================================
     if isfolder(suite2p_path)
 
-        newFPath      = fullfile(suite2p_path, 'F.npy');
-        newSpksPath   = fullfile(suite2p_path, 'spks.npy');
-        newStatPath   = fullfile(suite2p_path, 'stat.npy');
-        newIscellPath = fullfile(suite2p_path, 'iscell.npy');
-        newOpsPath    = fullfile(suite2p_path, 'ops.npy');
+        FPath      = fullfile(suite2p_path, 'F.npy');
+        SpksPath   = fullfile(suite2p_path, 'spks.npy');
+        StatPath   = fullfile(suite2p_path, 'stat.npy');
+        IscellPath = fullfile(suite2p_path, 'iscell.npy');
+        OpsPath    = fullfile(suite2p_path, 'ops.npy');
 
-        % ---- Chargement indépendant de chaque fichier ----
-        if isfile(newFPath)
-            F_raw = readNPY(newFPath);
+        if isfile(FPath)
+            F_raw = readNPY(FPath);
         end
 
-        if isfile(newSpksPath)
-            F_deconv_raw = readNPY(newSpksPath);
+        if isfile(SpksPath)
+            F_deconv_raw = readNPY(SpksPath);
         end
 
-        if isfile(newIscellPath)
-            iscell_raw = readNPY(newIscellPath);
+        if isfile(IscellPath)
+            iscell_raw = readNPY(IscellPath);
         end
 
-        % ---- Chargement Python optionnel ----
-        if isfile(newStatPath) || isfile(newOpsPath)
+        if isfile(StatPath) || isfile(OpsPath)
             try
                 mod = py.importlib.import_module('python_function');
 
-                if isfile(newStatPath)
-                    stat = mod.read_npy_file(newStatPath);
+                if isfile(StatPath)
+                    stat = mod.read_npy_file(StatPath);
                 end
 
-                if isfile(newOpsPath)
-                    ops = mod.read_npy_file(newOpsPath);
+                if isfile(OpsPath)
+                    ops = mod.read_npy_file(OpsPath);
                 end
 
             catch ME
                 warning('Chargement Python impossible: %s', ME.message);
                 stat = [];
                 ops = [];
-            end
-        end
-
-        % ---- Séparation cellules / non-cellules si possible ----
-        if ~isempty(F_raw) && ~isempty(iscell_raw)
-
-            nF = size(F_raw, 1);
-            nI = size(iscell_raw, 1);
-            nMin = min(nF, nI);
-
-            if nF ~= nI
-                warning('F et iscell ont des tailles différentes (%d vs %d). Troncature à %d.', ...
-                    nF, nI, nMin);
-            end
-
-            F_raw = F_raw(1:nMin, :);
-            iscell_raw = iscell_raw(1:nMin, :);
-
-            if ~isempty(F_deconv_raw)
-                F_deconv_raw = F_deconv_raw(1:min(size(F_deconv_raw,1), nMin), :);
-                if size(F_deconv_raw,1) ~= nMin
-                    nMin2 = min(size(F_deconv_raw,1), nMin);
-                    F_raw = F_raw(1:nMin2, :);
-                    iscell_raw = iscell_raw(1:nMin2, :);
-                    nMin = nMin2;
-                end
-            end
-
-            keepMask  = logical(iscell_raw(:,1));
-            falseMask = ~keepMask;
-            
-            iscell_cells_idx = find(keepMask);
-
-            F = double(F_raw(keepMask, :));
-            iscell_cells = iscell_raw(keepMask, :);
-            iscell_false = iscell_raw(falseMask, :);
-
-            if ~isempty(F_deconv_raw)
-                F_deconv = double(F_deconv_raw(keepMask, :));
-            end
-
-            if ~isempty(stat)
-                if isa(stat, 'py.list')
-                    idx_true  = find(keepMask);
-                    idx_false = find(falseMask);
-
-                    stat_false = subset_pylist(stat, idx_false);
-                    stat       = subset_pylist(stat, idx_true);
-                else
-                    try
-                        stat_false = stat(falseMask);
-                        stat = stat(keepMask);
-                    catch
-                        warning('Impossible de filtrer stat avec keepMask.');
-                    end
-                end
-            end
-
-        else
-            % Pas de séparation possible
-            if ~isempty(F_raw)
-                F = double(F_raw);
-            end
-
-            if ~isempty(F_deconv_raw)
-                F_deconv = double(F_deconv_raw);
-            end
-
-            if ~isempty(iscell_raw)
-                iscell = iscell_raw;
             end
         end
 
@@ -151,71 +79,11 @@ function [F_raw, F, F_deconv, ops, stat, ...
         end
 
         if isfield(data, 'ops')
-            ops = make_matlab_saveable_recursive(data.ops);
+            ops = data.ops;
         end
 
         if isfield(data, 'stat')
             stat = data.stat;
-        end
-
-        if ~isempty(F_raw) && ~isempty(iscell_raw)
-
-            nF = size(F_raw, 1);
-            nI = size(iscell_raw, 1);
-            nMin = min(nF, nI);
-
-            if nF ~= nI
-                warning('F et iscell ont des tailles différentes (%d vs %d). Troncature à %d.', ...
-                    nF, nI, nMin);
-            end
-
-            F_raw = F_raw(1:nMin, :);
-            iscell_raw = iscell_raw(1:nMin, :);
-
-            if ~isempty(F_deconv_raw)
-                F_deconv_raw = F_deconv_raw(1:min(size(F_deconv_raw,1), nMin), :);
-                if size(F_deconv_raw,1) ~= nMin
-                    nMin2 = min(size(F_deconv_raw,1), nMin);
-                    F_raw = F_raw(1:nMin2, :);
-                    iscell_raw = iscell_raw(1:nMin2, :);
-                    nMin = nMin2;
-                end
-            end
-
-            keepMask  = iscell_raw(:,1) > 0;
-            falseMask = ~keepMask;
-
-            iscell_cells_idx = find(keepMask);
-
-            F = double(F_raw(keepMask, :));
-            iscell_cells = iscell_raw(keepMask, :);
-            iscell_false = iscell_raw(falseMask, :);
-
-            if ~isempty(F_deconv_raw)
-                F_deconv = double(F_deconv_raw(keepMask, :));
-            end
-
-            if ~isempty(stat)
-                try
-                    stat_false = stat(falseMask);
-                    stat = stat(keepMask);
-                catch
-                    warning('Impossible de filtrer stat avec keepMask.');
-                end
-            end
-
-        else
-            if ~isempty(F_raw)
-                F = double(F_raw);
-            end
-
-            if ~isempty(F_deconv_raw)
-                F_deconv = double(F_deconv_raw);
-            end
-
-            if ~isempty(iscell_raw)
-                iscell = iscell_raw;
-            end
         end
 
     else
@@ -224,21 +92,107 @@ function [F_raw, F, F_deconv, ops, stat, ...
     end
 
     % =========================================================
+    % HARMONISATION DES TAILLES F / iscell / spks
+    % =========================================================
+    if ~isempty(F_raw)
+
+        nF = size(F_raw, 1);
+
+        if ~isempty(iscell_raw)
+            nI = size(iscell_raw, 1);
+        else
+            nI = nF;
+            iscell_raw = [ones(nF,1), zeros(nF,1)];
+        end
+
+        nMin = min(nF, nI);
+
+        if nF ~= nI
+            warning('F et iscell ont des tailles différentes (%d vs %d). Troncature à %d.', ...
+                nF, nI, nMin);
+        end
+
+        F_raw = F_raw(1:nMin, :);
+        iscell_raw = iscell_raw(1:nMin, :);
+
+        if ~isempty(F_deconv_raw)
+            nS = size(F_deconv_raw, 1);
+            nMin2 = min(nMin, nS);
+
+            if nS ~= nMin
+                warning('F et spks ont des tailles différentes (%d vs %d). Troncature à %d.', ...
+                    nMin, nS, nMin2);
+            end
+
+            F_raw = F_raw(1:nMin2, :);
+            iscell_raw = iscell_raw(1:nMin2, :);
+            F_deconv_raw = F_deconv_raw(1:nMin2, :);
+            nMin = nMin2;
+        end
+
+        % =====================================================
+        % FILTRAGE CELLULES / NON-CELLULES
+        % =====================================================
+        keepMask  = logical(iscell_raw(:,1));
+        falseMask = ~keepMask;
+
+        iscell_cells_idx = find(keepMask);
+
+        F = double(F_raw(keepMask, :));
+        iscell_cells = iscell_raw(keepMask, :);
+        iscell_false = iscell_raw(falseMask, :);
+
+        if ~isempty(F_deconv_raw)
+            F_deconv = double(F_deconv_raw(keepMask, :));
+        end
+
+        % =====================================================
+        % FILTRAGE STAT
+        % =====================================================
+        if ~isempty(stat)
+
+            if isa(stat, 'py.list')
+                idx_true  = find(keepMask);
+                idx_false = find(falseMask);
+
+                stat_false = subset_pylist(stat, idx_false);
+                stat       = subset_pylist(stat, idx_true);
+
+            else
+                try
+                    stat_false = stat(falseMask);
+                    stat       = stat(keepMask);
+                catch
+                    warning('Impossible de filtrer stat avec keepMask.');
+                end
+            end
+        end
+
+    else
+        warning('F absent dans : %s', suite2p_path);
+    end
+
+    % =========================================================
     % SUPPRESSION DES CELLULES AVEC F == 0
-    % seulement si F existe
     % =========================================================
     if ~isempty(F)
+
         rowsWithZero = all(F == 0, 2);
 
         if any(rowsWithZero)
+
             F(rowsWithZero, :) = [];
 
             if ~isempty(F_deconv) && size(F_deconv,1) == numel(rowsWithZero)
                 F_deconv(rowsWithZero, :) = [];
             end
 
-            if ~isempty(iscell) && size(iscell,1) == numel(rowsWithZero)
-                iscell(rowsWithZero, :) = [];
+            if ~isempty(iscell_cells) && size(iscell_cells,1) == numel(rowsWithZero)
+                iscell_cells(rowsWithZero, :) = [];
+            end
+
+            if ~isempty(iscell_cells_idx) && numel(iscell_cells_idx) == numel(rowsWithZero)
+                iscell_cells_idx(rowsWithZero) = [];
             end
 
             if ~isempty(stat)
@@ -260,21 +214,27 @@ function [F_raw, F, F_deconv, ops, stat, ...
     % =========================================================
     % CONVERSION FINALE EN TYPES MATLAB
     % =========================================================
-    ops          = make_matlab_saveable_recursive(ops);
+    ops  = make_matlab_saveable_recursive(ops);
+    stat = make_matlab_saveable_recursive(stat);
+
 end
 
 
 function out = subset_pylist(pylist, idx)
+
     out = cell(1, numel(idx));
     np = py.importlib.import_module('numpy');
 
     for k = 1:numel(idx)
+
         py_idx = py.int(idx(k)-1);
         dict = pylist{py_idx};
 
-        keys = cellfun(@char, cell(py.list(dict.keys())), 'UniformOutput', false);
+        keys = cellfun(@char, cell(py.list(dict.keys())), ...
+            'UniformOutput', false);
 
         s = struct();
+
         for kk = 1:numel(keys)
             key = keys{kk};
             value = dict{key};
@@ -287,6 +247,7 @@ end
 
 
 function val = py_to_mat(value, np)
+
     try
         if isa(value, 'py.numpy.ndarray')
             val = double(np.array(value).flatten().tolist());
@@ -327,13 +288,11 @@ function out = make_matlab_saveable_recursive(x)
 
     cls = class(x);
 
-    % Déjà MATLAB-safe
     if isnumeric(x) || islogical(x) || ischar(x) || isstring(x)
         out = x;
         return;
     end
 
-    % Cell array
     if iscell(x)
         out = cell(size(x));
         for i = 1:numel(x)
@@ -342,7 +301,6 @@ function out = make_matlab_saveable_recursive(x)
         return;
     end
 
-    % Struct / struct array
     if isstruct(x)
         out = x;
         for j = 1:numel(x)
@@ -355,13 +313,11 @@ function out = make_matlab_saveable_recursive(x)
         return;
     end
 
-    % Objets Python
     if startsWith(cls, 'py.')
         out = pyobj_to_matlab(x);
         return;
     end
 
-    % Fallback
     try
         out = double(x);
     catch
@@ -374,16 +330,9 @@ function out = pyobj_to_matlab(x)
 
     cls = class(x);
 
-    % numpy array
     if strcmp(cls, 'py.numpy.ndarray')
         try
             out = double(x);
-            return;
-        catch
-        end
-
-        try
-            out = double(py.numpy.nditer(x));
             return;
         catch
         end
@@ -396,29 +345,30 @@ function out = pyobj_to_matlab(x)
         end
     end
 
-    % dict Python
     if strcmp(cls, 'py.dict')
         out = struct();
         keys = cell(py.list(x.keys()));
+
         for i = 1:numel(keys)
             key_char = char(keys{i});
             safe_key = matlab.lang.makeValidName(key_char);
             out.(safe_key) = make_matlab_saveable_recursive(x{keys{i}});
         end
+
         return;
     end
 
-    % list / tuple
     if strcmp(cls, 'py.list') || strcmp(cls, 'py.tuple')
         c = cell(x);
         out = cell(size(c));
+
         for i = 1:numel(c)
             out{i} = make_matlab_saveable_recursive(c{i});
         end
+
         return;
     end
 
-    % scalaire convertible
     try
         out = double(x);
         return;
@@ -437,6 +387,5 @@ function out = pyobj_to_matlab(x)
     catch
     end
 
-    % sinon on jette
     out = [];
 end

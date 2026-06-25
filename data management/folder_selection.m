@@ -96,8 +96,19 @@ function selected_groups = build_selected_groups_minimal( ...
         T = animal_date_list;
 
     elseif iscell(animal_date_list)
-        T = cell2table(animal_date_list, ...
-            'VariableNames', {'type','line','animal','date','age','sex'});
+
+        if size(animal_date_list, 2) == 6
+            T = cell2table(animal_date_list, ...
+                'VariableNames', {'type','line','animal','date','age','sex'});
+    
+        elseif size(animal_date_list, 2) == 7
+            T = cell2table(animal_date_list, ...
+                'VariableNames', {'type','line','animal','date','age','sex','birth_date'});
+    
+        else
+            error('animal_date_list doit avoir 6 ou 7 colonnes. Trouvé : %d colonnes.', ...
+                size(animal_date_list, 2));
+        end
 
     elseif isstruct(animal_date_list)
         T = struct2table(animal_date_list);
@@ -126,6 +137,10 @@ function selected_groups = build_selected_groups_minimal( ...
 
     if ~ismember('age', T.Properties.VariableNames)
         T.age = repmat("", height(T), 1);
+    end
+
+    if ~ismember('birth_date', T.Properties.VariableNames)
+        T.birth_date = repmat("", height(T), 1);
     end
 
     group_keys = T.type + "|" + T.line + "|" + T.animal;
@@ -197,7 +212,6 @@ function selected_groups = build_selected_groups_minimal( ...
         selected_groups(k).paths.fallmat = subset_rows_safe_4col(Fallmat_paths, idx);
     end
 end
-
 
 function animal_path = infer_animal_path_from_tseries(TSeriesPaths, idx)
 
