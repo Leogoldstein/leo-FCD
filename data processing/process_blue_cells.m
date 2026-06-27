@@ -7,7 +7,6 @@ function blue_plane = process_blue_cells( ...
 
     numFolders = numel(gcamp_output_folders);
 
-    % Champs sauvegardés
     fields_blue_saved = { ...
         'matched_gcamp_idx_by_plane', ...
         'matched_cellpose_idx_by_plane', ...
@@ -22,9 +21,9 @@ function blue_plane = process_blue_cells( ...
         'blue_match_mask_by_plane' ...
     };
 
-    % Mémoire uniquement
     fields_blue_memory = { ...
-        'ops_suite2p_blue_by_plane' ...
+        'ops_suite2p_blue_by_plane', ...
+        'blue_fall_path_by_plane' ...
     };
 
     fields_blue_all = [fields_blue_saved, fields_blue_memory];
@@ -75,18 +74,33 @@ function blue_plane = process_blue_cells( ...
             data = ensure_blue_plane_cell(data, fields_blue_all{f}, m, nPlanes);
         end
 
+        for p = 1:nPlanes
+            blue_path_p = get_blue_plane_folder(current_blue_folders_group, m, p);
+            if isempty(blue_path_p)
+                data.blue_plane.blue_fall_path_by_plane{m}{p} = '';
+            else
+                data.blue_plane.blue_fall_path_by_plane{m}{p} = char(blue_path_p);
+            end
+        end
+
         for f = 1:numel(gcamp_needed)
             data = ensure_local_gcamp_plane_cell(data, gcamp_needed{f}, m, nPlanes);
         end
 
-        if exist(filePath_blue, 'file') == 2
-            loaded = load(filePath_blue);
-            data = merge_loaded_blue_into_data(data, loaded, fields_blue_saved, m, nPlanes);
+        if blue_group_already_complete(data, m, nPlanes)
+            fprintf('Group %d: blue déjà complet en mémoire, aucun rechargement.\n', m);
+        else
+            if exist(filePath_blue, 'file') == 2
+                loaded = load(filePath_blue);
+                data = merge_loaded_blue_into_data(data, loaded, fields_blue_saved, m, nPlanes);
+            end
         end
 
-        if exist(filePath_gcamp, 'file') == 2
-            loaded_gcamp = load(filePath_gcamp);
-            data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_needed, m, nPlanes);
+        if ~local_gcamp_group_already_complete(data, gcamp_needed, m, nPlanes)
+            if exist(filePath_gcamp, 'file') == 2
+                loaded_gcamp = load(filePath_gcamp);
+                data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_needed, m, nPlanes);
+            end
         end
 
         if ~strcmp(include_blue_cells, '1')
@@ -98,6 +112,7 @@ function blue_plane = process_blue_cells( ...
             fprintf('Group %d: no F_gcamp_by_plane, saving empty blue outputs for all planes.\n', m);
 
             has_new_blue_data_for_group = false;
+
             for p = 1:nPlanes
                 if ~blue_plane_has_meaningful_content(data, m, p)
                     data = set_empty_blue_plane(data, m, p);
@@ -107,12 +122,14 @@ function blue_plane = process_blue_cells( ...
 
             if has_new_blue_data_for_group
                 saveStruct_blue = collect_blue_fields_for_save(data, m, fields_blue_saved);
+
                 if exist(filePath_blue, 'file') == 2
                     save(filePath_blue, '-struct', 'saveStruct_blue', '-append');
                 else
                     save(filePath_blue, '-struct', 'saveStruct_blue');
                 end
             end
+
             continue;
         end
 
@@ -162,13 +179,17 @@ function blue_plane = process_blue_cells( ...
 
         for p = 1:nPlanes
 
+            blue_plane_folder = get_blue_plane_folder(current_blue_folders_group, m, p);
+            if isempty(blue_plane_folder)
+                data.blue_plane.blue_fall_path_by_plane{m}{p} = '';
+            else
+                data.blue_plane.blue_fall_path_by_plane{m}{p} = char(blue_plane_folder);
+            end
+
             already_has_blue = blue_plane_has_meaningful_content(data, m, p);
 
-            % Recharger ops blue en mémoire si absent (mémoire-only)
             if ~blue_plane_slot_exists(data, 'ops_suite2p_blue_by_plane', m, p) || ...
-               isempty(data.blue_plane.ops_suite2p_blue_by_plane{m}{p})
-
-                blue_plane_folder = get_blue_plane_folder(current_blue_folders_group, m, p);
+                    isempty(data.blue_plane.ops_suite2p_blue_by_plane{m}{p})
 
                 if ~isempty(blue_plane_folder)
                     data.blue_plane.ops_suite2p_blue_by_plane{m}{p} = load_ops_only(blue_plane_folder);
@@ -178,7 +199,7 @@ function blue_plane = process_blue_cells( ...
             end
 
             if already_has_blue
-                fprintf('    Plane %d: blue variables already exist, skipping.\n', p);
+                fprintf('    Plane %d: blue variables already exist in memory, skipping.\n', p);
                 continue;
             end
 
@@ -274,9 +295,9 @@ function blue_plane = process_blue_cells( ...
 
             try
                 [matched_gcamp_idx_p, matched_cellpose_idx_p, ...
-                 matched_gcamp_false_idx_p, matched_cellpose_false_idx_p, ...
-                 gcamp_unmatched_idx_p, cellpose_unmatched_idx_p, ...
-                 is_cellpose_matched_to_true_gcamp_p, IoU_matrix_p] = ...
+                    matched_gcamp_false_idx_p, matched_cellpose_false_idx_p, ...
+                    gcamp_unmatched_idx_p, cellpose_unmatched_idx_p, ...
+                    is_cellpose_matched_to_true_gcamp_p, IoU_matrix_p] = ...
                     match_gcamp_cellpose_masks_iou( ...
                         iscell_gcamp_plane, ...
                         gcamp_mask_plane, ...
@@ -293,10 +314,13 @@ function blue_plane = process_blue_cells( ...
             end
 
             matched_iou_values_p = nan(numel(matched_gcamp_idx_p),1);
+
             for kk = 1:numel(matched_gcamp_idx_p)
                 gi = matched_gcamp_idx_p(kk);
                 cj = matched_cellpose_idx_p(kk);
-                if gi >= 1 && gi <= size(IoU_matrix_p,1) && cj >= 1 && cj <= size(IoU_matrix_p,2)
+
+                if gi >= 1 && gi <= size(IoU_matrix_p,1) && ...
+                        cj >= 1 && cj <= size(IoU_matrix_p,2)
                     matched_iou_values_p(kk) = IoU_matrix_p(gi,cj);
                 end
             end
@@ -326,8 +350,8 @@ function blue_plane = process_blue_cells( ...
             nCellpose = size(mask_cellpose_raw_p,1);
             cellpose_blue_idx_p = (1:nCellpose)';
 
-            mask_blue_final_p  = subset_mask_stack(mask_cellpose_raw_p, cellpose_blue_idx_p);
-            props_blue_final_p = subset_cells_or_struct(props_cellpose_raw_p, cellpose_blue_idx_p);
+            mask_blue_final_p       = subset_mask_stack(mask_cellpose_raw_p, cellpose_blue_idx_p);
+            props_blue_final_p      = subset_cells_or_struct(props_cellpose_raw_p, cellpose_blue_idx_p);
             outlines_x_blue_final_p = subset_cells_or_struct(outlines_x_raw_p, cellpose_blue_idx_p);
             outlines_y_blue_final_p = subset_cells_or_struct(outlines_y_raw_p, cellpose_blue_idx_p);
 
@@ -388,7 +412,49 @@ function blue_plane = process_blue_cells( ...
     blue_plane = data.blue_plane;
 end
 
+
+function tf = blue_group_already_complete(data, m, nPlanes)
+
+    if nPlanes == 0
+        tf = false;
+        return;
+    end
+
+    tf = true;
+
+    for p = 1:nPlanes
+        if ~blue_plane_has_meaningful_content(data, m, p)
+            tf = false;
+            return;
+        end
+    end
+end
+
+function tf = local_gcamp_group_already_complete(data, gcamp_needed, m, nPlanes)
+
+    if nPlanes == 0
+        tf = false;
+        return;
+    end
+
+    tf = true;
+
+    for p = 1:nPlanes
+        for f = 1:numel(gcamp_needed)
+            fieldName = gcamp_needed{f};
+
+            if ~local_gcamp_slot_exists(data, fieldName, m, p) || ...
+                    isempty(data.gcamp_plane.(fieldName){m}{p})
+                tf = false;
+                return;
+            end
+        end
+    end
+end
+
+
 function data = init_blue_plane_struct_if_needed(data, numFolders, fields)
+
     if nargin < 1 || isempty(data)
         data = struct();
     end
@@ -398,9 +464,12 @@ function data = init_blue_plane_struct_if_needed(data, numFolders, fields)
     end
 
     for f = 1:numel(fields)
+
         fieldName = fields{f};
+
         if ~isfield(data.blue_plane, fieldName) || ~iscell(data.blue_plane.(fieldName))
             data.blue_plane.(fieldName) = cell(numFolders, 1);
+
         elseif numel(data.blue_plane.(fieldName)) < numFolders
             oldv = data.blue_plane.(fieldName);
             tmpCell = cell(numFolders, 1);
@@ -410,15 +479,20 @@ function data = init_blue_plane_struct_if_needed(data, numFolders, fields)
     end
 end
 
+
 function data = init_gcamp_plane_struct_if_needed_local(data, numFolders, fields)
+
     if ~isfield(data, 'gcamp_plane') || ~isstruct(data.gcamp_plane) || isempty(data.gcamp_plane)
         data.gcamp_plane = struct();
     end
 
     for f = 1:numel(fields)
+
         fieldName = fields{f};
+
         if ~isfield(data.gcamp_plane, fieldName) || ~iscell(data.gcamp_plane.(fieldName))
             data.gcamp_plane.(fieldName) = cell(numFolders,1);
+
         elseif numel(data.gcamp_plane.(fieldName)) < numFolders
             oldv = data.gcamp_plane.(fieldName);
             tmpCell = cell(numFolders,1);
@@ -428,17 +502,22 @@ function data = init_gcamp_plane_struct_if_needed_local(data, numFolders, fields
     end
 end
 
+
 function data = ensure_blue_plane_cell(data, fieldName, m, nPlanes)
+
     if ~isfield(data.blue_plane, fieldName)
         data.blue_plane.(fieldName) = cell(m,1);
     end
+
     if numel(data.blue_plane.(fieldName)) < m
         tmp = cell(m,1);
         tmp(1:numel(data.blue_plane.(fieldName))) = data.blue_plane.(fieldName)(:);
         data.blue_plane.(fieldName) = tmp;
     end
+
     if isempty(data.blue_plane.(fieldName){m}) || ~iscell(data.blue_plane.(fieldName){m})
         data.blue_plane.(fieldName){m} = cell(nPlanes,1);
+
     elseif numel(data.blue_plane.(fieldName){m}) ~= nPlanes
         old = data.blue_plane.(fieldName){m};
         new = cell(nPlanes,1);
@@ -448,17 +527,22 @@ function data = ensure_blue_plane_cell(data, fieldName, m, nPlanes)
     end
 end
 
+
 function data = ensure_local_gcamp_plane_cell(data, fieldName, m, nPlanes)
+
     if ~isfield(data.gcamp_plane, fieldName)
         data.gcamp_plane.(fieldName) = cell(m,1);
     end
+
     if numel(data.gcamp_plane.(fieldName)) < m
         tmp = cell(m,1);
         tmp(1:numel(data.gcamp_plane.(fieldName))) = data.gcamp_plane.(fieldName)(:);
         data.gcamp_plane.(fieldName) = tmp;
     end
+
     if isempty(data.gcamp_plane.(fieldName){m}) || ~iscell(data.gcamp_plane.(fieldName){m})
         data.gcamp_plane.(fieldName){m} = cell(nPlanes,1);
+
     elseif numel(data.gcamp_plane.(fieldName){m}) ~= nPlanes
         old = data.gcamp_plane.(fieldName){m};
         new = cell(nPlanes,1);
@@ -468,13 +552,17 @@ function data = ensure_local_gcamp_plane_cell(data, fieldName, m, nPlanes)
     end
 end
 
+
 function out = coerce_to_plane_cell_local(val, nPlanes)
+
     if isempty(val)
         out = cell(nPlanes,1);
+
     elseif iscell(val)
         out = cell(nPlanes,1);
         nCopy = min(numel(val), nPlanes);
         out(1:nCopy) = val(1:nCopy);
+
     else
         out = cell(nPlanes,1);
         if nPlanes >= 1
@@ -483,9 +571,13 @@ function out = coerce_to_plane_cell_local(val, nPlanes)
     end
 end
 
+
 function data = merge_loaded_blue_into_data(data, loaded, fields_blue, m, nPlanes)
+
     for f = 1:numel(fields_blue)
+
         fieldName = fields_blue{f};
+
         if ~isfield(loaded, fieldName)
             continue;
         end
@@ -493,7 +585,9 @@ function data = merge_loaded_blue_into_data(data, loaded, fields_blue, m, nPlane
         loaded_field = coerce_to_plane_cell_local(loaded.(fieldName), nPlanes);
 
         for p = 1:nPlanes
-            if ~blue_plane_slot_exists(data, fieldName, m, p) || isempty(data.blue_plane.(fieldName){m}{p})
+            if ~blue_plane_slot_exists(data, fieldName, m, p) || ...
+                    isempty(data.blue_plane.(fieldName){m}{p})
+
                 if numel(loaded_field) >= p
                     data.blue_plane.(fieldName){m}{p} = loaded_field{p};
                 end
@@ -502,9 +596,13 @@ function data = merge_loaded_blue_into_data(data, loaded, fields_blue, m, nPlane
     end
 end
 
+
 function data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_needed, m, nPlanes)
+
     for f = 1:numel(gcamp_needed)
+
         fieldName = gcamp_needed{f};
+
         if ~isfield(loaded_gcamp, fieldName)
             continue;
         end
@@ -512,7 +610,9 @@ function data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_nee
         loaded_field = coerce_to_plane_cell_local(loaded_gcamp.(fieldName), nPlanes);
 
         for p = 1:nPlanes
-            if ~local_gcamp_slot_exists(data, fieldName, m, p) || isempty(data.gcamp_plane.(fieldName){m}{p})
+            if ~local_gcamp_slot_exists(data, fieldName, m, p) || ...
+                    isempty(data.gcamp_plane.(fieldName){m}{p})
+
                 if numel(loaded_field) >= p
                     data.gcamp_plane.(fieldName){m}{p} = loaded_field{p};
                 end
@@ -521,7 +621,9 @@ function data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_nee
     end
 end
 
+
 function tf = blue_plane_slot_exists(data, fieldName, m, p)
+
     tf = isfield(data, 'blue_plane') && ...
          isfield(data.blue_plane, fieldName) && ...
          numel(data.blue_plane.(fieldName)) >= m && ...
@@ -530,7 +632,9 @@ function tf = blue_plane_slot_exists(data, fieldName, m, p)
          numel(data.blue_plane.(fieldName){m}) >= p;
 end
 
+
 function tf = local_gcamp_slot_exists(data, fieldName, m, p)
+
     tf = isfield(data, 'gcamp_plane') && ...
          isfield(data.gcamp_plane, fieldName) && ...
          numel(data.gcamp_plane.(fieldName)) >= m && ...
@@ -539,16 +643,24 @@ function tf = local_gcamp_slot_exists(data, fieldName, m, p)
          numel(data.gcamp_plane.(fieldName){m}) >= p;
 end
 
+
 function tf = local_gcamp_group_has_values(data, fieldName, m, nPlanes)
+
     tf = false;
-    if ~isfield(data, 'gcamp_plane') || ~isfield(data.gcamp_plane, fieldName) || numel(data.gcamp_plane.(fieldName)) < m
+
+    if ~isfield(data, 'gcamp_plane') || ...
+            ~isfield(data.gcamp_plane, fieldName) || ...
+            numel(data.gcamp_plane.(fieldName)) < m
         return;
     end
+
     vals = coerce_to_plane_cell_local(data.gcamp_plane.(fieldName){m}, nPlanes);
     tf = any(~cellfun(@isempty, vals));
 end
 
+
 function tf = blue_plane_has_meaningful_content(data, m, p)
+
     tf = blue_plane_slot_exists(data, 'F_blue_by_plane', m, p) && ...
          blue_plane_slot_exists(data, 'mask_cellpose_by_plane', m, p) && ...
          blue_plane_slot_exists(data, 'props_cellpose_by_plane', m, p) && ...
@@ -563,7 +675,9 @@ function tf = blue_plane_has_meaningful_content(data, m, p)
          ~isempty(data.blue_plane.num_cells_mask_by_plane{m}{p});
 end
 
+
 function out = subset_cells_or_struct(x, keep_mask)
+
     if isempty(x)
         out = x;
         return;
@@ -581,6 +695,7 @@ function out = subset_cells_or_struct(x, keep_mask)
             idx = idx(idx >= 1 & idx <= numel(x));
             out = x(idx);
         end
+
     elseif isstruct(x)
         if islogical(keep_mask)
             if numel(x) == numel(keep_mask)
@@ -593,12 +708,15 @@ function out = subset_cells_or_struct(x, keep_mask)
             idx = idx(idx >= 1 & idx <= numel(x));
             out = x(idx);
         end
+
     else
         out = x;
     end
 end
 
+
 function out = subset_mask_stack(mask_stack, keep_idx_or_mask)
+
     if isempty(mask_stack)
         out = mask_stack;
         return;
@@ -618,7 +736,9 @@ function out = subset_mask_stack(mask_stack, keep_idx_or_mask)
     out = mask_stack(keep_idx, :, :);
 end
 
+
 function stack = cell_mask_list_to_stack(mask_cellpose)
+
     if isempty(mask_cellpose)
         stack = false(0,0,0);
         return;
@@ -629,6 +749,7 @@ function stack = cell_mask_list_to_stack(mask_cellpose)
             stack = logical(mask_cellpose);
             return;
         end
+
         error('cell_mask_list_to_stack:InvalidType', ...
             'mask_cellpose doit être un cell array ou un stack logique.');
     end
@@ -663,7 +784,9 @@ function stack = cell_mask_list_to_stack(mask_cellpose)
     end
 end
 
+
 function data = set_empty_blue_plane(data, m, p)
+
     data.blue_plane.matched_gcamp_idx_by_plane{m}{p}      = [];
     data.blue_plane.matched_cellpose_idx_by_plane{m}{p}   = [];
     data.blue_plane.gcamp_unmatched_idx_by_plane{m}{p}    = [];
@@ -679,12 +802,19 @@ function data = set_empty_blue_plane(data, m, p)
     data.blue_plane.ops_suite2p_blue_by_plane{m}{p}       = [];
 end
 
+
 function saveStruct_blue = collect_blue_fields_for_save(data, m, fields_blue)
+
     saveStruct_blue = struct();
 
     for f = 1:numel(fields_blue)
+
         fieldName = fields_blue{f};
-        if isfield(data, 'blue_plane') && isfield(data.blue_plane, fieldName) && numel(data.blue_plane.(fieldName)) >= m
+
+        if isfield(data, 'blue_plane') && ...
+                isfield(data.blue_plane, fieldName) && ...
+                numel(data.blue_plane.(fieldName)) >= m
+
             saveStruct_blue.(fieldName) = data.blue_plane.(fieldName){m};
         end
     end
