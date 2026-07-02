@@ -1,8 +1,14 @@
-function selected_groups = compute_DF(selected_groups)
+function selected_groups = compute_DF(selected_groups, include_blue_cells)
 
     if nargin < 1 || isempty(selected_groups)
         return;
     end
+
+    if nargin < 2 || isempty(include_blue_cells)
+        include_blue_cells = '1';
+    end
+
+    include_blue_cells = char(string(include_blue_cells));
 
     type_names = fieldnames(selected_groups);
 
@@ -26,17 +32,13 @@ function selected_groups = compute_DF(selected_groups)
 
             gcamp_root_folders = paths.gcamp_root;
             date_group_paths   = paths.date;
-            current_xml_group  = paths.xml;
 
             current_animal_group = selected_groups.(current_type)(k).animal_group;
 
-            %======================================================
-            % Sampling rate + synchronous frames depuis metadata
-            %======================================================
             sampling_rate_group = metadata.SamplingRatePlane;
 
             synchronous_frames_group = cell(size(sampling_rate_group));
-            
+
             for m = 1:numel(sampling_rate_group)
                 synchronous_frames_group{m} = ...
                     round(0.2 * sampling_rate_group{m});
@@ -48,11 +50,9 @@ function selected_groups = compute_DF(selected_groups)
                 date_group_paths, ...
                 synchronous_frames_group, ...
                 data, ...
-                metadata);
+                metadata, ...
+                include_blue_cells);
 
-            %======================================================
-            % Save back
-            %======================================================
             selected_groups.(current_type)(k).data = data;
             selected_groups.(current_type)(k).results_analysis = results_analysis;
         end

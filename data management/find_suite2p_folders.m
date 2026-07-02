@@ -387,24 +387,45 @@ end
 % --------- Sous-fonctions --------- %
 
 function [xml_paths_all, xml_path] = processEnvFile(TSeriesPathGcamp)
+
+    xml_paths_all = {};
+    xml_path = '';
+
+    % ------------------------------------------------------
+    % 1) Recherche dans raw_data
+    % ------------------------------------------------------
     xml_folder = fullfile(TSeriesPathGcamp, 'raw_data');
 
     if isfolder(xml_folder)
         xml_file = dir(fullfile(xml_folder, '*.xml'));
-    else
-        warning('raw_data folder not found in %s', TSeriesPathGcamp);
-        xml_file = [];
-    end
-    
-    xml_paths_all = {};
 
-    if ~isempty(xml_file)
-        xml_path = fullfile(TSeriesPathGcamp, 'raw_data', xml_file(1).name);
-        xml_paths_all{end+1} = xml_path;
+        if ~isempty(xml_file)
+            xml_path = fullfile(xml_folder, xml_file(1).name);
+        end
+    end
+
+    % ------------------------------------------------------
+    % 2) Si absent, recherche directement dans le dossier TSeries
+    % ------------------------------------------------------
+    if isempty(xml_path)
+
+        xml_file = dir(fullfile(TSeriesPathGcamp, '*.xml'));
+
+        if ~isempty(xml_file)
+            xml_path = fullfile(TSeriesPathGcamp, xml_file(1).name);
+        end
+    end
+
+    % ------------------------------------------------------
+    % 3) Sortie
+    % ------------------------------------------------------
+    if isempty(xml_path)
+        warning('No XML file found in %s or %s.', ...
+            fullfile(TSeriesPathGcamp,'raw_data'), TSeriesPathGcamp);
+
+        xml_paths_all{1} = '';
     else
-        disp(['Warning: No .xml file found in GCaMP folder: ', TSeriesPathGcamp]);
-        xml_path = '';
-        xml_paths_all{end+1} = '';
+        xml_paths_all{1} = xml_path;
     end
 end
 

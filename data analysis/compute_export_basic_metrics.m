@@ -4,9 +4,17 @@ function results_analysis = compute_export_basic_metrics( ...
     date_group_paths, ...
     synchronous_frames_group, ...
     data, ...
-    metadata)
+    metadata, ...
+    include_blue_cells)
 
     nRec = numel(gcamp_root_folders);
+
+    if nargin < 7 || isempty(include_blue_cells)
+        include_blue_cells = '1';
+    end
+    
+    include_blue_cells = char(string(include_blue_cells));
+    process_blue_combined = ~strcmp(include_blue_cells, '1');
 
     results_analysis = init_empty_results_analysis(nRec);
 
@@ -50,16 +58,20 @@ function results_analysis = compute_export_basic_metrics( ...
             %======================================================
             % Basic metrics Blue
             %======================================================
-            blue_metrics = compute_branch_metrics_by_plane( ...
-                data, 'blue_plane', m, sampling_rate, ...
-                'DF_blue_by_plane', ...
-                'Raster_blue_by_plane');
+            if process_blue_combined
+                blue_metrics = compute_branch_metrics_by_plane( ...
+                    data, 'blue_plane', m, sampling_rate, ...
+                    'DF_blue_by_plane', ...
+                    'Raster_blue_by_plane');
+            else
+                blue_metrics = empty_branch_metrics();
+            end
 
             %======================================================
             % Pairwise correlation
             %======================================================
             corr_metrics = load_or_process_corr_for_session( ...
-                gcamp_root_folders, data, m);
+                gcamp_root_folders, data, m, include_blue_cells);
 
             %======================================================
             % SCEs
@@ -70,7 +82,8 @@ function results_analysis = compute_export_basic_metrics( ...
                 gcamp_root_folders, ...
                 synchronous_frames_group, ...
                 data, ...
-                m);
+                m, ...
+                sampling_rate);
 
             %======================================================
             % General
@@ -154,8 +167,8 @@ function results_analysis = compute_export_basic_metrics( ...
             results_analysis.SCEs.Threshold{m} = ...
                 sce_metrics.sce_n_cells_threshold;
 
-            results_analysis.SCEs.Number{m} = ...
-                sce_metrics.num_sces;
+            results_analysis.SCEs.Frequency{m} = ...
+                sce_metrics.sce_frequency_per_min;
 
             results_analysis.SCEs.CellParticipation_percent{m} = ...
                 sce_metrics.cell_participation_percent;
@@ -206,12 +219,19 @@ function results_analysis = init_empty_results_analysis(nRec)
     results_analysis.SCEs.sce_n_cells_threshold = cell(nRec, 1);
 
     results_analysis.SCEs.Threshold = cell(nRec, 1);
-    results_analysis.SCEs.Number = cell(nRec, 1);
+    results_analysis.SCEs.Frequency = cell(nRec, 1);
     results_analysis.SCEs.CellParticipation_percent = cell(nRec, 1);
     results_analysis.SCEs.Duration_ms = cell(nRec, 1);
 end
 
-function corr_metrics = load_or_process_corr_for_session(gcamp_root_folders, data, m)
+function corr_metrics = load_or_process_corr_for_session(gcamp_root_folders, data, m, include_blue_cells)
+    
+    if nargin < 4 || isempty(include_blue_cells)
+        include_blue_cells = '1';
+    end
+    
+    include_blue_cells = char(string(include_blue_cells));
+    process_blue_combined = ~strcmp(include_blue_cells, '1');
 
     corr_metrics = struct( ...
         'max_corr_gcamp_gcamp_by_plane', {{}}, ...
@@ -226,7 +246,6 @@ function corr_metrics = load_or_process_corr_for_session(gcamp_root_folders, dat
     end
 
     filePath = fullfile(gcamp_root_folders{m}, 'results_corr.mat');
-    disp(filePath);
 
     DFg_planes = get_planes_or_error_nested(data, 'gcamp_plane', m, 'DF_gcamp_by_plane');
     nPlanes = numel(DFg_planes);
@@ -234,7 +253,7 @@ function corr_metrics = load_or_process_corr_for_session(gcamp_root_folders, dat
     mc_gg_planes = cell(1, nPlanes);
     mc_gm_planes = cell(1, nPlanes);
     mc_mm_planes = cell(1, nPlanes);
-
+    
     if exist(filePath, 'file') == 2
 
         loaded = load(filePath);
@@ -264,39 +283,43 @@ function corr_metrics = load_or_process_corr_for_session(gcamp_root_folders, dat
             numel(data.combined_plane.DF_combined_by_plane) >= m && ...
             ~isempty(data.combined_plane.DF_combined_by_plane{m});
 
-        use_combined = has_combined_by_plane;
-
-        DFc_planes = [];
-        blue_idx_planes = [];
+        has_blue_indices = ...
+            isfield(data, 'combined_plane') && ...
+            isstruct(data.combined_plane) && ...
+            isfield(data.combined_plane, 'blue_indices_combined_by_plane') && ...
+            numel(data.combined_plane.blue_indices_combined_by_plane) >= m && ...
+            ~isempty(data.combined_plane.blue_indices_combined_by_plane{m});
+        
+        use_combined = process_blue_combined && has_combined_by_plane && has_blue_indices;
 
         if use_combined
 
-            DFc_planes = get_planes_or_error_nested(data, 'combined_plane', m, 'DF_combined_by_plane');
-
-            if ~isfield(data, 'combined_plane') || ...
-               ~isstruct(data.combined_plane) || ...
-               ~isfield(data.combined_plane, 'blue_indices_combined_by_plane') || ...
-               numel(data.combined_plane.blue_indices_combined_by_plane) < m || ...
-               isempty(data.combined_plane.blue_indices_combined_by_plane{m})
-
-                error('Session %d: data.combined_plane.blue_indices_combined_by_plane{%d} manquant/vide.', m, m);
-            end
-
-            blue_idx_planes = data.combined_plane.blue_indices_combined_by_plane{m};
-
+            DFc_planes = get_planes_or_error_nested( ...
+                data, 'combined_plane', m, 'DF_combined_by_plane');
+        
+            blue_idx_planes = ...
+                data.combined_plane.blue_indices_combined_by_plane{m};
+        
             if ~iscell(blue_idx_planes)
-                error('Session %d: blue_indices_combined_by_plane{%d} doit être une cell par plan.', m, m);
+                error('Session %d: blue_indices_combined_by_plane{%d} doit être une cell.', ...
+                    m, m);
             end
-
+        
             if numel(DFc_planes) ~= nPlanes
-                error('Session %d: mismatch #plans DF_gcamp(%d) vs DF_combined(%d).', ...
+                error('Session %d: mismatch DF_gcamp (%d) vs DF_combined (%d).', ...
                     m, nPlanes, numel(DFc_planes));
             end
-
+        
             if numel(blue_idx_planes) ~= nPlanes
-                error('Session %d: mismatch #plans DF_gcamp(%d) vs blue_indices(%d).', ...
+                error('Session %d: mismatch DF_gcamp (%d) vs blue_indices (%d).', ...
                     m, nPlanes, numel(blue_idx_planes));
             end
+        
+        else
+        
+            DFc_planes = cell(1,nPlanes);
+            blue_idx_planes = cell(1,nPlanes);
+        
         end
 
         disp(['Computing pairwise correlations (BY PLANE) for folder ', num2str(m)]);
@@ -347,7 +370,8 @@ function sce_metrics = load_or_process_sce_for_session( ...
     gcamp_root_folders, ...
     synchronous_frames_group, ...
     data, ...
-    m)
+    m, ...
+    sampling_rate)
 
     sce_metrics = struct( ...
         'Race_gcamp', [], ...
@@ -355,7 +379,7 @@ function sce_metrics = load_or_process_sce_for_session( ...
         'sces_distances_gcamp', [], ...
         'RasterRace_gcamp', [], ...
         'sce_n_cells_threshold', [], ...
-        'num_sces', NaN, ...
+        'sce_frequency_per_min', NaN, ...
         'cell_participation_percent', [], ...
         'duration_ms', []);
 
@@ -367,6 +391,16 @@ function sce_metrics = load_or_process_sce_for_session( ...
     end
 
     filePath = fullfile(gcamp_root_folders{m}, 'results_SCEs.mat');
+
+    Raster_global_for_duration = concat_planes_local_nested( ...
+    data, 'gcamp_plane', m, 'Raster_gcamp_by_plane', 'logical');
+
+    if isempty(Raster_global_for_duration) || sampling_rate <= 0
+        sce_metrics.recording_duration_min = NaN;
+    else
+        sce_metrics.recording_duration_min = ...
+            size(Raster_global_for_duration, 2) / sampling_rate / 60;
+    end
 
     if exist(filePath, 'file') == 2
 
@@ -461,15 +495,25 @@ end
 
 function sce_metrics = compute_sce_summary_metrics(sce_metrics)
 
-    sce_metrics.num_sces = NaN;
+    sce_metrics.sce_frequency_per_min = NaN;
     sce_metrics.cell_participation_percent = [];
     sce_metrics.duration_ms = [];
 
     TRace_gcamp = sce_metrics.TRace_gcamp;
 
     if ~isempty(TRace_gcamp)
+
         TRace_gcamp = TRace_gcamp(:);
-        sce_metrics.num_sces = numel(TRace_gcamp);
+
+        if isfield(sce_metrics,'recording_duration_min') && ...
+                ~isempty(sce_metrics.recording_duration_min) && ...
+                sce_metrics.recording_duration_min > 0
+
+            sce_metrics.sce_frequency_per_min = ...
+                numel(TRace_gcamp) / sce_metrics.recording_duration_min;
+
+        end
+
     else
         return;
     end
@@ -975,4 +1019,17 @@ function c = ensure_plane_cell(c, nPlanes)
     elseif numel(c) < nPlanes
         c = [c, cell(1, nPlanes - numel(c))];
     end
+end
+
+function metrics = empty_branch_metrics()
+
+    metrics = struct( ...
+        'valid', false, ...
+        'nCells_by_plane', {{}}, ...
+        'nFrames_by_plane', {{}}, ...
+        'freq_by_plane', {{}}, ...
+        'intervals_ms_by_plane', {{}}, ...
+        'burst_rate_by_plane', {{}}, ...
+        'burst_fraction_by_plane', {{}}, ...
+        'burst_size_by_plane', {{}});
 end

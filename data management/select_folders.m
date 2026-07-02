@@ -95,7 +95,7 @@ function folder_names = get_folder_list(type, lastFolderName)
             folder_names = {
                 'an1\2024-03-04';
                 'an2\2024-04-29';
-                'an2\2024-04-30';
+                %'an2\2024-04-30';
                 'an4\2024-06-07';
                 'an5\2024-06-12';
                 'an5\2024-06-13';

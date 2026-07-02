@@ -1,5 +1,5 @@
 %% Choix du type
-clearvars -except choices group_order animal_date_list selected_groups
+clearvars -except choices group_order selected_groups
 clc
 
 setup_python_env()
@@ -20,25 +20,27 @@ selected_groups = create_data(selected_groups);
 
 selected_groups = create_metadata(selected_groups);
 
-%recap_all = create_summary_sheets(selected_groups);
+%recap_all = create_summary_sheets(selected_gr0oups);
 
 % Data processing
-include_blue_cells = '2';
+include_blue_cells = '1';
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
 
 selected_groups = DF_peak_detection(selected_groups, include_blue_cells);
 
-selected_groups = compute_DF(selected_groups);
+%selected_groups = data_checking(selected_groups, include_blue_cells);
 
-%%
-plot_traces_sorted_by_burst_rate(selected_groups)
+selected_groups = compute_DF(selected_groups, include_blue_cells);
+
+%%plot_traces_sorted_by_burst_rate(selected_groups)
 %%
 % Data visualization (Grouped by layers)
 figs_by_type = visualize_data(selected_groups);
 
 
+%%
 
-
+build_rasterplot_DF_random_traces(selected_groups)
 
     %%
 corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysis required
@@ -50,8 +52,8 @@ corr_boxplots = corr_groups_boxplots_all(selected_groups); % correlation analysi
 
 figs = plot_by_type_no_age(selected_groups);
 %%
-pooled_level = 2; % 1 = pas de pooling
-comparison_barplots = compare_groups_barplots(grouped_data_by_age, pooled_level); % several animal type required (jm, FCD, WT)
+figs = compare_groups_barplots(selected_groups, 4, 'gcamp_plane');
+
 %%
 figs = RasterChange_around_SCEs(selected_groups);
 figs = FiringRateChange_around_SCEs(selected_groups);

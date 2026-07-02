@@ -5,20 +5,25 @@ function data = run_gcamp_peak_detection( ...
     data, meanImgs_gcamp, ...
     current_gcamp_TSeries_path, ...
     current_animal_group, ...
-    include_blue_cells)
+    include_blue_cells, ...
+    peak_detection_mode)
 
     numFolders = numel(gcamp_output_folders);
 
     if nargin < 9 || isempty(include_blue_cells)
         include_blue_cells = '1';
     end
+    
+    if nargin < 10 || isempty(peak_detection_mode)
+        peak_detection_mode = ask_initial_peak_detection_mode();
+    end
 
     include_blue_cells = char(string(include_blue_cells));
 
     % Selon la logique demandée :
-    % include_blue_cells == '1' -> GCaMP uniquement
-    % include_blue_cells ~= '1' -> blue/combined autorisés
-    process_blue_combined = ~strcmp(include_blue_cells, '1');
+    % include_blue_cells == '1' -> blue/combined autorisés
+    % include_blue_cells ~= '1' -> GCaMP uniquement
+    process_blue_combined = strcmp(include_blue_cells, '1');
 
     fields_detect_gcamp = { ...
         'F0_gcamp_by_plane', 'noise_est_gcamp_by_plane', ...
@@ -78,10 +83,17 @@ function data = run_gcamp_peak_detection( ...
 
     data = init_motion_group_if_needed(data, numFolders, fields_motion_group);
 
-    processing_mode = ask_processing_mode();  
+    processing_mode = peak_detection_mode;
 
-    global_existing_detection_action = '';
-    global_existing_detection_action_initialized = false;
+    switch processing_mode
+        case 'viewer'
+            global_existing_detection_action = 'viewer';
+        case 'load_only'
+            global_existing_detection_action = 'load_only';
+    end
+    
+    global_existing_detection_action_initialized = true;
+    
     global_choice_state = struct();
     global_choice_state.mode = '';
     global_choice_state.initialized = false;
@@ -287,67 +299,73 @@ function data = run_gcamp_peak_detection( ...
 
             if ~isempty(ops_motion_ref) && ...
                isfield(ops_motion_ref, 'corrXY') && ...
-               ~isempty(ops_motion_ref.corrXY) && ...
-               ~isempty(speed_active_group)
-
+               ~isempty(ops_motion_ref.corrXY)
+        
                 corrXY = ops_motion_ref.corrXY(:);
-                speed  = speed_active_group(:);
-
-                N = min(numel(corrXY), numel(speed));
-
-                corrXY = corrXY(1:N);
-                speed  = speed(1:N);
-
+                N = numel(corrXY);
+        
                 rolling_median = movmedian(corrXY, 300);
                 deviation_group = corrXY - rolling_median;
-
+        
                 sigma_dev = std(deviation_group(deviation_group < 0), 'omitnan');
                 seuil_bad = -3 * sigma_dev;
-
+        
                 bad_frames_logical = deviation_group < seuil_bad;
                 bad_frames_logical = conv(double(bad_frames_logical), [1 1 1], 'same') > 0;
-
+        
                 bad_frames_group = find(bad_frames_logical);
                 bad_frames_group = bad_frames_group(:).';
-
-                bad_frames_no_movement   = bad_frames_logical & (speed < 1);
-                bad_frames_with_movement = bad_frames_logical & (speed >= 1);
-
+        
                 bad_segs_group   = badframes_to_segments(bad_frames_group, N);
                 focus_segs_group = bad_segs_group;
-
+        
                 deviation_group = deviation_group(:).';
-
-                fprintf('Bad frames total : %d (%.2f%%)\n', ...
-                    numel(bad_frames_group), 100*numel(bad_frames_group)/N);
-
-                fprintf('Bad frames SANS mouvement (speed < 1) : %d (%.2f%%)\n', ...
-                    sum(bad_frames_no_movement), 100*sum(bad_frames_no_movement)/N);
-
-                fprintf('Bad frames AVEC mouvement (speed >= 1) : %d (%.2f%%)\n', ...
-                    sum(bad_frames_with_movement), 100*sum(bad_frames_with_movement)/N);
-
+        
+                if ~isempty(speed_active_group)
+        
+                    speed = speed_active_group(:);
+                    Nspeed = min(numel(speed), N);
+        
+                    bad_tmp = bad_frames_logical(1:Nspeed);
+                    speed_tmp = speed(1:Nspeed);
+        
+                    bad_frames_no_movement   = bad_tmp & (speed_tmp < 1);
+                    bad_frames_with_movement = bad_tmp & (speed_tmp >= 1);
+        
+                    fprintf('Bad frames total : %d (%.2f%%)\n', ...
+                        numel(bad_frames_group), 100*numel(bad_frames_group)/N);
+        
+                    fprintf('Bad frames SANS mouvement (speed < 1) : %d (%.2f%%)\n', ...
+                        sum(bad_frames_no_movement), 100*sum(bad_frames_no_movement)/Nspeed);
+        
+                    fprintf('Bad frames AVEC mouvement (speed >= 1) : %d (%.2f%%)\n', ...
+                        sum(bad_frames_with_movement), 100*sum(bad_frames_with_movement)/Nspeed);
+        
+                else
+        
+                    fprintf('Bad frames total : %d (%.2f%%)\n', ...
+                        numel(bad_frames_group), 100*numel(bad_frames_group)/N);
+        
+                    fprintf('speed_active_group absent : séparation mouvement/non-mouvement non faite.\n');
+                end
+        
                 data.motion.bad_frames_group{m}    = bad_frames_group;
                 data.motion.bad_segs_group{m}      = bad_segs_group;
                 data.motion.deviation_group{m}     = deviation_group;
                 data.motion.focus_segs_group{m}    = focus_segs_group;
-                data.motion.motion_energy_group{m} = motion_energy_group;
-
+        
+                if ~isempty(motion_energy_group)
+                    data.motion.motion_energy_group{m} = motion_energy_group;
+                end
+        
                 has_new_motion_group = true;
-
+        
             else
-                warning('%s: impossible de calculer motion group : corrXY ou speed_active_group manquant.', record_label_m);
+                warning('%s: impossible de calculer deviation group : corrXY manquant.', record_label_m);
             end
         end
 
-        if strcmp(processing_mode, 'case_by_case')
-            group_choice_state = struct();
-            group_choice_state.mode = '';
-            group_choice_state.initialized = false;
-            group_choice_state.ask_each_plane = true;
-        else
-            group_choice_state = global_choice_state;
-        end
+        group_choice_state = global_choice_state;
 
         for p = 1:nPlanes
 
@@ -386,33 +404,16 @@ function data = run_gcamp_peak_detection( ...
 
             if has_detection_plane
 
-                if strcmp(processing_mode, 'global')
+                switch global_existing_detection_action
+                    case 'viewer'
+                        viewer_mode_requested_plane = true;
+                        skip_plane = false;
             
-                    if ~global_existing_detection_action_initialized
-            
-                        global_existing_detection_action = ask_existing_detection_action_global( ...
-                            record_label_m);
-            
-                        global_existing_detection_action_initialized = true;
-                    end
-            
-                    switch global_existing_detection_action
-            
-                        case 'viewer'
-                            viewer_mode_requested_plane = true;
-                            skip_plane = false;
-            
-                        otherwise
-                            viewer_mode_requested_plane = false;
-                            skip_plane = true;
-                    end
-            
-                else
-            
-                    [viewer_mode_requested_plane, skip_plane] = ...
-                        ask_viewer(true, record_label_m, p, 'plane');
+                    case 'load_only'
+                        viewer_mode_requested_plane = false;
+                        skip_plane = true;
                 end
-
+            
                 if skip_plane
                     fprintf('%s - plane %d: existing detection loaded only.\n', record_label_m, p);
                     continue;
@@ -1691,25 +1692,6 @@ function metadata_m = get_metadata_for_record(metadata, idx)
         else
             metadata_m.(field) = value;
         end
-    end
-end
-
-function mode = ask_processing_mode()
-
-    answer = questdlg( ...
-        ['Choose processing mode:' newline newline ...
-         'Global processing: same signal choice reused automatically.' newline ...
-         'Case by case: choose independently for each plane.'], ...
-        'Processing mode', ...
-        'global processing', ...
-        'case by case', ...
-        'case by case');
-
-    switch answer
-        case 'global processing'
-            mode = 'global';
-        otherwise
-            mode = 'case_by_case';
     end
 end
 
