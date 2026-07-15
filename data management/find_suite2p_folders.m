@@ -1,388 +1,342 @@
-function [suite2p_folders, TSeriesPaths, xml_paths_all, true_xml_paths, lastFolderNames, Fallmat_paths] = find_suite2p_folders(selectedFolders)
-
-    numFolders = numel(selectedFolders);
-
-    % suite2p_folders :
-    %   - colonne 1 (Gcamp) : cell array de dossiers plane* valides si ops.npy présent
-    %   - colonnes 2–4 : idem pour Red, Blue, Green
-    suite2p_folders = cell(numFolders, 4);
-
-    % TSeriesPaths :
-    %   - chemins des TSeries par canal
-    TSeriesPaths = cell(numFolders, 4);
-
-    % Fallmat_paths :
-    %   - chemins vers Fall.mat si présent
-    Fallmat_paths = cell(numFolders, 4);
-
-    true_xml_paths  = cell(numFolders, 1);
-    lastFolderNames = cell(numFolders, 4);
-    xml_paths_all   = cell(numFolders, 1);
+function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
+    true_xml_paths, lastFolderNames, Fallmat_paths] = ...
+    find_suite2p_folders(selectedFolders)
 
     labels = {'Gcamp', 'Red', 'Blue', 'Green'};
 
-    for idx = 1:numFolders
+    suite2p_folders = cell(0,4);
+    TSeriesPaths    = cell(0,4);
+    Fallmat_paths   = cell(0,4);
+
+    true_xml_paths  = cell(0,1);
+    lastFolderNames = cell(0,4);
+    xml_paths_all   = cell(0,1);
+
+    output_idx = 0;
+
+    for idx = 1:numel(selectedFolders)
+
         selectedFolder = selectedFolders{idx};
 
         if ~isfolder(selectedFolder)
-            disp(['Warning: Folder does not exist: ', selectedFolder]);
+
+            warning('Folder does not exist: %s', ...
+                selectedFolder);
+
             continue;
         end
 
-        TSeriesFoldersList = dir(fullfile(selectedFolder, 'TSeries*'));
+        TSeriesFoldersList = dir( ...
+            fullfile(selectedFolder, 'TSeries*'));
+
+        TSeriesFoldersList = ...
+            TSeriesFoldersList([TSeriesFoldersList.isdir]);
+
         if isempty(TSeriesFoldersList)
-            disp(['No TSeries folders found in folder: ', selectedFolder, '. Skipping.']);
+
+            fprintf('No TSeries folders found in: %s\n', ...
+                selectedFolder);
+
             continue;
         end
 
-        TSeriesPathsTemp = repmat({''}, 1, numel(labels));
-        foundFolders     = cell(1, numel(labels));
-        [foundFolders{:}] = deal({});
+        % ==========================================================
+        % Identifier tous les TSeries GCaMP
+        % ==========================================================
+        gcamp_paths = {};
 
-        % ------------------------------------------------------------
-        % Tri des TSeries* par label
-        % ------------------------------------------------------------
+        all_paths = cell(numel(TSeriesFoldersList),1);
+
         for i = 1:numel(TSeriesFoldersList)
+
             folderName = TSeriesFoldersList(i).name;
-            fullPath   = fullfile(selectedFolder, folderName);
-            matched    = false;
 
-            folderNameLower = lower(folderName);
+            fullPath = fullfile( ...
+                selectedFolder, ...
+                folderName);
 
-            for k = 1:numel(labels)
-                labelLower = lower(labels{k});
+            all_paths{i} = fullPath;
 
-                % Cas spécial pour éviter que blue_transfert rentre aussi dans blue
-                if strcmpi(labelLower, 'blue')
-                    tf = contains(folderNameLower, '-blue-') && ...
-                         ~contains(folderNameLower, 'blue-transfert') && ...
-                         ~contains(folderNameLower, 'blue_transfert');
-                else
-                    tf = contains(folderNameLower, labelLower);
-                end
+            if contains(lower(folderName), 'gcamp')
 
-                if tf
-                    foundFolders{k}{end+1} = fullPath;
-                    matched = true;
-                end
-            end
-
-            % Si rien ne matche, ne rien ajouter
-            if ~matched
-                continue;
+                gcamp_paths{end+1,1} = fullPath; %#ok<AGROW>
             end
         end
 
-        % ------------------------------------------------------------
-        % 1) Sélection GCAMP d'abord
-        % ------------------------------------------------------------
-        gcamp_idx = find(strcmpi(labels, 'gcamp'), 1);
+        if isempty(gcamp_paths)
 
-        if ~isempty(gcamp_idx) && ~isempty(foundFolders{gcamp_idx})
-            if isscalar(foundFolders{gcamp_idx})
-                TSeriesPathsTemp{gcamp_idx} = foundFolders{gcamp_idx}{1};
+            warning('No GCaMP TSeries found in: %s', ...
+                selectedFolder);
+
+            continue;
+        end
+
+        % ==========================================================
+        % UNE LIGNE PAR TSERIES GCAMP
+        % ==========================================================
+        for g = 1:numel(gcamp_paths)
+
+            output_idx = output_idx + 1;
+
+            gcamp_path = gcamp_paths{g};
+
+            TSeriesPaths{output_idx,1} = gcamp_path;
+
+            % ======================================================
+            % Numéro final du GCaMP
+            % ======================================================
+            [~, gcamp_name] = fileparts(gcamp_path);
+
+            gcamp_num = regexp( ...
+                gcamp_name, ...
+                '-(\d+)$', ...
+                'tokens', ...
+                'once');
+
+            if ~isempty(gcamp_num)
+                gcamp_num = gcamp_num{1};
             else
-                start_path    = selectedFolder;
-                titleTxt      = 'Select TSeries gcamp folder';
-                selected_path = uigetdir(start_path, titleTxt);
+                gcamp_num = '';
+            end
 
-                if isequal(selected_path, 0)
-                    TSeriesPathsTemp{gcamp_idx} = '';
+            % ======================================================
+            % Matcher les autres canaux
+            % ======================================================
+            for k = 2:numel(labels)
+
+                matched_path = '';
+
+                for i = 1:numel(all_paths)
+
+                    this_path = all_paths{i};
+
+                    [~, this_name] = fileparts(this_path);
+
+                    this_name_lower = lower(this_name);
+
+                    % ----------------------------------------------
+                    % Vérifier le label
+                    % ----------------------------------------------
+                    if strcmpi(labels{k}, 'blue')
+
+                        label_match = ...
+                            contains(this_name_lower, '-blue-') && ...
+                            ~contains(this_name_lower, ...
+                                'blue-transfert') && ...
+                            ~contains(this_name_lower, ...
+                                'blue_transfert');
+
+                    else
+
+                        label_match = contains( ...
+                            this_name_lower, ...
+                            lower(labels{k}));
+                    end
+
+                    if ~label_match
+                        continue;
+                    end
+
+                    % ----------------------------------------------
+                    % Vérifier le suffixe recording
+                    % ----------------------------------------------
+                    this_num = regexp( ...
+                        this_name, ...
+                        '-(\d+)$', ...
+                        'tokens', ...
+                        'once');
+
+                    if isempty(this_num)
+                        continue;
+                    end
+
+                    if strcmp(this_num{1}, gcamp_num)
+
+                        matched_path = this_path;
+                        break;
+                    end
+                end
+
+                TSeriesPaths{output_idx,k} = matched_path;
+            end
+
+            % ======================================================
+            % Blue / Green sous-dossiers
+            % ======================================================
+            blue_path = TSeriesPaths{output_idx,3};
+
+            if ~isempty(blue_path)
+
+                blueFolder = fullfile(blue_path, 'Blue');
+                greenFolder = fullfile(blue_path, 'Green');
+
+                % BLUE
+                if ~exist(blueFolder, 'dir')
+
+                    tiffFiles = dir( ...
+                        fullfile(blue_path, '*Ch3*.tif'));
+
+                    if ~isempty(tiffFiles)
+
+                        mkdir(blueFolder);
+
+                        for j = 1:numel(tiffFiles)
+
+                            movefile( ...
+                                fullfile( ...
+                                    blue_path, ...
+                                    tiffFiles(j).name), ...
+                                fullfile( ...
+                                    blueFolder, ...
+                                    tiffFiles(j).name));
+                        end
+                    end
+                end
+
+                blueFiles = dir( ...
+                    fullfile(blueFolder, '*.tif'));
+
+                if exist(blueFolder, 'dir') && ...
+                        ~isempty(blueFiles)
+
+                    TSeriesPaths{output_idx,3} = blueFolder;
                 else
-                    if ~contains(lower(selected_path), 'tseries')
-                        warning('Le dossier choisi ne ressemble pas à un dossier TSeries: %s', selected_path);
-                    end
-                    TSeriesPathsTemp{gcamp_idx} = selected_path;
-                end
-            end
-        end
-
-        % ------------------------------------------------------------
-        % 2) Sélection des autres canaux
-        % ------------------------------------------------------------
-        for k = 1:numel(labels)
-
-            % déjà traité
-            if k == gcamp_idx
-                continue;
-            end
-
-            if isempty(foundFolders{k})
-                continue;
-            end
-
-            % --------------------------------------------------------
-            % Cas spécial BLUE
-            % --------------------------------------------------------
-            if strcmpi(labels{k}, 'blue')
-
-                all_paths = foundFolders{k};
-
-                % vrais blue uniquement
-                is_blue = contains(lower(all_paths), '-blue-') & ...
-                          ~contains(lower(all_paths), 'blue-transfert') & ...
-                          ~contains(lower(all_paths), 'blue_transfert');
-
-                blue_paths = all_paths(is_blue);
-
-                % Si aucun vrai blue trouvé, on retombe sur les dossiers trouvés
-                if isempty(blue_paths)
-                    blue_paths = all_paths;
+                    TSeriesPaths{output_idx,3} = '';
                 end
 
-                % Si gcamp est disponible, matcher le suffixe final
-                if ~isempty(gcamp_idx) && ~isempty(TSeriesPathsTemp{gcamp_idx})
-                    gcamp_path = TSeriesPathsTemp{gcamp_idx};
-                    [~, gcamp_name] = fileparts(gcamp_path);
-                    gcamp_num = regexp(gcamp_name, '-(\d+)$', 'tokens', 'once');
+                % GREEN
+                if ~exist(greenFolder, 'dir')
 
-                    if ~isempty(gcamp_num)
-                        gcamp_num = gcamp_num{1};
+                    tiffFiles = dir( ...
+                        fullfile(blue_path, '*Ch2*.tif'));
 
-                        matched_blue = {};
-                        for b = 1:numel(blue_paths)
-                            [~, blue_name] = fileparts(blue_paths{b});
-                            this_num = regexp(blue_name, '-(\d+)$', 'tokens', 'once');
+                    if ~isempty(tiffFiles)
 
-                            if ~isempty(this_num) && strcmp(this_num{1}, gcamp_num)
-                                matched_blue{end+1} = blue_paths{b}; %#ok<AGROW>
-                            end
-                        end
+                        mkdir(greenFolder);
 
-                        if isscalar(matched_blue)
-                            TSeriesPathsTemp{k} = matched_blue{1};
-                            continue;
-                        elseif numel(matched_blue) > 1
-                            TSeriesPathsTemp{k} = matched_blue{1};
-                            warning('Plusieurs dossiers blue matchent le numéro GCAMP (%s). Premier choisi: %s', ...
-                                gcamp_num, matched_blue{1});
-                            continue;
+                        for j = 1:numel(tiffFiles)
+
+                            movefile( ...
+                                fullfile( ...
+                                    blue_path, ...
+                                    tiffFiles(j).name), ...
+                                fullfile( ...
+                                    greenFolder, ...
+                                    tiffFiles(j).name));
                         end
                     end
                 end
 
-                % Sinon, si un seul blue dispo, on le prend
-                if isscalar(blue_paths)
-                    TSeriesPathsTemp{k} = blue_paths{1};
+                greenFiles = dir( ...
+                    fullfile(greenFolder, '*.tif'));
+
+                if exist(greenFolder, 'dir') && ...
+                        ~isempty(greenFiles)
+
+                    TSeriesPaths{output_idx,4} = greenFolder;
+                else
+                    TSeriesPaths{output_idx,4} = '';
+                end
+            end
+
+            % ======================================================
+            % Noms TSeries
+            % ======================================================
+            for k = 1:4
+
+                if ~isempty(TSeriesPaths{output_idx,k})
+
+                    [~, lastFolderName] = fileparts( ...
+                        TSeriesPaths{output_idx,k});
+
+                    lastFolderNames{output_idx,k} = ...
+                        lastFolderName;
+                else
+
+                    lastFolderNames{output_idx,k} = '';
+                end
+            end
+
+            % ======================================================
+            % XML
+            % ======================================================
+            [xml_list_tmp, xml_path] = ...
+                processEnvFile(gcamp_path);
+
+            xml_paths_all{output_idx,1} = xml_list_tmp;
+            true_xml_paths{output_idx,1} = xml_path;
+
+            % ======================================================
+            % Suite2p / Fall.mat
+            % ======================================================
+            for j = 1:4
+
+                currentPath = ...
+                    TSeriesPaths{output_idx,j};
+
+                if isempty(currentPath)
+
+                    suite2p_folders{output_idx,j} = {};
+                    Fallmat_paths{output_idx,j} = {};
+
                     continue;
                 end
 
-                % Sinon sélection manuelle
-                start_path    = selectedFolder;
-                titleTxt      = sprintf('Select TSeries %s folder', labels{k});
-                selected_path = uigetdir(start_path, titleTxt);
-
-                if isequal(selected_path, 0)
-                    TSeriesPathsTemp{k} = '';
-                else
-                    if ~contains(lower(selected_path), 'tseries')
-                        warning('Le dossier choisi ne ressemble pas à un dossier TSeries: %s', selected_path);
-                    end
-                    TSeriesPathsTemp{k} = selected_path;
-                end
-
-                continue;
-            end
-
-            % --------------------------------------------------------
-            % Cas normal
-            % --------------------------------------------------------
-            if isscalar(foundFolders{k})
-                TSeriesPathsTemp{k} = foundFolders{k}{1};
-            else
-                start_path    = selectedFolder;
-                titleTxt      = sprintf('Select TSeries %s folder', labels{k});
-                selected_path = uigetdir(start_path, titleTxt);
-
-                if isequal(selected_path, 0)
-                    TSeriesPathsTemp{k} = '';
-                else
-                    if ~contains(lower(selected_path), 'tseries')
-                        warning('Le dossier choisi ne ressemble pas à un dossier TSeries: %s', selected_path);
-                    end
-                    TSeriesPathsTemp{k} = selected_path;
-                end
-            end
-        end
-
-        % ------------------------------------------------------------
-        % Cas spécial Blue/Green regroupés
-        % ------------------------------------------------------------
-        blue_idx  = find(strcmpi(labels, 'blue'), 1);
-        green_idx = find(strcmpi(labels, 'green'), 1);
-
-        if ~isempty(blue_idx) && ~isempty(TSeriesPathsTemp{blue_idx})
-
-            baseFolder = TSeriesPathsTemp{blue_idx};
-
-            blueFolder  = fullfile(baseFolder, 'Blue');
-            greenFolder = fullfile(baseFolder, 'Green');
-
-            % =======================
-            % BLUE
-            % =======================
-            if ~exist(blueFolder, 'dir')
-                tiffFiles = dir(fullfile(baseFolder, '*Ch3*.tif'));
-
-                if ~isempty(tiffFiles)
-                    mkdir(blueFolder);
-                    for j = 1:numel(tiffFiles)
-                        movefile(fullfile(baseFolder, tiffFiles(j).name), ...
-                                 fullfile(blueFolder, tiffFiles(j).name));
-                    end
-                end
-            end
-
-            blueFiles = dir(fullfile(blueFolder, '*.tif'));
-            if exist(blueFolder, 'dir') && ~isempty(blueFiles)
-                TSeriesPathsTemp{blue_idx} = blueFolder;
-            else
-                TSeriesPathsTemp{blue_idx} = '';
-            end
-
-            % =======================
-            % GREEN
-            % =======================
-            if ~isempty(green_idx)
-                if ~exist(greenFolder, 'dir')
-                    tiffFiles = dir(fullfile(baseFolder, '*Ch2*.tif'));
-
-                    if ~isempty(tiffFiles)
-                        mkdir(greenFolder);
-                        for j = 1:numel(tiffFiles)
-                            movefile(fullfile(baseFolder, tiffFiles(j).name), ...
-                                     fullfile(greenFolder, tiffFiles(j).name));
-                        end
-                    else
-                        disp('Green folder hasn''t been created for this TSeries Blue folder');
-                    end
-                end
-
-                greenFiles = dir(fullfile(greenFolder, '*.tif'));
-                if exist(greenFolder, 'dir') && ~isempty(greenFiles)
-                    TSeriesPathsTemp{green_idx} = greenFolder;
-                else
-                    TSeriesPathsTemp{green_idx} = '';
-                end
-            end
-        end
-
-        % ------------------------------------------------------------
-        % Récupération des dossiers plane* pour chaque canal
-        % ------------------------------------------------------------
-        planeFolders_by_channel = cell(1, 4);
-        for j = 1:4
-            currentPath = TSeriesPathsTemp{j};
-
-            if ~isempty(currentPath)
                 planeFolders = process_TSeries(currentPath);
-                if ~isempty(planeFolders)
-                    planeFolders_by_channel{j} = planeFolders;
-                else
-                    planeFolders_by_channel{j} = {};
-                end
-            else
-                planeFolders_by_channel{j} = {};
-            end
-        end
 
-        % ------------------------------------------------------------
-        % Ne jamais ignorer la ligne si GCaMP n'a pas de suite2p/plane*
-        % On garde la date dans selected_groups, avec chemins vides si besoin
-        % ------------------------------------------------------------
-        if isempty(planeFolders_by_channel{1})
-            warning('Aucun dossier suite2p/plane* trouvé pour Gcamp dans %s. Ligne conservée avec suite2p vide.', ...
-                to_char_path(TSeriesPathsTemp{1}));
-        end
+                if isempty(planeFolders)
 
-        % ------------------------------------------------------------
-        % On remplit les sorties seulement si Gcamp est valide
-        % ------------------------------------------------------------
-        TSeriesPaths(idx, :) = TSeriesPathsTemp;
+                    fprintf([ ...
+                        'TSeries conservé sans suite2p | ' ...
+                        '%s | %s\n'], ...
+                        labels{j}, ...
+                        currentPath);
 
-        % Nom du dernier dossier par canal
-        for k = 1:numel(TSeriesPathsTemp)
-            if ~isempty(TSeriesPathsTemp{k})
-                [~, lastFolderName] = fileparts(TSeriesPathsTemp{k});
-                lastFolderNames{idx, k} = lastFolderName;
-            else
-                lastFolderNames{idx, k} = '';
-            end
-        end
+                    suite2p_folders{output_idx,j} = {};
+                    Fallmat_paths{output_idx,j} = {};
 
-        % XML dans le dossier Gcamp
-        if ~isempty(TSeriesPaths{idx, 1})
-            [xml_list_tmp, xml_path] = processEnvFile(TSeriesPaths{idx, 1});
-        else
-            xml_list_tmp = {''};
-            xml_path = '';
-        end
-        xml_paths_all{idx}  = xml_list_tmp;
-        true_xml_paths{idx} = xml_path;
-
-        % ------------------------------------------------------------
-        % Analyse des plans
-        % ------------------------------------------------------------
-        for j = 1:4
-            planeFolders = planeFolders_by_channel{j};
-
-            currentFallPaths    = {};
-            currentSuite2pPaths = {};
-
-            if ~isempty(TSeriesPaths{idx, j}) && isempty(planeFolders)
-                warning('TSeries existe mais aucun dossier suite2p/plane* pour %s (%s).', ...
-                    labels{j}, to_char_path(TSeriesPaths{idx, j}));
-                Fallmat_paths{idx, j} = {};
-                suite2p_folders{idx, j} = {};
-                continue;
-            end
-
-            for p = 1:numel(planeFolders)
-                planePath = planeFolders{p};
-                if isstring(planePath)
-                    planePath = char(planePath);
+                    continue;
                 end
 
-                fall_mat_path = fullfile(planePath, 'Fall.mat');
-                ops_npy_path  = fullfile(planePath, 'ops.npy');
+                currentFallPaths = {};
+                currentSuite2pPaths = {};
 
-                if exist(fall_mat_path, 'file') == 2
-                    currentFallPaths{end+1} = fall_mat_path; %#ok<AGROW>
+                for p = 1:numel(planeFolders)
+
+                    planePath = planeFolders{p};
+
+                    fall_mat_path = ...
+                        fullfile(planePath, 'Fall.mat');
+
+                    ops_npy_path = ...
+                        fullfile(planePath, 'ops.npy');
+
+                    if exist(fall_mat_path, 'file') == 2
+
+                        currentFallPaths{end+1} = ...
+                            fall_mat_path; %#ok<AGROW>
+                    end
+
+                    if exist(ops_npy_path, 'file') == 2
+
+                        currentSuite2pPaths{end+1} = ...
+                            planePath; %#ok<AGROW>
+                    end
                 end
 
-                if exist(ops_npy_path, 'file') == 2
-                    currentSuite2pPaths{end+1} = planePath; %#ok<AGROW>
-                    fprintf('Info: using suite2p folder (ops.npy found): %s\n', planePath);
-                end
+                Fallmat_paths{output_idx,j} = ...
+                    currentFallPaths(:).';
 
-                if exist(fall_mat_path, 'file') ~= 2 && exist(ops_npy_path, 'file') ~= 2
-                    warning('No Fall.mat or ops.npy found in folder: %s', planePath);
-                end
+                suite2p_folders{output_idx,j} = ...
+                    currentSuite2pPaths(:).';
             end
 
-            Fallmat_paths{idx, j}   = currentFallPaths(:).';
-            suite2p_folders{idx, j} = currentSuite2pPaths(:).';
-
-            if ~isempty(TSeriesPaths{idx, j}) && isempty(currentFallPaths) && isempty(currentSuite2pPaths)
-                warning('TSeries existe mais aucun Fall.mat/ops.npy trouvé pour %s : %s', ...
-                    labels{j}, to_char_path(TSeriesPaths{idx, j}));
-            end
+            fprintf( ...
+                'Recording added: %s\n', ...
+                gcamp_path);
         end
     end
-    % 
-    % % ============================================================
-    % % Filtrage final : garder uniquement les lignes valides Gcamp
-    % % ============================================================
-    % valid_rows = ~cellfun(@isempty, TSeriesPaths(:, 1));
-    % 
-    % suite2p_folders = suite2p_folders(valid_rows, :);
-    % TSeriesPaths    = TSeriesPaths(valid_rows, :);
-    % xml_paths_all   = xml_paths_all(valid_rows, :);
-    % true_xml_paths  = true_xml_paths(valid_rows, :);
-    % lastFolderNames = lastFolderNames(valid_rows, :);
-    % Fallmat_paths   = Fallmat_paths(valid_rows, :);
 end
-
 
 % --------- Sous-fonctions --------- %
 

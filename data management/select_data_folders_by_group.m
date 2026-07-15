@@ -1,4 +1,5 @@
-function dataFolders_by_group = select_data_folders_by_group(choices, group_order)
+function [dataFolders_by_group, include_blue_cells] = ...
+    select_data_folders_by_group(choices, group_order)
 
     %===================%
     %   Chemins racines
@@ -11,6 +12,23 @@ function dataFolders_by_group = select_data_folders_by_group(choices, group_orde
     nGroups = numel(choices);
     dataFolders_by_group = cell(nGroups,1);
 
+    %==============================================================%
+    %   Inclusion des cellules bleues / mTOR pour les données FCD
+    %==============================================================%
+    include_blue_cells = 0;
+
+    if any(choices == 2)
+        include_blue_cells = input( ...
+            '[FCD] Inclure les cellules bleues / mTOR ? (1 = vrai, 0 = faux) : ');
+
+        if ~ismember(include_blue_cells, [0 1])
+            error('include_blue_cells doit être égal à 0 ou 1.');
+        end
+    end
+
+    %===================%
+    %   Sélection groupes
+    %===================%
     for i = 1:nGroups
 
         choice = choices(i);
@@ -38,17 +56,27 @@ function dataFolders_by_group = select_data_folders_by_group(choices, group_orde
 
         fprintf('[SELECT] %s -> %s\n', current_type, root_folder);
 
-        dataFolders = select_folders(root_folder);
+        %==========================================================%
+        %   Sélection des dossiers
+        %==========================================================%
+        dataFolders = select_folders( ...
+            root_folder, include_blue_cells);
 
+        %==========================================================%
+        %   Organisation par animal
+        %==========================================================%
         switch choice
             case 2
-                dataFolders = organize_data_by_animal(dataFolders, group_order{2});
+                dataFolders = organize_data_by_animal( ...
+                    dataFolders, group_order{2});
 
             case 3
-                dataFolders = organize_data_by_animal(dataFolders, group_order{3});
+                dataFolders = organize_data_by_animal( ...
+                    dataFolders, group_order{3});
 
             case 4
-                dataFolders = organize_data_by_animal(dataFolders, group_order{4});
+                dataFolders = organize_data_by_animal( ...
+                    dataFolders, group_order{4});
         end
 
         dataFolders_by_group{i} = dataFolders;

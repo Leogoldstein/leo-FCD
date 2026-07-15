@@ -1,64 +1,109 @@
-function selectedFolders = select_folders(initial_folder)
+function selectedFolders = select_folders(initial_folder, include_blue_cells)
 
     if ~isfolder(initial_folder)
         error('The initial folder does not exist.');
     end
 
+    if nargin < 2 || isempty(include_blue_cells)
+        include_blue_cells = 0;
+    end
+
+    if ~ismember(include_blue_cells, [0 1])
+        error('include_blue_cells must be 0 or 1.');
+    end
+
     [~, lastFolderName] = fileparts(initial_folder);
 
-    if lastFolderName == "FCD"
-        options = {'Specific Folders', 'All Good Folders', 'All Good Folders with Blue Cells'};
-        [idx, ok] = listdlg('PromptString','Select folder selection mode:', ...
-                            'SelectionMode','single', 'ListString',options);
-        if ~ok
-            disp('User canceled the selection.');
-            selectedFolders = {};
-            return;
-        end
-        choice = options{idx};
-    else
-        choice = questdlg('Do you want to select specific folders or all folders?', ...
-                          'Folder Selection Mode', ...
-                          'Specific Folders', 'All Good Folders', 'Cancel');
-    end
+    %==============================================================%
+    %   Folder selection mode
+    %==============================================================%
+    choice = questdlg( ...
+        'Do you want to select specific folders or all folders?', ...
+        'Folder Selection Mode', ...
+        'Specific Folders', ...
+        'All Good Folders', ...
+        'Cancel', ...
+        'All Good Folders');
 
     selectedFolders = {};
 
     switch choice
 
+        %==========================================================%
+        %   Manual selection
+        %==========================================================%
         case 'Specific Folders'
+
             while true
-                selectedFolder = uigetdir(initial_folder, 'Select a folder');
+
+                selectedFolder = uigetdir( ...
+                    initial_folder, ...
+                    'Select a folder');
+
                 if isequal(selectedFolder, 0)
                     disp('User clicked Cancel. Exiting folder selection.');
                     break;
                 end
 
-                selectedFolders = [selectedFolders, process_folder(selectedFolder)];
+                selectedFolders = [ ...
+                    selectedFolders, ...
+                    process_folder(selectedFolder)];
 
-                anotherChoice = questdlg('Select another folder?', ...
-                                         'Folder Selection', ...
-                                         'Yes', 'No', 'No');
+                anotherChoice = questdlg( ...
+                    'Select another folder?', ...
+                    'Folder Selection', ...
+                    'Yes', ...
+                    'No', ...
+                    'No');
+
                 if strcmp(anotherChoice, 'No')
                     break;
                 end
             end
 
+        %==========================================================%
+        %   Automatic selection
+        %==========================================================%
         case 'All Good Folders'
-            folder_names = get_folder_list('gcamp', lastFolderName);
-            selectedFolders = process_folder_list(folder_names, initial_folder);
 
-        case 'All Good Folders with Blue Cells'
-            folder_names = get_folder_list('blue', lastFolderName);
-            selectedFolders = process_folder_list(folder_names, initial_folder);
+            if strcmpi(lastFolderName, 'FCD')
+
+                if include_blue_cells
+                    folder_type = 'blue';
+
+                    fprintf([ ...
+                        '[SELECT] FCD folders with ' ...
+                        'blue / mTOR cells\n']);
+
+                else
+                    folder_type = 'gcamp';
+
+                    fprintf([ ...
+                        '[SELECT] FCD GCaMP folders\n']);
+                end
+
+            else
+                folder_type = 'gcamp';
+            end
+
+            folder_names = get_folder_list( ...
+                folder_type, lastFolderName);
+
+            selectedFolders = process_folder_list( ...
+                folder_names, initial_folder);
 
         otherwise
+
             disp('User canceled the selection. No folders selected.');
             selectedFolders = {};
             return;
     end
 
+    %==============================================================%
+    %   Display selected folders
+    %==============================================================%
     disp('Selected folders:');
+
     for k = 1:length(selectedFolders)
         disp(selectedFolders{k});
     end
@@ -145,7 +190,19 @@ function folder_names = get_folder_list(type, lastFolderName)
                     folder_names = {
                         'mTor20\ani5\2025-01-30';
                         'mTor19\ani6\2025-01-31';
+                        'mTor19\ani6\2025-02-01';
                         'mTor17\ani3\2024-12-23';
+                        'mTor17\ani3\2024-12-22';
+                        'mTor17\ani3\2024-12-21';
+                        'mTor17\ani3\2024-12-20';
+                        'mTor17\ani3\2024-12-19';
+                        'mTor17\ani2\2024-12-20';
+                        'mTor17\ani2\2024-12-19';
+                        'mTor17\ani1\2024-12-21';
+                        'mTor17\ani1\2024-12-20';
+                        'mTor17\ani1\2024-12-19';
+                        'mTor17\ani1\2024-12-18';
+                        'mTor17\ani1\2024-12-17';
                     };
 
                 otherwise
