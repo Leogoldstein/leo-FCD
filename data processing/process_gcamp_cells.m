@@ -4,17 +4,26 @@ function gcamp_plane = process_gcamp_cells( ...
     meanImgs_gcamp, ...
     data)
 
-    numFolders = numel(gcamp_output_folders);
+    numAcquisitions = numel(gcamp_output_folders);
 
     fields_gcamp_saved = { ...
-        'F_gcamp_by_plane', 'F_deconv_gcamp_by_plane', ...
-        'stat_by_plane', 'iscell_gcamp_by_plane', 'iscell_idx_gcamp_by_plane', ...
-        'stat_false_by_plane', 'iscell_false_by_plane', ...
-        'outlines_gcampx_by_plane', 'outlines_gcampy_by_plane', ...
-        'gcamp_mask_by_plane', 'gcamp_props_by_plane', ...
-        'imageHeight_by_plane', 'imageWidth_by_plane', ...
-        'outlines_gcampx_false_by_plane', 'outlines_gcampy_false_by_plane', ...
-        'gcamp_mask_false_by_plane', 'gcamp_props_false_by_plane' ...
+        'F_gcamp_by_plane', ...
+        'F_deconv_gcamp_by_plane', ...
+        'stat_by_plane', ...
+        'iscell_gcamp_by_plane', ...
+        'iscell_idx_gcamp_by_plane', ...
+        'stat_false_by_plane', ...
+        'iscell_false_by_plane', ...
+        'outlines_gcampx_by_plane', ...
+        'outlines_gcampy_by_plane', ...
+        'gcamp_mask_by_plane', ...
+        'gcamp_props_by_plane', ...
+        'imageHeight_by_plane', ...
+        'imageWidth_by_plane', ...
+        'outlines_gcampx_false_by_plane', ...
+        'outlines_gcampy_false_by_plane', ...
+        'gcamp_mask_false_by_plane', ...
+        'gcamp_props_false_by_plane' ...
     };
 
     fields_gcamp_memory = { ...
@@ -22,224 +31,662 @@ function gcamp_plane = process_gcamp_cells( ...
         'gcamp_fall_path_by_plane' ...
     };
 
-    fields_gcamp_all = [fields_gcamp_saved, fields_gcamp_memory];
+    fields_gcamp_all = [ ...
+        fields_gcamp_saved, ...
+        fields_gcamp_memory ...
+    ];
 
-    data = init_gcamp_plane_struct_if_needed(data, numFolders, fields_gcamp_all);
+    data = init_gcamp_plane_struct_if_needed( ...
+        data, ...
+        numAcquisitions, ...
+        fields_gcamp_all);
 
-    for m = 1:numFolders
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('GCAMP CELL PROCESSING\n');
+    fprintf('Acquisitions: %d\n', numAcquisitions);
+    fprintf('============================================================\n');
 
-        if isempty(current_gcamp_folders_group) || m > numel(current_gcamp_folders_group)
+    for m = 1:numAcquisitions
+
+        % =========================================================
+        % Acquisition paths
+        % =========================================================
+
+        if isempty(current_gcamp_folders_group) || ...
+                m > numel(current_gcamp_folders_group) || ...
+                isempty(current_gcamp_folders_group{m})
+
             gcamp_planes = {};
+
         else
-            gcamp_planes = current_gcamp_folders_group{m};
+
+            gcamp_planes = ...
+                current_gcamp_folders_group{m};
+        end
+
+        if ischar(gcamp_planes) || isstring(gcamp_planes)
+            gcamp_planes = {char(gcamp_planes)};
         end
 
         nPlanes = numel(gcamp_planes);
 
-        for f = 1:numel(fields_gcamp_all)
-            data = ensure_gcamp_plane_cell(data, fields_gcamp_all{f}, m, nPlanes);
-        end
+        tseries_name = get_acquisition_name( ...
+            gcamp_planes, ...
+            gcamp_output_folders, ...
+            m);
 
-        for p = 1:nPlanes
-            data.gcamp_plane.gcamp_fall_path_by_plane{m}{p} = char(gcamp_planes{p});
-        end
+        fprintf('\n');
+        fprintf('------------------------------------------------------------\n');
+        fprintf('GCaMP acquisition %d/%d\n', ...
+            m, numAcquisitions);
+        fprintf('TSeries: %s\n', tseries_name);
+        fprintf('Planes : %d\n', nPlanes);
+        fprintf('------------------------------------------------------------\n');
 
-        root_folder_m = extract_gcamp_root_folder(gcamp_output_folders, m);
-        if isempty(root_folder_m)
-            warning('process_gcamp_cells:noOutputFolder', ...
-                'Impossible de déterminer le dossier de sortie pour m=%d.', m);
+        if nPlanes == 0
+
+            fprintf('Status: no GCaMP planes available.\n');
             continue;
         end
 
-        filePath_gcamp = fullfile(root_folder_m, 'results_gcamp.mat');
+        % =========================================================
+        % Initialize storage
+        % =========================================================
 
-        % -------------------------------------------------------------
-        % Ne recharge results_gcamp.mat que si nécessaire
-        % -------------------------------------------------------------
-        [already_complete, missing] = gcamp_group_already_complete(data, m, nPlanes);
+        for f = 1:numel(fields_gcamp_all)
 
-        if already_complete
-        
-            fprintf('Group %d: toutes les données GCaMP déjà présentes en mémoire.\n', m);
-        
-        else
-        
-            fprintf('Group %d: données incomplètes en mémoire.\n', m);
-        
-            for i = 1:numel(missing)
-                fprintf('   - Plan %d : %s\n', ...
-                    missing(i).plane, missing(i).field);
-            end
-        
-            if exist(filePath_gcamp,'file') == 2
-                fprintf('Group %d: chargement depuis results_gcamp.mat.\n', m);
-        
-                loaded = load(filePath_gcamp);
-                data = merge_loaded_gcamp_into_data( ...
-                    data, loaded, fields_gcamp_saved, m, nPlanes);
-            end
+            data = ensure_gcamp_plane_cell( ...
+                data, ...
+                fields_gcamp_all{f}, ...
+                m, ...
+                nPlanes);
         end
-
-        has_new_data_for_group = false;
 
         for p = 1:nPlanes
 
-            fall_path = gcamp_planes{p};
-            if isempty(fall_path)
-                continue;
-            end
-
-            fall_path = char(fall_path);
-            data.gcamp_plane.gcamp_fall_path_by_plane{m}{p} = fall_path;
-
-            already_has_raw = ...
-                gcamp_field_has_value(data,'F_gcamp_by_plane',m,p) && ...
-                gcamp_field_has_value(data,'stat_by_plane',m,p) && ...
-                gcamp_field_has_value(data,'iscell_gcamp_by_plane',m,p) && ...
-                gcamp_field_has_value(data,'iscell_idx_gcamp_by_plane',m,p);
-
-            already_has_true_masks = ...
-                gcamp_field_has_value(data, 'gcamp_props_by_plane', m, p) && ...
-                gcamp_field_has_value(data, 'gcamp_mask_by_plane', m, p) && ...
-                gcamp_field_has_value(data, 'outlines_gcampx_by_plane', m, p) && ...
-                gcamp_field_has_value(data, 'outlines_gcampy_by_plane', m, p);
-
-            false_stat_exists = gcamp_field_slot_exists(data, 'stat_false_by_plane', m, p) && ...
-                                ~isempty(get_gcamp_plane_or_empty(data, 'stat_false_by_plane', m, p));
-
-            already_has_false_masks = ...
-                ~false_stat_exists || ...
-                (gcamp_field_has_value(data, 'gcamp_props_false_by_plane', m, p) && ...
-                 gcamp_field_has_value(data, 'gcamp_mask_false_by_plane', m, p) && ...
-                 gcamp_field_has_value(data, 'outlines_gcampx_false_by_plane', m, p) && ...
-                 gcamp_field_has_value(data, 'outlines_gcampy_false_by_plane', m, p));
-
-            if already_has_raw && already_has_true_masks && already_has_false_masks
-
-                if ~gcamp_field_slot_exists(data, 'ops_suite2p_by_plane', m, p) || ...
-                        isempty(data.gcamp_plane.ops_suite2p_by_plane{m}{p})
-                    data.gcamp_plane.ops_suite2p_by_plane{m}{p} = load_ops_only(fall_path);
-                end
-
-                fprintf('Group %d plane %d: toutes les variables de ce plan sont déjà présentes, aucun chargement ni recalcul.\n', m, p);
-                continue;
-            end
-
-            if ~already_has_raw
-
-                [~, F, F_deconv, ops, stat, iscell_cells, iscell_cells_idx, stat_false, iscell_false] = ...
-                    load_data(fall_path);
-
-                data.gcamp_plane.F_gcamp_by_plane{m}{p}        = F;
-                data.gcamp_plane.F_deconv_gcamp_by_plane{m}{p} = F_deconv;
-                data.gcamp_plane.stat_by_plane{m}{p}           = stat;
-                data.gcamp_plane.iscell_gcamp_by_plane{m}{p}   = iscell_cells;
-                data.gcamp_plane.iscell_idx_gcamp_by_plane{m}{p} = iscell_cells_idx;
-                data.gcamp_plane.stat_false_by_plane{m}{p}     = stat_false;
-                data.gcamp_plane.iscell_false_by_plane{m}{p}   = iscell_false;
-
-                data.gcamp_plane.ops_suite2p_by_plane{m}{p}    = ops;
-
-                has_new_data_for_group = true;
-
+            if isempty(gcamp_planes{p})
+                data.gcamp_plane. ...
+                    gcamp_fall_path_by_plane{m}{p} = '';
             else
-                stat          = get_gcamp_plane_or_empty(data, 'stat_by_plane', m, p);
-                iscell_cells  = get_gcamp_plane_or_empty(data, 'iscell_gcamp_by_plane', m, p);
-                stat_false    = get_gcamp_plane_or_empty(data, 'stat_false_by_plane', m, p);
-                iscell_false  = get_gcamp_plane_or_empty(data, 'iscell_false_by_plane', m, p);
-
-                if ~gcamp_field_slot_exists(data, 'ops_suite2p_by_plane', m, p) || ...
-                        isempty(data.gcamp_plane.ops_suite2p_by_plane{m}{p})
-                    data.gcamp_plane.ops_suite2p_by_plane{m}{p} = load_ops_only(fall_path);
-                end
-            end
-
-            meanImg_plane = [];
-            if nargin >= 3 && ~isempty(meanImgs_gcamp) && ...
-                    m <= numel(meanImgs_gcamp) && ~isempty(meanImgs_gcamp{m}) && ...
-                    p <= numel(meanImgs_gcamp{m}) && ~isempty(meanImgs_gcamp{m}{p})
-                meanImg_plane = meanImgs_gcamp{m}{p};
-            end
-
-            imgSize_ref = [];
-            if ~isempty(meanImg_plane)
-                imgSize_ref = size(meanImg_plane);
-                imgSize_ref = imgSize_ref(1:2);
-
-                if ~gcamp_field_has_value(data, 'imageHeight_by_plane', m, p)
-                    data.gcamp_plane.imageHeight_by_plane{m}{p} = imgSize_ref(1);
-                    has_new_data_for_group = true;
-                end
-
-                if ~gcamp_field_has_value(data, 'imageWidth_by_plane', m, p)
-                    data.gcamp_plane.imageWidth_by_plane{m}{p} = imgSize_ref(2);
-                    has_new_data_for_group = true;
-                end
-            end
-
-            if ~already_has_true_masks
-                if ~isempty(stat) && ~isempty(iscell_cells)
-                    try
-                        valid_cells = 1:size(iscell_cells, 1);
-
-                        [~, outlines_gcampx_plane, outlines_gcampy_plane, ~, ~, ~, ...
-                            gcamp_mask_plane, gcamp_props_plane] = ...
-                            load_calcium_mask(iscell_cells, stat, valid_cells, imgSize_ref);
-
-                        data.gcamp_plane.outlines_gcampx_by_plane{m}{p} = outlines_gcampx_plane;
-                        data.gcamp_plane.outlines_gcampy_by_plane{m}{p} = outlines_gcampy_plane;
-                        data.gcamp_plane.gcamp_mask_by_plane{m}{p}      = gcamp_mask_plane;
-                        data.gcamp_plane.gcamp_props_by_plane{m}{p}     = gcamp_props_plane;
-
-                        has_new_data_for_group = true;
-
-                    catch ME
-                        warning('process_gcamp_cells:mask_true', ...
-                            'Group %d plane %d: impossible de construire les masques vrais (%s).', ...
-                            m, p, ME.message);
-
-                        data = assign_empty_true_gcamp_masks_if_missing(data, m, p);
-                        has_new_data_for_group = true;
-                    end
-                else
-                    data = assign_empty_true_gcamp_masks_if_missing(data, m, p);
-                    has_new_data_for_group = true;
-                end
-            end
-
-            if ~already_has_false_masks
-                if ~isempty(stat_false) && ~isempty(iscell_false)
-                    try
-                        valid_cells_false = 1:size(iscell_false, 1);
-
-                        [~, outlines_gcampx_false_plane, outlines_gcampy_false_plane, ~, ~, ~, ...
-                            gcamp_mask_false_plane, gcamp_props_false_plane] = ...
-                            load_calcium_mask(iscell_false, stat_false, valid_cells_false, imgSize_ref);
-
-                        data.gcamp_plane.outlines_gcampx_false_by_plane{m}{p} = outlines_gcampx_false_plane;
-                        data.gcamp_plane.outlines_gcampy_false_by_plane{m}{p} = outlines_gcampy_false_plane;
-                        data.gcamp_plane.gcamp_mask_false_by_plane{m}{p}      = gcamp_mask_false_plane;
-                        data.gcamp_plane.gcamp_props_false_by_plane{m}{p}     = gcamp_props_false_plane;
-
-                        has_new_data_for_group = true;
-
-                    catch ME
-                        warning('process_gcamp_cells:mask_false', ...
-                            'Group %d plane %d: impossible de construire les masques faux (%s).', ...
-                            m, p, ME.message);
-
-                        data = assign_empty_false_gcamp_masks_if_missing(data, m, p);
-                        has_new_data_for_group = true;
-                    end
-                else
-                    data = assign_empty_false_gcamp_masks_if_missing(data, m, p);
-                    has_new_data_for_group = true;
-                end
+                data.gcamp_plane. ...
+                    gcamp_fall_path_by_plane{m}{p} = ...
+                    char(string(gcamp_planes{p}));
             end
         end
 
-        save_gcamp_fields_if_needed(filePath_gcamp, data, fields_gcamp_saved, m, has_new_data_for_group);
+        % =========================================================
+        % Output folder
+        % =========================================================
+
+        root_folder_m = extract_gcamp_root_folder( ...
+            gcamp_output_folders, ...
+            m);
+
+        if isempty(root_folder_m)
+
+            warning( ...
+                'process_gcamp_cells:MissingOutputFolder', ...
+                ['Acquisition %d/%d | %s | unable to determine ' ...
+                'output folder.'], ...
+                m, numAcquisitions, tseries_name);
+
+            fprintf('Status: skipped because output folder is missing.\n');
+            continue;
+        end
+
+        fprintf('Output folder: %s\n', root_folder_m);
+
+        filePath_gcamp = fullfile( ...
+            root_folder_m, ...
+            'results_gcamp.mat');
+
+        % =========================================================
+        % Check memory completeness
+        % =========================================================
+
+        [already_complete, missing] = ...
+            gcamp_group_already_complete( ...
+                data, ...
+                m, ...
+                nPlanes);
+
+        fprintf('\nMemory status\n');
+
+        if already_complete
+
+            fprintf('  Status: all required GCaMP data are in memory.\n');
+
+        else
+
+            fprintf('  Status: GCaMP data are incomplete.\n');
+            fprintf('  Missing entries: %d\n', numel(missing));
+
+            for i = 1:numel(missing)
+
+                fprintf('    Plane %d | %s\n', ...
+                    missing(i).plane, ...
+                    missing(i).field);
+            end
+
+            % =====================================================
+            % Reload from results_gcamp.mat
+            % =====================================================
+
+            if exist(filePath_gcamp, 'file') == 2
+
+                fprintf('\nSaved data\n');
+                fprintf('  Status: results_gcamp.mat found.\n');
+                fprintf('  Action: loading missing fields.\n');
+                fprintf('  File  : %s\n', filePath_gcamp);
+
+                try
+                    loaded = load(filePath_gcamp);
+
+                    data = merge_loaded_gcamp_into_data( ...
+                        data, ...
+                        loaded, ...
+                        fields_gcamp_saved, ...
+                        m, ...
+                        nPlanes);
+
+                catch ME
+
+                    warning( ...
+                        'process_gcamp_cells:ResultsLoadFailed', ...
+                        ['Acquisition %d/%d | %s | unable to load ' ...
+                        'results_gcamp.mat: %s'], ...
+                        m, numAcquisitions, ...
+                        tseries_name, ME.message);
+
+                    fprintf('  Status: saved data could not be loaded.\n');
+                end
+
+            else
+
+                fprintf('\nSaved data\n');
+                fprintf('  Status: results_gcamp.mat not found.\n');
+                fprintf('  Action: missing fields will be calculated.\n');
+            end
+        end
+
+        has_new_data_for_acquisition = false;
+
+        % =========================================================
+        % Processing by plane
+        % =========================================================
+
+        for p = 1:nPlanes
+
+            fprintf('\n');
+            fprintf('  ----------------------------------------------------------\n');
+            fprintf('  GCaMP plane %d/%d\n', p, nPlanes);
+            fprintf('  ----------------------------------------------------------\n');
+
+            fall_path = gcamp_planes{p};
+
+            if isempty(fall_path)
+
+                fprintf('  Status: skipped because Suite2p path is empty.\n');
+                continue;
+            end
+
+            fall_path = char(string(fall_path));
+
+            data.gcamp_plane. ...
+                gcamp_fall_path_by_plane{m}{p} = ...
+                fall_path;
+
+            fprintf('  Suite2p path: %s\n', fall_path);
+
+            % =====================================================
+            % Check available raw data and masks
+            % =====================================================
+
+            already_has_raw = ...
+                gcamp_field_has_value( ...
+                    data, 'F_gcamp_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'stat_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'iscell_gcamp_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'iscell_idx_gcamp_by_plane', m, p);
+
+            already_has_true_masks = ...
+                gcamp_field_has_value( ...
+                    data, 'gcamp_props_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'gcamp_mask_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'outlines_gcampx_by_plane', m, p) && ...
+                gcamp_field_has_value( ...
+                    data, 'outlines_gcampy_by_plane', m, p);
+
+            false_stat_exists = ...
+                gcamp_field_slot_exists( ...
+                    data, 'stat_false_by_plane', m, p) && ...
+                ~isempty(get_gcamp_plane_or_empty( ...
+                    data, 'stat_false_by_plane', m, p));
+
+            already_has_false_masks = ...
+                ~false_stat_exists || ...
+                ( ...
+                    gcamp_field_has_value( ...
+                        data, 'gcamp_props_false_by_plane', m, p) && ...
+                    gcamp_field_has_value( ...
+                        data, 'gcamp_mask_false_by_plane', m, p) && ...
+                    gcamp_field_has_value( ...
+                        data, 'outlines_gcampx_false_by_plane', m, p) && ...
+                    gcamp_field_has_value( ...
+                        data, 'outlines_gcampy_false_by_plane', m, p) ...
+                );
+
+            if already_has_raw && ...
+                    already_has_true_masks && ...
+                    already_has_false_masks
+
+                if ~gcamp_field_slot_exists( ...
+                        data, ...
+                        'ops_suite2p_by_plane', ...
+                        m, p) || ...
+                        isempty(data.gcamp_plane. ...
+                        ops_suite2p_by_plane{m}{p})
+
+                    data.gcamp_plane. ...
+                        ops_suite2p_by_plane{m}{p} = ...
+                        load_ops_only(fall_path);
+                end
+
+                fprintf('  Raw data     : available.\n');
+                fprintf('  True masks   : available.\n');
+                fprintf('  Rejected masks: available or not required.\n');
+                fprintf('  Action       : no reload or recalculation.\n');
+
+                continue;
+            end
+
+            % =====================================================
+            % Load raw Suite2p data
+            % =====================================================
+
+            if ~already_has_raw
+
+                fprintf('\n  Suite2p data\n');
+                fprintf('    Status: raw data missing.\n');
+                fprintf('    Action: loading Suite2p outputs.\n');
+
+                try
+                    [~, ...
+                        F, ...
+                        F_deconv, ...
+                        ops, ...
+                        stat, ...
+                        iscell_cells, ...
+                        iscell_cells_idx, ...
+                        stat_false, ...
+                        iscell_false] = ...
+                        load_data(fall_path);
+
+                    data.gcamp_plane. ...
+                        F_gcamp_by_plane{m}{p} = F;
+
+                    data.gcamp_plane. ...
+                        F_deconv_gcamp_by_plane{m}{p} = ...
+                        F_deconv;
+
+                    data.gcamp_plane. ...
+                        stat_by_plane{m}{p} = stat;
+
+                    data.gcamp_plane. ...
+                        iscell_gcamp_by_plane{m}{p} = ...
+                        iscell_cells;
+
+                    data.gcamp_plane. ...
+                        iscell_idx_gcamp_by_plane{m}{p} = ...
+                        iscell_cells_idx;
+
+                    data.gcamp_plane. ...
+                        stat_false_by_plane{m}{p} = ...
+                        stat_false;
+
+                    data.gcamp_plane. ...
+                        iscell_false_by_plane{m}{p} = ...
+                        iscell_false;
+
+                    data.gcamp_plane. ...
+                        ops_suite2p_by_plane{m}{p} = ...
+                        ops;
+
+                    has_new_data_for_acquisition = true;
+
+                    fprintf('    Status: Suite2p data loaded.\n');
+
+                    if isempty(F)
+                        fprintf('    Cells : 0\n');
+                    else
+                        fprintf('    Cells : %d\n', size(F, 1));
+                        fprintf('    Frames: %d\n', size(F, 2));
+                    end
+
+                    if isempty(stat_false)
+                        fprintf('    Rejected ROIs: 0\n');
+                    else
+                        fprintf('    Rejected ROIs: %d\n', ...
+                            numel(stat_false));
+                    end
+
+                catch ME
+
+                    warning( ...
+                        'process_gcamp_cells:LoadDataFailed', ...
+                        ['Acquisition %d/%d | %s | Plane %d/%d | ' ...
+                        'Suite2p loading failed: %s'], ...
+                        m, numAcquisitions, ...
+                        tseries_name, ...
+                        p, nPlanes, ...
+                        ME.message);
+
+                    fprintf('    Status: Suite2p loading failed.\n');
+                    continue;
+                end
+
+            else
+
+                fprintf('\n  Suite2p data\n');
+                fprintf('    Status: raw data already available.\n');
+
+                stat = get_gcamp_plane_or_empty( ...
+                    data, 'stat_by_plane', m, p);
+
+                iscell_cells = get_gcamp_plane_or_empty( ...
+                    data, 'iscell_gcamp_by_plane', m, p);
+
+                stat_false = get_gcamp_plane_or_empty( ...
+                    data, 'stat_false_by_plane', m, p);
+
+                iscell_false = get_gcamp_plane_or_empty( ...
+                    data, 'iscell_false_by_plane', m, p);
+
+                if ~gcamp_field_slot_exists( ...
+                        data, ...
+                        'ops_suite2p_by_plane', ...
+                        m, p) || ...
+                        isempty(data.gcamp_plane. ...
+                        ops_suite2p_by_plane{m}{p})
+
+                    data.gcamp_plane. ...
+                        ops_suite2p_by_plane{m}{p} = ...
+                        load_ops_only(fall_path);
+                end
+            end
+
+            % =====================================================
+            % Mean image and dimensions
+            % =====================================================
+
+            meanImg_plane = [];
+
+            if nargin >= 3 && ...
+                    ~isempty(meanImgs_gcamp) && ...
+                    m <= numel(meanImgs_gcamp) && ...
+                    ~isempty(meanImgs_gcamp{m}) && ...
+                    p <= numel(meanImgs_gcamp{m}) && ...
+                    ~isempty(meanImgs_gcamp{m}{p})
+
+                meanImg_plane = ...
+                    meanImgs_gcamp{m}{p};
+            end
+
+            imgSize_ref = [];
+
+            fprintf('\n  Reference image\n');
+
+            if ~isempty(meanImg_plane)
+
+                imgSize_ref = size(meanImg_plane);
+                imgSize_ref = imgSize_ref(1:2);
+
+                fprintf('    Status: mean image available.\n');
+                fprintf('    Size  : %d x %d pixels\n', ...
+                    imgSize_ref(1), ...
+                    imgSize_ref(2));
+
+                if ~gcamp_field_has_value( ...
+                        data, ...
+                        'imageHeight_by_plane', ...
+                        m, p)
+
+                    data.gcamp_plane. ...
+                        imageHeight_by_plane{m}{p} = ...
+                        imgSize_ref(1);
+
+                    has_new_data_for_acquisition = true;
+                end
+
+                if ~gcamp_field_has_value( ...
+                        data, ...
+                        'imageWidth_by_plane', ...
+                        m, p)
+
+                    data.gcamp_plane. ...
+                        imageWidth_by_plane{m}{p} = ...
+                        imgSize_ref(2);
+
+                    has_new_data_for_acquisition = true;
+                end
+
+            else
+
+                fprintf('    Status: no mean image available.\n');
+            end
+
+            % =====================================================
+            % Build masks for accepted GCaMP ROIs
+            % =====================================================
+
+            fprintf('\n  Accepted GCaMP masks\n');
+
+            if already_has_true_masks
+
+                fprintf('    Status: existing accepted-cell masks reused.\n');
+
+            elseif ~isempty(stat) && ~isempty(iscell_cells)
+
+                try
+                    valid_cells = ...
+                        1:size(iscell_cells, 1);
+
+                    [~, ...
+                        outlines_gcampx_plane, ...
+                        outlines_gcampy_plane, ...
+                        ~, ~, ~, ...
+                        gcamp_mask_plane, ...
+                        gcamp_props_plane] = ...
+                        load_calcium_mask( ...
+                            iscell_cells, ...
+                            stat, ...
+                            valid_cells, ...
+                            imgSize_ref);
+
+                    data.gcamp_plane. ...
+                        outlines_gcampx_by_plane{m}{p} = ...
+                        outlines_gcampx_plane;
+
+                    data.gcamp_plane. ...
+                        outlines_gcampy_by_plane{m}{p} = ...
+                        outlines_gcampy_plane;
+
+                    data.gcamp_plane. ...
+                        gcamp_mask_by_plane{m}{p} = ...
+                        gcamp_mask_plane;
+
+                    data.gcamp_plane. ...
+                        gcamp_props_by_plane{m}{p} = ...
+                        gcamp_props_plane;
+
+                    has_new_data_for_acquisition = true;
+
+                    fprintf('    Status: accepted-cell masks created.\n');
+                    fprintf('    Masks : %d\n', ...
+                        get_mask_count(gcamp_mask_plane));
+
+                catch ME
+
+                    warning( ...
+                        'process_gcamp_cells:TrueMaskFailed', ...
+                        ['Acquisition %d/%d | %s | Plane %d/%d | ' ...
+                        'accepted-cell mask creation failed: %s'], ...
+                        m, numAcquisitions, ...
+                        tseries_name, ...
+                        p, nPlanes, ...
+                        ME.message);
+
+                    data = assign_empty_true_gcamp_masks_if_missing( ...
+                        data, m, p);
+
+                    has_new_data_for_acquisition = true;
+
+                    fprintf('    Status: mask creation failed; empty values stored.\n');
+                end
+
+            else
+
+                data = assign_empty_true_gcamp_masks_if_missing( ...
+                    data, m, p);
+
+                has_new_data_for_acquisition = true;
+
+                fprintf('    Status: no accepted ROI data available.\n');
+            end
+
+            % =====================================================
+            % Build masks for rejected GCaMP ROIs
+            % =====================================================
+
+            fprintf('\n  Rejected GCaMP masks\n');
+
+            if already_has_false_masks
+
+                fprintf('    Status: existing rejected-cell masks reused.\n');
+
+            elseif ~isempty(stat_false) && ...
+                    ~isempty(iscell_false)
+
+                try
+                    valid_cells_false = ...
+                        1:size(iscell_false, 1);
+
+                    [~, ...
+                        outlines_gcampx_false_plane, ...
+                        outlines_gcampy_false_plane, ...
+                        ~, ~, ~, ...
+                        gcamp_mask_false_plane, ...
+                        gcamp_props_false_plane] = ...
+                        load_calcium_mask( ...
+                            iscell_false, ...
+                            stat_false, ...
+                            valid_cells_false, ...
+                            imgSize_ref);
+
+                    data.gcamp_plane. ...
+                        outlines_gcampx_false_by_plane{m}{p} = ...
+                        outlines_gcampx_false_plane;
+
+                    data.gcamp_plane. ...
+                        outlines_gcampy_false_by_plane{m}{p} = ...
+                        outlines_gcampy_false_plane;
+
+                    data.gcamp_plane. ...
+                        gcamp_mask_false_by_plane{m}{p} = ...
+                        gcamp_mask_false_plane;
+
+                    data.gcamp_plane. ...
+                        gcamp_props_false_by_plane{m}{p} = ...
+                        gcamp_props_false_plane;
+
+                    has_new_data_for_acquisition = true;
+
+                    fprintf('    Status: rejected-cell masks created.\n');
+                    fprintf('    Masks : %d\n', ...
+                        get_mask_count(gcamp_mask_false_plane));
+
+                catch ME
+
+                    warning( ...
+                        'process_gcamp_cells:FalseMaskFailed', ...
+                        ['Acquisition %d/%d | %s | Plane %d/%d | ' ...
+                        'rejected-cell mask creation failed: %s'], ...
+                        m, numAcquisitions, ...
+                        tseries_name, ...
+                        p, nPlanes, ...
+                        ME.message);
+
+                    data = assign_empty_false_gcamp_masks_if_missing( ...
+                        data, m, p);
+
+                    has_new_data_for_acquisition = true;
+
+                    fprintf('    Status: mask creation failed; empty values stored.\n');
+                end
+
+            else
+
+                data = assign_empty_false_gcamp_masks_if_missing( ...
+                    data, m, p);
+
+                has_new_data_for_acquisition = true;
+
+                fprintf('    Status: no rejected ROI data available.\n');
+            end
+
+            % =====================================================
+            % Plane summary
+            % =====================================================
+
+            fprintf('\n  Plane summary\n');
+            fprintf('    Plane         : %d/%d\n', p, nPlanes);
+            fprintf('    Raw data      : %s\n', ...
+                logical_status(gcamp_field_has_value( ...
+                    data, 'F_gcamp_by_plane', m, p)));
+            fprintf('    Accepted masks: %s\n', ...
+                logical_status(gcamp_field_has_value( ...
+                    data, 'gcamp_mask_by_plane', m, p)));
+            fprintf('    Rejected masks: %s\n', ...
+                logical_status( ...
+                    ~false_stat_exists || ...
+                    gcamp_field_has_value( ...
+                        data, 'gcamp_mask_false_by_plane', m, p)));
+        end
+
+        % =========================================================
+        % Save acquisition
+        % =========================================================
+
+        save_gcamp_fields_if_needed( ...
+            filePath_gcamp, ...
+            data, ...
+            fields_gcamp_saved, ...
+            m, ...
+            has_new_data_for_acquisition, ...
+            tseries_name);
+
+        fprintf('\nAcquisition summary\n');
+        fprintf('  TSeries : %s\n', tseries_name);
+        fprintf('  Planes  : %d\n', nPlanes);
+
+        if has_new_data_for_acquisition
+            fprintf('  Status  : GCaMP data updated.\n');
+        else
+            fprintf('  Status  : existing GCaMP data retained.\n');
+        end
     end
+
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('GCAMP CELL PROCESSING COMPLETED\n');
+    fprintf('Acquisitions: %d\n', numAcquisitions);
+    fprintf('============================================================\n');
 
     gcamp_plane = data.gcamp_plane;
 end
@@ -248,7 +695,9 @@ end
 % =====================================================================
 % Helpers
 % =====================================================================
-function [tf, missing] = gcamp_group_already_complete(data, m, nPlanes)
+
+function [tf, missing] = gcamp_group_already_complete( ...
+    data, m, nPlanes)
 
     required_fields = { ...
         'F_gcamp_by_plane', ...
@@ -262,7 +711,10 @@ function [tf, missing] = gcamp_group_already_complete(data, m, nPlanes)
     };
 
     tf = true;
-    missing = struct('plane',{},'field',{});
+
+    missing = struct( ...
+        'plane', {}, ...
+        'field', {});
 
     if nPlanes == 0
         tf = false;
@@ -275,118 +727,178 @@ function [tf, missing] = gcamp_group_already_complete(data, m, nPlanes)
 
             fieldName = required_fields{i};
 
-            if ~gcamp_field_has_value(data, fieldName, m, p)
+            if ~gcamp_field_has_value( ...
+                    data, ...
+                    fieldName, ...
+                    m, ...
+                    p)
 
                 tf = false;
 
-                missing(end+1).plane = p;
+                missing(end + 1).plane = p;
                 missing(end).field = fieldName;
-
             end
         end
     end
 end
 
 
-function data = init_gcamp_plane_struct_if_needed(data, numFolders, fields)
+function data = init_gcamp_plane_struct_if_needed( ...
+    data, numAcquisitions, fields)
 
     if nargin < 1 || isempty(data)
         data = struct();
     end
 
-    if ~isfield(data, 'gcamp_plane') || ~isstruct(data.gcamp_plane) || isempty(data.gcamp_plane)
+    if ~isfield(data, 'gcamp_plane') || ...
+            ~isstruct(data.gcamp_plane) || ...
+            isempty(data.gcamp_plane)
+
         data.gcamp_plane = struct();
     end
 
     for f = 1:numel(fields)
+
         fieldName = fields{f};
 
-        if ~isfield(data.gcamp_plane, fieldName) || ~iscell(data.gcamp_plane.(fieldName))
-            data.gcamp_plane.(fieldName) = cell(numFolders,1);
+        if ~isfield(data.gcamp_plane, fieldName) || ...
+                ~iscell(data.gcamp_plane.(fieldName))
 
-        elseif numel(data.gcamp_plane.(fieldName)) < numFolders
-            oldv = data.gcamp_plane.(fieldName);
-            tmp = cell(numFolders,1);
-            tmp(1:numel(oldv)) = oldv(:);
-            data.gcamp_plane.(fieldName) = tmp;
+            data.gcamp_plane.(fieldName) = ...
+                cell(numAcquisitions, 1);
+
+        elseif numel(data.gcamp_plane.(fieldName)) < ...
+                numAcquisitions
+
+            old_values = ...
+                data.gcamp_plane.(fieldName);
+
+            new_values = ...
+                cell(numAcquisitions, 1);
+
+            new_values(1:numel(old_values)) = ...
+                old_values(:);
+
+            data.gcamp_plane.(fieldName) = ...
+                new_values;
         end
     end
 end
 
 
-function data = ensure_gcamp_plane_cell(data, fieldName, m, nPlanes)
+function data = ensure_gcamp_plane_cell( ...
+    data, fieldName, m, nPlanes)
 
     if ~isfield(data.gcamp_plane, fieldName)
-        data.gcamp_plane.(fieldName) = cell(m,1);
+
+        data.gcamp_plane.(fieldName) = ...
+            cell(m, 1);
     end
 
     if numel(data.gcamp_plane.(fieldName)) < m
-        tmp = cell(m,1);
-        tmp(1:numel(data.gcamp_plane.(fieldName))) = data.gcamp_plane.(fieldName)(:);
-        data.gcamp_plane.(fieldName) = tmp;
+
+        new_values = cell(m, 1);
+
+        new_values(1:numel( ...
+            data.gcamp_plane.(fieldName))) = ...
+            data.gcamp_plane.(fieldName)(:);
+
+        data.gcamp_plane.(fieldName) = ...
+            new_values;
     end
 
-    if isempty(data.gcamp_plane.(fieldName){m}) || ~iscell(data.gcamp_plane.(fieldName){m})
-        data.gcamp_plane.(fieldName){m} = cell(nPlanes,1);
+    if isempty(data.gcamp_plane.(fieldName){m}) || ...
+            ~iscell(data.gcamp_plane.(fieldName){m})
 
-    elseif numel(data.gcamp_plane.(fieldName){m}) ~= nPlanes
-        old = data.gcamp_plane.(fieldName){m};
-        new = cell(nPlanes,1);
-        n = min(numel(old), nPlanes);
-        new(1:n) = old(1:n);
-        data.gcamp_plane.(fieldName){m} = new;
-    end
-end
+        data.gcamp_plane.(fieldName){m} = ...
+            cell(nPlanes, 1);
 
+    elseif numel(data.gcamp_plane.(fieldName){m}) ~= ...
+            nPlanes
 
-function out = coerce_to_plane_cell(val, nPlanes)
+        old_values = ...
+            data.gcamp_plane.(fieldName){m};
 
-    if isempty(val)
-        out = cell(nPlanes,1);
+        new_values = ...
+            cell(nPlanes, 1);
 
-    elseif iscell(val)
-        out = cell(nPlanes,1);
-        nCopy = min(numel(val), nPlanes);
-        out(1:nCopy) = val(1:nCopy);
+        nCopy = min( ...
+            numel(old_values), ...
+            nPlanes);
 
-    else
-        out = cell(nPlanes,1);
-        if nPlanes >= 1
-            out{1} = val;
-        end
-    end
-end
+        new_values(1:nCopy) = ...
+            old_values(1:nCopy);
 
-
-function tf = gcamp_field_slot_exists(data, fieldName, m, p)
-
-    tf = isfield(data, 'gcamp_plane') && ...
-         isfield(data.gcamp_plane, fieldName) && ...
-         numel(data.gcamp_plane.(fieldName)) >= m && ...
-         ~isempty(data.gcamp_plane.(fieldName){m}) && ...
-         iscell(data.gcamp_plane.(fieldName){m}) && ...
-         numel(data.gcamp_plane.(fieldName){m}) >= p;
-end
-
-
-function tf = gcamp_field_has_value(data, fieldName, m, p)
-
-    tf = gcamp_field_slot_exists(data, fieldName, m, p) && ...
-         ~isempty(data.gcamp_plane.(fieldName){m}{p});
-end
-
-
-function v = get_gcamp_plane_or_empty(data, fieldName, m, p)
-
-    v = [];
-
-    if gcamp_field_slot_exists(data, fieldName, m, p)
-        v = data.gcamp_plane.(fieldName){m}{p};
+        data.gcamp_plane.(fieldName){m} = ...
+            new_values;
     end
 end
 
 
-function data = merge_loaded_gcamp_into_data(data, loaded, fields_gcamp, m, nPlanes)
+function out = coerce_to_plane_cell( ...
+    value, nPlanes)
+
+    out = cell(nPlanes, 1);
+
+    if isempty(value)
+        return;
+    end
+
+    if iscell(value)
+
+        nCopy = min( ...
+            numel(value), ...
+            nPlanes);
+
+        out(1:nCopy) = ...
+            value(1:nCopy);
+
+    elseif nPlanes >= 1
+
+        out{1} = value;
+    end
+end
+
+
+function tf = gcamp_field_slot_exists( ...
+    data, fieldName, m, p)
+
+    tf = ...
+        isfield(data, 'gcamp_plane') && ...
+        isfield(data.gcamp_plane, fieldName) && ...
+        numel(data.gcamp_plane.(fieldName)) >= m && ...
+        ~isempty(data.gcamp_plane.(fieldName){m}) && ...
+        iscell(data.gcamp_plane.(fieldName){m}) && ...
+        numel(data.gcamp_plane.(fieldName){m}) >= p;
+end
+
+
+function tf = gcamp_field_has_value( ...
+    data, fieldName, m, p)
+
+    tf = ...
+        gcamp_field_slot_exists( ...
+            data, fieldName, m, p) && ...
+        ~isempty(data.gcamp_plane.(fieldName){m}{p});
+end
+
+
+function value = get_gcamp_plane_or_empty( ...
+    data, fieldName, m, p)
+
+    value = [];
+
+    if gcamp_field_slot_exists( ...
+            data, fieldName, m, p)
+
+        value = ...
+            data.gcamp_plane.(fieldName){m}{p};
+    end
+end
+
+
+function data = merge_loaded_gcamp_into_data( ...
+    data, loaded, fields_gcamp, m, nPlanes)
 
     for f = 1:numel(fields_gcamp)
 
@@ -396,54 +908,69 @@ function data = merge_loaded_gcamp_into_data(data, loaded, fields_gcamp, m, nPla
             continue;
         end
 
-        loaded_field = coerce_to_plane_cell(loaded.(fieldName), nPlanes);
+        loaded_field = coerce_to_plane_cell( ...
+            loaded.(fieldName), ...
+            nPlanes);
 
         if ~isfield(data.gcamp_plane, fieldName) || ...
                 numel(data.gcamp_plane.(fieldName)) < m || ...
                 isempty(data.gcamp_plane.(fieldName){m}) || ...
                 ~iscell(data.gcamp_plane.(fieldName){m})
 
-            data.gcamp_plane.(fieldName){m} = loaded_field;
+            data.gcamp_plane.(fieldName){m} = ...
+                loaded_field;
+
             continue;
         end
 
         for p = 1:nPlanes
-            if ~gcamp_field_slot_exists(data, fieldName, m, p) || ...
+
+            if ~gcamp_field_slot_exists( ...
+                    data, fieldName, m, p) || ...
                     isempty(data.gcamp_plane.(fieldName){m}{p})
 
-                if numel(loaded_field) >= p
-                    data.gcamp_plane.(fieldName){m}{p} = loaded_field{p};
-                end
+                data.gcamp_plane.(fieldName){m}{p} = ...
+                    loaded_field{p};
             end
         end
     end
 end
 
 
-function root_folder_m = extract_gcamp_root_folder(gcamp_output_folders, m)
+function root_folder_m = extract_gcamp_root_folder( ...
+    gcamp_output_folders, m)
 
     root_folder_m = '';
 
     if isempty(gcamp_output_folders) || ...
             m > numel(gcamp_output_folders) || ...
             isempty(gcamp_output_folders{m})
+
         return;
     end
 
     this_entry = gcamp_output_folders{m};
 
     if iscell(this_entry)
-        if ~isempty(this_entry{1})
-            root_folder_m = fileparts(this_entry{1});
+
+        if ~isempty(this_entry) && ...
+                ~isempty(this_entry{1})
+
+            root_folder_m = ...
+                fileparts(char(string(this_entry{1})));
         end
 
-    elseif ischar(this_entry) || isstring(this_entry)
-        root_folder_m = char(this_entry);
+    elseif ischar(this_entry) || ...
+            isstring(this_entry)
+
+        root_folder_m = ...
+            char(string(this_entry));
     end
 end
 
 
-function data = assign_empty_true_gcamp_masks_if_missing(data, m, p)
+function data = assign_empty_true_gcamp_masks_if_missing( ...
+    data, m, p)
 
     fields = { ...
         'outlines_gcampx_by_plane', ...
@@ -453,16 +980,21 @@ function data = assign_empty_true_gcamp_masks_if_missing(data, m, p)
     };
 
     for i = 1:numel(fields)
-        fn = fields{i};
 
-        if ~gcamp_field_slot_exists(data, fn, m, p) || isempty(data.gcamp_plane.(fn){m}{p})
-            data.gcamp_plane.(fn){m}{p} = [];
+        fieldName = fields{i};
+
+        if ~gcamp_field_slot_exists( ...
+                data, fieldName, m, p) || ...
+                isempty(data.gcamp_plane.(fieldName){m}{p})
+
+            data.gcamp_plane.(fieldName){m}{p} = [];
         end
     end
 end
 
 
-function data = assign_empty_false_gcamp_masks_if_missing(data, m, p)
+function data = assign_empty_false_gcamp_masks_if_missing( ...
+    data, m, p)
 
     fields = { ...
         'outlines_gcampx_false_by_plane', ...
@@ -472,19 +1004,35 @@ function data = assign_empty_false_gcamp_masks_if_missing(data, m, p)
     };
 
     for i = 1:numel(fields)
-        fn = fields{i};
 
-        if ~gcamp_field_slot_exists(data, fn, m, p) || isempty(data.gcamp_plane.(fn){m}{p})
-            data.gcamp_plane.(fn){m}{p} = [];
+        fieldName = fields{i};
+
+        if ~gcamp_field_slot_exists( ...
+                data, fieldName, m, p) || ...
+                isempty(data.gcamp_plane.(fieldName){m}{p})
+
+            data.gcamp_plane.(fieldName){m}{p} = [];
         end
     end
 end
 
 
-function save_gcamp_fields_if_needed(filePath_gcamp, data, fields_gcamp, m, has_new_data_for_group)
+function save_gcamp_fields_if_needed( ...
+    filePath_gcamp, ...
+    data, ...
+    fields_gcamp, ...
+    m, ...
+    has_new_data_for_acquisition, ...
+    tseries_name)
 
-    if ~has_new_data_for_group
-        fprintf('Group %d: no new gcamp data, results_gcamp.mat not modified.\n', m);
+    fprintf('\nGCaMP results\n');
+
+    if ~has_new_data_for_acquisition
+
+        fprintf('  TSeries: %s\n', tseries_name);
+        fprintf('  Status : no new data.\n');
+        fprintf('  Action : results_gcamp.mat unchanged.\n');
+
         return;
     end
 
@@ -498,15 +1046,143 @@ function save_gcamp_fields_if_needed(filePath_gcamp, data, fields_gcamp, m, has_
                 isfield(data.gcamp_plane, fieldName) && ...
                 numel(data.gcamp_plane.(fieldName)) >= m
 
-            saveStruct.(fieldName) = data.gcamp_plane.(fieldName){m};
+            saveStruct.(fieldName) = ...
+                data.gcamp_plane.(fieldName){m};
         end
     end
 
-    if exist(filePath_gcamp, 'file') == 2
-        save(filePath_gcamp, '-struct', 'saveStruct', '-append');
-    else
-        save(filePath_gcamp, '-struct', 'saveStruct');
+    try
+        if exist(filePath_gcamp, 'file') == 2
+
+            save( ...
+                filePath_gcamp, ...
+                '-struct', ...
+                'saveStruct', ...
+                '-append');
+
+        else
+
+            save( ...
+                filePath_gcamp, ...
+                '-struct', ...
+                'saveStruct');
+        end
+
+        fprintf('  TSeries: %s\n', tseries_name);
+        fprintf('  Status : results_gcamp.mat updated.\n');
+        fprintf('  File   : %s\n', filePath_gcamp);
+
+    catch ME
+
+        warning( ...
+            'process_gcamp_cells:SaveFailed', ...
+            'TSeries %s | unable to save results_gcamp.mat: %s', ...
+            tseries_name, ME.message);
+
+        fprintf('  TSeries: %s\n', tseries_name);
+        fprintf('  Status : save failed.\n');
+    end
+end
+
+
+function acquisition_name = get_acquisition_name( ...
+    gcamp_planes, ...
+    gcamp_output_folders, ...
+    m)
+
+    acquisition_name = sprintf( ...
+        'Acquisition_%d', m);
+
+    candidate_path = '';
+
+    if ~isempty(gcamp_planes) && ...
+            ~isempty(gcamp_planes{1})
+
+        candidate_path = ...
+            char(string(gcamp_planes{1}));
     end
 
-    fprintf('Group %d: gcamp fields updated in results_gcamp.mat.\n', m);
+    if isempty(candidate_path)
+
+        root_folder_m = extract_gcamp_root_folder( ...
+            gcamp_output_folders, m);
+
+        candidate_path = root_folder_m;
+    end
+
+    if isempty(candidate_path)
+        return;
+    end
+
+    acquisition_name = find_tseries_name_in_path( ...
+        candidate_path);
+end
+
+
+function tseries_name = find_tseries_name_in_path( ...
+    path_value)
+
+    tseries_name = 'TSeries_unknown';
+
+    if isempty(path_value)
+        return;
+    end
+
+    path_value = char(string(path_value));
+
+    while ~isempty(path_value)
+
+        [parent_path, current_name] = ...
+            fileparts(path_value);
+
+        if startsWith( ...
+                current_name, ...
+                'TSeries-', ...
+                'IgnoreCase', true)
+
+            tseries_name = current_name;
+            return;
+        end
+
+        if isempty(parent_path) || ...
+                strcmp(parent_path, path_value)
+
+            break;
+        end
+
+        path_value = parent_path;
+    end
+end
+
+
+function count = get_mask_count(mask_value)
+
+    count = 0;
+
+    if isempty(mask_value)
+        return;
+    end
+
+    if iscell(mask_value)
+
+        count = numel(mask_value);
+
+    elseif ndims(mask_value) == 3
+
+        count = size(mask_value, 1);
+
+    elseif ismatrix(mask_value)
+
+        count = 1;
+    end
+end
+
+
+function text_value = logical_status(tf)
+
+    if tf
+        text_value = 'available';
+    else
+        text_value = 'missing';
+    end
 end

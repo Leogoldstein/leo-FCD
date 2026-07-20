@@ -84,7 +84,7 @@ function [selected_groups, animal_date_list] = folder_selection( ...
 
     new_selected_groups = group_selected_groups_by_type(selected_groups_flat);
 
-    [new_selected_groups, daytime] = create_gcamp_output_folders(new_selected_groups);
+    [new_selected_groups, ~] = create_gcamp_output_folders(new_selected_groups);
 
     selected_groups = update_selected_groups_in_place( ...
         selected_groups, ...
@@ -231,249 +231,208 @@ end
 % Mise à jour selected_groups existant
 % =====================================================================
 
-function selected_groups = update_selected_groups_in_place(selected_groups, new_selected_groups)
+function selected_groups = update_selected_groups_in_place( ...
+        old_selected_groups, new_selected_groups)
 
-    if isempty(selected_groups)
-        selected_groups = new_selected_groups;
+    if isempty(new_selected_groups) || ...
+            ~isstruct(new_selected_groups) || ...
+            isempty(fieldnames(new_selected_groups))
+
+        selected_groups = struct();
+        fprintf('\nAucune donnée sélectionnée : selected_groups vidé.\n');
         return;
     end
 
-    updated_groups = selected_groups;
+    if nargin < 1 || ...
+            isempty(old_selected_groups) || ...
+            ~isstruct(old_selected_groups)
 
-    % ================================================================
-    % 1) Mettre à jour les groupes déjà existants
-    % ================================================================
-    old_type_names = fieldnames(updated_groups);
-
-    for t = 1:numel(old_type_names)
-
-        current_type = old_type_names{t};
-
-        if isfield(new_selected_groups, current_type)
-            new_groups_this_type = new_selected_groups.(current_type);
-        else
-            new_groups_this_type = struct([]);
-        end
-
-        old_groups_this_type = updated_groups.(current_type);
-
-        for k = 1:numel(old_groups_this_type)
-
-            old_group = old_groups_this_type(k);
-
-            if isempty(new_groups_this_type)
-                new_idx = [];
-            else
-                new_idx = find_matching_group(new_groups_this_type, old_group);
-            end
-
-            if isempty(new_idx)
-
-                % Groupe absent de la sélection actuelle :
-                % conserver l'historique mais vider les chemins dépendant
-                % de la sélection et masquer data avec des [].
-                [merged_group, selection_group] = ...
-                    mask_group_as_not_selected(old_group);
-
-                fprintf('Groupe non sélectionné, indices conservés avec [] : %s | %s | %s', ...
-                    char(string(old_group.type)), ...
-                    char(string(old_group.line)), ...
-                    char(string(old_group.animal_group)));
-
-            else
-
-                new_group = new_groups_this_type(new_idx);
-
-                % Conserver l'historique des recordings et aligner
-                % la sélection actuelle sur les anciens indices.
-                [merged_group, selection_group] = ...
-                    merge_group_keep_alignment(old_group, new_group);
-
-                fprintf('Groupe mis à jour sans suppression d''indices : %s | %s | %s', ...
-                    char(string(new_group.type)), ...
-                    char(string(new_group.line)), ...
-                    char(string(new_group.animal_group)));
-            end
-
-            if isfield(old_group, 'data') && ...
-                    ~isempty(old_group.data)
-
-                merged_group.data = mask_data_to_current_selection( ...
-                    old_group.data, selection_group);
-            end
-
-            updated_groups.(current_type)(k) = merged_group;
-        end
+        selected_groups = new_selected_groups;
+        fprintf('\nNouvelle sélection créée sans historique précédent.\n');
+        return;
     end
 
-    % ================================================================
-    % 2) Ajouter les nouveaux groupes absents de selected_groups
-    % ================================================================
-    new_type_names = fieldnames(new_selected_groups);
+    selected_groups = struct();
+    selected_type_names = fieldnames(new_selected_groups);
 
-    for t = 1:numel(new_type_names)
+    for t = 1:numel(selected_type_names)
 
-        current_type = new_type_names{t};
-        new_groups_this_type = new_selected_groups.(current_type);
+        current_type = selected_type_names{t};
+        current_new_groups = new_selected_groups.(current_type);
+        current_output_groups = struct([]);
 
-        if ~isfield(updated_groups, current_type)
-
-            updated_groups.(current_type) = new_groups_this_type;
-
-            fprintf('Nouveau type ajouté : %s', current_type);
-            continue;
+        if isfield(old_selected_groups, current_type)
+            current_old_groups = old_selected_groups.(current_type);
+        else
+            current_old_groups = struct([]);
         end
 
-        for k = 1:numel(new_groups_this_type)
+        for k = 1:numel(current_new_groups)
 
-            new_group = new_groups_this_type(k);
+            selection_group = current_new_groups(k);
 
             old_idx = find_matching_group( ...
-                updated_groups.(current_type), new_group);
+                current_old_groups, selection_group);
 
-            if ~isempty(old_idx)
-                continue;
+            if isempty(old_idx)
+
+                final_group = selection_group;
+
+                fprintf([ ...
+                    'Nouveau groupe conservé : ' ...
+                    '%s | %s | %s | %d recording(s)\n'], ...
+                    char(string(final_group.type)), ...
+                    char(string(final_group.line)), ...
+                    char(string(final_group.animal_group)), ...
+                    get_recording_count(final_group));
+
+            else
+
+                old_group = current_old_groups(old_idx);
+
+                final_group = keep_group_current_selection( ...
+                    old_group, selection_group);
+
+                fprintf([ ...
+                    'Groupe filtré sur la sélection : ' ...
+                    '%s | %s | %s | %d recording(s)\n'], ...
+                    char(string(final_group.type)), ...
+                    char(string(final_group.line)), ...
+                    char(string(final_group.animal_group)), ...
+                    get_recording_count(final_group));
             end
 
-            [updated_groups.(current_type), new_group] = ...
-                harmonize_struct_fields_for_append( ...
-                    updated_groups.(current_type), new_group);
+            if isempty(current_output_groups)
 
-            updated_groups.(current_type)(end+1) = new_group;
+                current_output_groups = final_group;
 
-            fprintf('Nouveau groupe ajouté : %s | %s | %s', ...
-                char(string(new_group.type)), ...
-                char(string(new_group.line)), ...
-                char(string(new_group.animal_group)));
+            else
+
+                [current_output_groups, final_group] = ...
+                    harmonize_struct_fields_for_append( ...
+                        current_output_groups, final_group);
+
+                current_output_groups(end+1,1) = final_group;
+            end
         end
-    end
 
-    selected_groups = updated_groups;
+        selected_groups.(current_type) = current_output_groups;
+    end
 end
 
 
-function [merged_group, selection_group] = ...
-    merge_group_keep_alignment(old_group, new_group)
-
-    merged_group = old_group;
-
-    % ------------------------------------------------------
-    % Mettre à jour les informations générales
-    % ------------------------------------------------------
-    scalar_fields = {'animal_group','type','line','sex'};
-
-    for i = 1:numel(scalar_fields)
-
-        fn = scalar_fields{i};
-
-        if isfield(new_group, fn) && ~isempty(new_group.(fn))
-            merged_group.(fn) = new_group.(fn);
-        end
-    end
-
-    if ~isfield(merged_group, 'paths') || ...
-            ~isstruct(merged_group.paths)
-        merged_group.paths = struct();
-    end
-
-    if ~isfield(new_group, 'paths') || ...
-            ~isstruct(new_group.paths)
-        new_group.paths = struct();
-    end
+function final_group = keep_group_current_selection( ...
+        old_group, new_group)
 
     nOld = get_recording_count(old_group);
     nNew = get_recording_count(new_group);
 
-    % ------------------------------------------------------
-    % Trouver l'indice historique correspondant à chaque
-    % recording de la sélection actuelle
-    % ------------------------------------------------------
-    new_to_merged = zeros(nNew,1);
+    old_indices = zeros(nNew,1);
     used_old = false(nOld,1);
-    nTotal = nOld;
 
     for j = 1:nNew
 
-        old_idx = find_matching_recording( ...
+        idx = find_matching_recording( ...
             old_group, new_group, j, used_old);
 
-        if isempty(old_idx)
-            nTotal = nTotal + 1;
-            new_to_merged(j) = nTotal;
-        else
-            new_to_merged(j) = old_idx;
-            used_old(old_idx) = true;
+        if ~isempty(idx)
+            old_indices(j) = idx;
+            used_old(idx) = true;
         end
     end
 
-    % ------------------------------------------------------
-    % Champs historiques : jamais supprimés
-    % ------------------------------------------------------
-    old_tseries = get_path_matrix(old_group, 'TSeries', nOld, 4);
-    old_xml     = get_path_vector(old_group, 'xml', nOld);
-    old_date    = get_path_vector(old_group, 'date', nOld);
-    old_ages    = get_group_vector(old_group, 'ages', nOld);
+    % La structure finale suit exactement la sélection courante.
+    final_group = new_group;
 
-    merged_tseries = resize_cell_matrix(old_tseries, nTotal, 4);
-    merged_xml     = resize_cell_vector(old_xml, nTotal);
-    merged_date    = resize_cell_vector(old_date, nTotal);
-    merged_ages    = resize_cell_vector(old_ages, nTotal);
+    % Conserver les champs top-level supplémentaires de l'ancien groupe.
+    old_fields = fieldnames(old_group);
 
-    new_tseries = get_path_matrix(new_group, 'TSeries', nNew, 4);
-    new_xml     = get_path_vector(new_group, 'xml', nNew);
-    new_date    = get_path_vector(new_group, 'date', nNew);
-    new_ages    = get_group_vector(new_group, 'ages', nNew);
+    protected_fields = { ...
+        'animal_group', 'type', 'line', 'sex', ...
+        'ages', 'paths', 'data'};
+
+    for f = 1:numel(old_fields)
+
+        fn = old_fields{f};
+
+        if any(strcmp(fn, protected_fields))
+            continue;
+        end
+
+        old_value = old_group.(fn);
+
+        if is_recording_indexed_cell(old_value, nOld)
+
+            final_group.(fn) = subset_recording_cell( ...
+                old_value, old_indices, nNew);
+
+        elseif ~isfield(final_group, fn) || ...
+                isempty(final_group.(fn))
+
+            final_group.(fn) = old_value;
+        end
+    end
+
+    final_group.paths = merge_paths_for_current_selection( ...
+        old_group, new_group, old_indices, nOld, nNew);
+
+    % Âges : priorité à la sélection actuelle.
+    new_ages = get_group_vector(new_group, 'ages', nNew);
+    old_ages = get_group_vector(old_group, 'ages', nOld);
+
+    final_ages = cell(nNew,1);
 
     for j = 1:nNew
 
-        target_idx = new_to_merged(j);
+        if j <= numel(new_ages) && ~isempty(new_ages{j})
 
-        for c = 1:4
-            if ~isempty(new_tseries{j,c})
-                merged_tseries{target_idx,c} = new_tseries{j,c};
-            end
-        end
+            final_ages{j} = new_ages{j};
 
-        if ~isempty(new_xml{j})
-            merged_xml{target_idx,1} = new_xml{j};
-        end
+        elseif old_indices(j) > 0 && ...
+                old_indices(j) <= numel(old_ages)
 
-        if ~isempty(new_date{j})
-            merged_date{target_idx,1} = new_date{j};
-        end
-
-        if ~isempty(new_ages{j})
-            merged_ages{target_idx,1} = new_ages{j};
+            final_ages{j} = old_ages{old_indices(j)};
         end
     end
 
-    merged_group.paths.TSeries = merged_tseries;
-    merged_group.paths.xml     = merged_xml;
-    merged_group.paths.date    = merged_date;
-    merged_group.ages          = merged_ages;
+    final_group.ages = final_ages;
 
-    % ------------------------------------------------------
-    % animal : conserver l'ancien si le nouveau est vide
-    % ------------------------------------------------------
-    if isfield(new_group.paths, 'animal') && ...
-            ~isempty(new_group.paths.animal)
+    % Conserver uniquement les données des recordings sélectionnés.
+    if isfield(old_group, 'data') && ...
+            ~isempty(old_group.data)
 
-        merged_group.paths.animal = new_group.paths.animal;
+        final_group.data = subset_data_for_current_selection( ...
+            old_group.data, old_indices, nOld, nNew);
+    end
+end
 
-    elseif ~isfield(merged_group.paths, 'animal')
 
-        merged_group.paths.animal = '';
+function final_paths = merge_paths_for_current_selection( ...
+        old_group, new_group, old_indices, nOld, nNew)
+
+    if isfield(new_group, 'paths') && ...
+            isstruct(new_group.paths)
+
+        final_paths = new_group.paths;
+    else
+        final_paths = struct();
     end
 
-    % ------------------------------------------------------
-    % Tous les autres champs paths :
-    % aucune suppression de ligne.
-    % Les recordings non sélectionnés deviennent [].
-    % ------------------------------------------------------
-    reserved_fields = {'animal','date','TSeries','xml'};
+    if ~isfield(old_group, 'paths') || ...
+            ~isstruct(old_group.paths)
 
-    old_path_fields = fieldnames(merged_group.paths);
-    new_path_fields = fieldnames(new_group.paths);
+        return;
+    end
+
+    old_path_fields = fieldnames(old_group.paths);
+
+    if isfield(new_group, 'paths') && ...
+            isstruct(new_group.paths)
+
+        new_path_fields = fieldnames(new_group.paths);
+    else
+        new_path_fields = {};
+    end
 
     all_path_fields = unique( ...
         [old_path_fields; new_path_fields], 'stable');
@@ -482,106 +441,288 @@ function [merged_group, selection_group] = ...
 
         fn = all_path_fields{f};
 
-        if any(strcmp(fn, reserved_fields))
+        old_exists = isfield(old_group.paths, fn);
+        new_exists = isfield(new_group, 'paths') && ...
+            isstruct(new_group.paths) && ...
+            isfield(new_group.paths, fn);
+
+        if old_exists
+            old_value = old_group.paths.(fn);
+        else
+            old_value = [];
+        end
+
+        if new_exists
+            new_value = new_group.paths.(fn);
+        else
+            new_value = [];
+        end
+
+        if strcmp(fn, 'animal')
+
+            if ~isempty(new_value)
+                final_paths.(fn) = new_value;
+            elseif ~isempty(old_value)
+                final_paths.(fn) = old_value;
+            else
+                final_paths.(fn) = '';
+            end
+
             continue;
         end
 
-        old_value = [];
-        new_value = [];
+        old_is_indexed = is_recording_indexed_cell(old_value, nOld);
+        new_is_indexed = is_recording_indexed_cell(new_value, nNew);
 
-        if isfield(old_group, 'paths') && ...
-                isfield(old_group.paths, fn)
-            old_value = old_group.paths.(fn);
-        end
-
-        if isfield(new_group.paths, fn)
-            new_value = new_group.paths.(fn);
-        end
-
-        if iscell(old_value) || iscell(new_value)
+        if old_is_indexed || new_is_indexed
 
             nCols = max([ ...
-                get_cell_ncols(old_value), ...
-                get_cell_ncols(new_value), ...
+                get_cell_column_count(old_value), ...
+                get_cell_column_count(new_value), ...
                 1]);
 
-            aligned_value = cell(nTotal, nCols);
-            new_value = resize_cell_matrix( ...
+            old_matrix = resize_cell_matrix( ...
+                force_cell_matrix(old_value), nOld, nCols);
+
+            new_matrix = resize_cell_matrix( ...
                 force_cell_matrix(new_value), nNew, nCols);
+
+            merged_value = cell(nNew, nCols);
 
             for j = 1:nNew
 
-                target_idx = new_to_merged(j);
+                source_idx = old_indices(j);
+
+                if source_idx > 0 && source_idx <= nOld
+                    merged_value(j,:) = old_matrix(source_idx,:);
+                end
 
                 for c = 1:nCols
-                    aligned_value{target_idx,c} = new_value{j,c};
+                    if ~isempty(new_matrix{j,c})
+                        merged_value{j,c} = new_matrix{j,c};
+                    end
                 end
             end
 
-            merged_group.paths.(fn) = aligned_value;
+            final_paths.(fn) = merged_value;
 
-        else
+        elseif new_exists && ~isempty(new_value)
 
-            % Champ non indexé par recording
-            if ~isempty(new_value)
-                merged_group.paths.(fn) = new_value;
-            elseif ~isfield(merged_group.paths, fn)
-                merged_group.paths.(fn) = old_value;
-            end
+            final_paths.(fn) = new_value;
+
+        elseif old_exists
+
+            final_paths.(fn) = old_value;
         end
-    end
-
-    % ------------------------------------------------------
-    % selection_group sert uniquement à masquer data.
-    % TSeries non sélectionnées = [] ici, sans modifier
-    % merged_group.paths.TSeries.
-    % ------------------------------------------------------
-    selection_group = merged_group;
-    selection_group.paths.TSeries = cell(nTotal,4);
-
-    for j = 1:nNew
-
-        target_idx = new_to_merged(j);
-        selection_group.paths.TSeries(target_idx,:) = ...
-            new_tseries(j,:);
     end
 end
 
 
-function [masked_group, selection_group] = ...
-    mask_group_as_not_selected(old_group)
+function new_data = subset_data_for_current_selection( ...
+        old_data, old_indices, nOld, nNew)
 
-    masked_group = old_group;
+    new_data = struct();
 
-    if ~isfield(masked_group, 'paths') || ...
-            ~isstruct(masked_group.paths)
-
-        masked_group.paths = struct();
+    if isempty(old_data) || ~isstruct(old_data)
+        return;
     end
 
-    nRecordings = get_recording_count(old_group);
+    data_fields = fieldnames(old_data);
 
-    reserved_fields = {'animal','date','TSeries','xml'};
-    path_fields = fieldnames(masked_group.paths);
+    for f = 1:numel(data_fields)
 
-    for f = 1:numel(path_fields)
+        fn = data_fields{f};
+        old_value = old_data.(fn);
 
-        fn = path_fields{f};
+        if isstruct(old_value)
 
-        if any(strcmp(fn, reserved_fields))
-            continue;
+            new_data.(fn) = subset_struct_branch( ...
+                old_value, old_indices, nOld, nNew);
+
+        elseif is_recording_indexed_cell(old_value, nOld)
+
+            new_data.(fn) = subset_recording_cell( ...
+                old_value, old_indices, nNew);
+
+        else
+
+            new_data.(fn) = old_value;
+        end
+    end
+end
+
+
+function new_branch = subset_struct_branch( ...
+        old_branch, old_indices, nOld, nNew)
+
+    if isscalar(old_branch)
+
+        new_branch = struct();
+        branch_fields = fieldnames(old_branch);
+
+        for f = 1:numel(branch_fields)
+
+            fn = branch_fields{f};
+            old_value = old_branch.(fn);
+
+            if isstruct(old_value)
+
+                new_branch.(fn) = subset_struct_branch( ...
+                    old_value, old_indices, nOld, nNew);
+
+            elseif is_recording_indexed_cell(old_value, nOld)
+
+                new_branch.(fn) = subset_recording_cell( ...
+                    old_value, old_indices, nNew);
+
+            else
+
+                new_branch.(fn) = old_value;
+            end
         end
 
-        value = masked_group.paths.(fn);
+        return;
+    end
 
-        if iscell(value)
-            nCols = max(get_cell_ncols(value), 1);
-            masked_group.paths.(fn) = cell(nRecordings, nCols);
+    if numel(old_branch) == nOld
+
+        if isempty(old_branch)
+            new_branch = old_branch;
+            return;
+        end
+
+        template = old_branch(1);
+        empty_template = empty_struct_like(template);
+        new_branch = repmat(empty_template, nNew, 1);
+
+        for j = 1:nNew
+
+            source_idx = old_indices(j);
+
+            if source_idx > 0 && source_idx <= nOld
+                new_branch(j,1) = old_branch(source_idx);
+            end
+        end
+
+    else
+
+        new_branch = old_branch;
+    end
+end
+
+
+function out = subset_recording_cell(C, old_indices, nNew)
+
+    if isempty(C)
+        out = cell(nNew,1);
+        return;
+    end
+
+    if ~iscell(C)
+        out = C;
+        return;
+    end
+
+    is_row_vector = size(C,1) == 1 && size(C,2) > 1;
+
+    if is_row_vector
+
+        C_work = C(:);
+        out_work = cell(nNew,1);
+
+        for j = 1:nNew
+
+            source_idx = old_indices(j);
+
+            if source_idx > 0 && source_idx <= numel(C_work)
+                out_work{j} = C_work{source_idx};
+            end
+        end
+
+        out = out_work.';
+        return;
+    end
+
+    nCols = size(C,2);
+    out = cell(nNew,nCols);
+
+    for j = 1:nNew
+
+        source_idx = old_indices(j);
+
+        if source_idx > 0 && source_idx <= size(C,1)
+            out(j,:) = C(source_idx,:);
+        end
+    end
+end
+
+
+function tf = is_recording_indexed_cell(value, nRecordings)
+
+    tf = false;
+
+    if ~iscell(value) || nRecordings <= 0
+        return;
+    end
+
+    tf = size(value,1) == nRecordings || ...
+        (size(value,1) == 1 && size(value,2) == nRecordings);
+end
+
+
+function nCols = get_cell_column_count(value)
+
+    if isempty(value) || ~iscell(value)
+        nCols = 0;
+        return;
+    end
+
+    % Important :
+    % une matrice 1x4 de chemins correspond à un seul recording
+    % avec quatre canaux/colonnes, et non à quatre recordings.
+    nCols = size(value, 2);
+end
+
+
+function S = empty_struct_like(template)
+
+    S = template;
+    fields = fieldnames(S);
+
+    for f = 1:numel(fields)
+        S.(fields{f}) = [];
+    end
+end
+
+
+function [A, b] = harmonize_struct_fields_for_append(A, b)
+
+    if isempty(A)
+        return;
+    end
+
+    fieldsA = fieldnames(A);
+    fieldsB = fieldnames(b);
+
+    all_fields = unique([fieldsA; fieldsB], 'stable');
+
+    for i = 1:numel(all_fields)
+
+        fn = all_fields{i};
+
+        if ~isfield(A, fn)
+            for j = 1:numel(A)
+                A(j).(fn) = [];
+            end
+        end
+
+        if ~isfield(b, fn)
+            b.(fn) = [];
         end
     end
 
-    selection_group = masked_group;
-    selection_group.paths.TSeries = cell(nRecordings,4);
+    A = orderfields(A, all_fields);
+    b = orderfields(b, all_fields);
 end
 
 
@@ -887,396 +1028,9 @@ function C = resize_cell_vector(C, nRows)
 end
 
 
-function nCols = get_cell_ncols(C)
-
-    if isempty(C)
-        nCols = 0;
-        return;
-    end
-
-    if iscell(C)
-        nCols = size(C,2);
-    else
-        nCols = 0;
-    end
-end
-
-
-function [A, b] = harmonize_struct_fields_for_append(A, b)
-
-    fieldsA = fieldnames(A);
-    fieldsB = fieldnames(b);
-
-    all_fields = unique([fieldsA; fieldsB], 'stable');
-
-    for i = 1:numel(all_fields)
-
-        fn = all_fields{i};
-
-        if ~isfield(A, fn)
-            for j = 1:numel(A)
-                A(j).(fn) = [];
-            end
-        end
-
-        if ~isfield(b, fn)
-            b.(fn) = [];
-        end
-    end
-
-    A = orderfields(A, all_fields);
-    b = orderfields(b, all_fields);
-end
-
-
-% =====================================================================
-% Masquage centralisé de data
-% Aucun indice n'est supprimé
-% =====================================================================
-
-function data = mask_data_to_current_selection(data, selection_group)
-
-    if isempty(data) || ~isstruct(data)
-        return;
-    end
-
-    if ~isfield(selection_group, 'paths') || ...
-            ~isstruct(selection_group.paths)
-        return;
-    end
-
-    % ------------------------------------------------------
-    % Motion + stim : TSeries de la sélection courante
-    % Les indices absents deviennent []
-    % ------------------------------------------------------
-    if isfield(selection_group.paths, 'TSeries')
-
-        current_tseries = selection_group.paths.TSeries(:,1);
-
-        if isfield(data, 'motion')
-            data = mask_linear_branch_by_path( ...
-                data, 'motion', ...
-                'motion_tseries_path', current_tseries);
-        end
-
-        if isfield(data, 'stim')
-            data = mask_linear_branch_by_path( ...
-                data, 'stim', ...
-                'stim_tseries_path', current_tseries);
-        end
-    end
-
-    % ------------------------------------------------------
-    % GCaMP + blue : suite2p aligné par recording
-    % ------------------------------------------------------
-    if isfield(selection_group.paths, 'suite2p')
-
-        suite2p_paths = force_4col( ...
-            selection_group.paths.suite2p);
-
-        current_gcamp_folders = rows_to_nested_cell( ...
-            suite2p_paths(:,1));
-
-        if isfield(data, 'gcamp_plane')
-            data = mask_plane_branch_by_path( ...
-                data, 'gcamp_plane', ...
-                'gcamp_fall_path_by_plane', ...
-                current_gcamp_folders);
-        end
-
-        current_blue_folders = rows_to_nested_cell( ...
-            suite2p_paths(:,3));
-
-        if isfield(data, 'blue_plane')
-            data = mask_plane_branch_by_path( ...
-                data, 'blue_plane', ...
-                'blue_fall_path_by_plane', ...
-                current_blue_folders);
-        end
-    end
-
-    % ------------------------------------------------------
-    % Combined : gcamp_output aligné par recording
-    % ------------------------------------------------------
-    if isfield(selection_group.paths, 'gcamp_output')
-
-        current_output_folders = rows_to_nested_cell( ...
-            selection_group.paths.gcamp_output);
-
-        if isfield(data, 'combined_plane')
-            data = mask_plane_branch_by_path( ...
-                data, 'combined_plane', ...
-                'combined_output_path_by_plane', ...
-                current_output_folders);
-        end
-    end
-end
-
-
-function data = mask_linear_branch_by_path( ...
-    data, branchName, pathField, current_paths)
-
-    if ~isfield(data, branchName) || ...
-            ~isstruct(data.(branchName))
-        return;
-    end
-
-    branch = data.(branchName);
-
-    if ~isfield(branch, pathField) || ...
-            ~iscell(branch.(pathField))
-
-        warning('%s : champ de traçabilité "%s" absent. Branche conservée sans masquage.', ...
-            branchName, pathField);
-
-        return;
-    end
-
-    current_paths = normalize_path_list(current_paths);
-    old_paths = normalize_path_list(branch.(pathField));
-
-    nOld = numel(old_paths);
-    nTarget = max(nOld, numel(current_paths));
-
-    fields = fieldnames(branch);
-
-    % Étendre les champs linéaires sans supprimer les indices existants
-    for f = 1:numel(fields)
-
-        fn = fields{f};
-
-        if iscell(branch.(fn)) && ...
-                numel(branch.(fn)) == nOld
-
-            original_size = size(branch.(fn));
-            branch.(fn) = branch.(fn)(:);
-
-            if numel(branch.(fn)) < nTarget
-                branch.(fn){nTarget,1} = [];
-            end
-
-            if original_size(1) == 1
-                branch.(fn) = branch.(fn).';
-            end
-        end
-    end
-
-    old_paths = normalize_path_list(branch.(pathField));
-    keep_idx = false(nTarget,1);
-
-    for i = 1:min(numel(old_paths), nTarget)
-
-        if old_paths{i} == ""
-            continue;
-        end
-
-        keep_idx(i) = any(strcmp( ...
-            string(old_paths{i}), ...
-            string(current_paths)));
-    end
-
-    for f = 1:numel(fields)
-
-        fn = fields{f};
-
-        if iscell(branch.(fn)) && ...
-                numel(branch.(fn)) == nTarget
-
-            for i = 1:nTarget
-                if ~keep_idx(i)
-                    branch.(fn){i} = [];
-                end
-            end
-        end
-    end
-
-    data.(branchName) = branch;
-end
-
-
-function data = mask_plane_branch_by_path( ...
-    data, branchName, pathField, current_paths_by_group)
-
-    if ~isfield(data, branchName) || ...
-            ~isstruct(data.(branchName))
-        return;
-    end
-
-    branch = data.(branchName);
-
-    if ~isfield(branch, pathField) || ...
-            ~iscell(branch.(pathField))
-
-        warning('%s : champ de traçabilité "%s" absent. Branche conservée sans masquage.', ...
-            branchName, pathField);
-
-        return;
-    end
-
-    fields = fieldnames(branch);
-
-    current_paths_by_group = ...
-        force_column_cell(current_paths_by_group);
-
-    nOldGroups = numel(branch.(pathField));
-    nTargetGroups = max( ...
-        nOldGroups, numel(current_paths_by_group));
-
-    % ------------------------------------------------------
-    % Étendre les champs par recording avec des []
-    % Jamais de troncature
-    % ------------------------------------------------------
-    for f = 1:numel(fields)
-
-        fn = fields{f};
-
-        if iscell(branch.(fn)) && ...
-                numel(branch.(fn)) == nOldGroups
-
-            branch.(fn) = branch.(fn)(:);
-
-            if numel(branch.(fn)) < nTargetGroups
-                branch.(fn){nTargetGroups,1} = [];
-            end
-        end
-    end
-
-    for m = 1:nTargetGroups
-
-        if m <= numel(current_paths_by_group)
-            current_paths = current_paths_by_group{m};
-        else
-            current_paths = {};
-        end
-
-        if isempty(current_paths)
-
-            % Recording absent de la sélection :
-            % vider chaque champ à cet index, sans supprimer l'index.
-            for f = 1:numel(fields)
-
-                fn = fields{f};
-
-                if iscell(branch.(fn)) && ...
-                        numel(branch.(fn)) >= m
-
-                    branch.(fn){m} = [];
-                end
-            end
-
-            continue;
-        end
-
-        if ischar(current_paths) || isstring(current_paths)
-            current_paths = {char(current_paths)};
-        end
-
-        current_paths = normalize_path_list(current_paths);
-
-        if numel(branch.(pathField)) < m || ...
-                isempty(branch.(pathField){m}) || ...
-                ~iscell(branch.(pathField){m})
-
-            continue;
-        end
-
-        old_paths = normalize_path_list( ...
-            branch.(pathField){m});
-
-        keep_p = false(numel(old_paths),1);
-
-        for p = 1:numel(old_paths)
-
-            if old_paths{p} == ""
-                continue;
-            end
-
-            keep_p(p) = any(strcmp( ...
-                string(old_paths{p}), ...
-                string(current_paths)));
-        end
-
-        for f = 1:numel(fields)
-
-            fn = fields{f};
-
-            if numel(branch.(fn)) >= m && ...
-                    iscell(branch.(fn){m}) && ...
-                    numel(branch.(fn){m}) == numel(keep_p)
-
-                for p = 1:numel(keep_p)
-
-                    if ~keep_p(p)
-                        branch.(fn){m}{p} = [];
-                    end
-                end
-            end
-        end
-    end
-
-    data.(branchName) = branch;
-end
-
 % =====================================================================
 % Helpers chemins / cellules
 % =====================================================================
-
-function out = normalize_path_list(paths_in)
-
-    if isempty(paths_in)
-        out = {};
-        return;
-    end
-
-    if istable(paths_in)
-        paths_in = table2cell(paths_in);
-    end
-
-    if isstring(paths_in)
-        paths_in = cellstr(paths_in(:));
-    end
-
-    if ischar(paths_in)
-        paths_in = {paths_in};
-    end
-
-    if ~iscell(paths_in)
-        out = {};
-        return;
-    end
-
-    paths_in = paths_in(:);
-    tmp = {};
-
-    for i = 1:numel(paths_in)
-
-        p = paths_in{i};
-
-        if isempty(p)
-            tmp{end+1,1} = "";
-            continue;
-        end
-
-        if iscell(p)
-            p = p(:);
-            for j = 1:numel(p)
-                tmp{end+1,1} = normalize_one_path(p{j});
-            end
-
-        elseif isstring(p)
-            p = p(:);
-            for j = 1:numel(p)
-                tmp{end+1,1} = normalize_one_path(p(j));
-            end
-
-        else
-            tmp{end+1,1} = normalize_one_path(p);
-        end
-    end
-
-    out = tmp;
-end
-
 
 function p = normalize_one_path(p)
 
@@ -1294,49 +1048,6 @@ function p = normalize_one_path(p)
         p = extractBefore(p, strlength(p));
     end
 end
-
-function C = force_column_cell(C)
-
-    if isempty(C)
-        C = {};
-        return;
-    end
-
-    if isstring(C)
-        C = cellstr(C);
-    end
-
-    if ischar(C)
-        C = {C};
-    end
-
-    if ~iscell(C)
-        C = {};
-        return;
-    end
-
-    C = C(:);
-end
-
-
-function nested = rows_to_nested_cell(C)
-
-    if isempty(C)
-        nested = {};
-        return;
-    end
-
-    if ~iscell(C)
-        C = cellstr(string(C));
-    end
-
-    nested = cell(size(C,1),1);
-
-    for i = 1:size(C,1)
-        nested{i} = C(i,:);
-    end
-end
-
 
 function animal_path = infer_animal_path_from_tseries(TSeriesPaths, idx)
 

@@ -170,11 +170,9 @@ function folder_names = get_folder_list(type, lastFolderName)
 
                 case 'gcamp'
                     folder_names = {
-                        'ani3\2024-06-26';
                         'ani3\2024-06-28';
                         'ani5\2024-06-27';
                         'mTor13\ani2\2024-10-22';
-                        'mTor14\ani1\2024-10-23';
                         'mTor14\ani1\2024-10-24';
                         'mTor14\ani1\2024-10-25';
                         'mTor14\ani3\2024-10-24';
@@ -191,15 +189,15 @@ function folder_names = get_folder_list(type, lastFolderName)
                         'mTor20\ani5\2025-01-30';
                         'mTor19\ani6\2025-01-31';
                         'mTor19\ani6\2025-02-01';
-                        'mTor17\ani3\2024-12-23';
-                        'mTor17\ani3\2024-12-22';
+                        %'mTor17\ani3\2024-12-23';
+                        %'mTor17\ani3\2024-12-22';
                         'mTor17\ani3\2024-12-21';
-                        'mTor17\ani3\2024-12-20';
+                        %'mTor17\ani3\2024-12-20';
                         'mTor17\ani3\2024-12-19';
                         'mTor17\ani2\2024-12-20';
-                        'mTor17\ani2\2024-12-19';
+                        %'mTor17\ani2\2024-12-19';
                         'mTor17\ani1\2024-12-21';
-                        'mTor17\ani1\2024-12-20';
+                        %'mTor17\ani1\2024-12-20';
                         'mTor17\ani1\2024-12-19';
                         'mTor17\ani1\2024-12-18';
                         'mTor17\ani1\2024-12-17';

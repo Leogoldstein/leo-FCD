@@ -1,4 +1,5 @@
-function selected_groups = process_selected_groups(selected_groups, include_blue_cells)
+function selected_groups = process_selected_groups( ...
+        selected_groups, include_blue_cells)
 
     if nargin < 1 || isempty(selected_groups)
         return;
@@ -14,41 +15,63 @@ function selected_groups = process_selected_groups(selected_groups, include_blue
 
         current_type = type_names{t};
 
-        for k = 1:numel(selected_groups.(current_type))
+        numSelectedGroups = ...
+            numel(selected_groups.(current_type));
 
-            fprintf('\n==============================\n');
-            fprintf('Process selected group\n');
-            fprintf('Type: %s\n', current_type);
-            fprintf('Animal %d / %d: %s\n', ...
-                k, numel(selected_groups.(current_type)), ...
-                char(string(selected_groups.(current_type)(k).animal_group)));
-            fprintf('==============================\n');
+        fprintf('\n');
+        fprintf('============================================================\n');
+        fprintf('PROCESSING TYPE: %s\n', current_type);
+        fprintf('NUMBER OF ANIMALS: %d\n', numSelectedGroups);
+        fprintf('============================================================\n');
 
-            paths = selected_groups.(current_type)(k).paths;
+        %% =========================================================
+        % General processing for all animals
+        % ==========================================================
 
-            gcamp_root_folders   = paths.gcamp_root;
-            gcamp_output_folders = paths.gcamp_output;
+        for k = 1:numSelectedGroups
 
-            current_animal_group = selected_groups.(current_type)(k).animal_group;
-            current_ages_group   = selected_groups.(current_type)(k).ages;
+            current_animal_group = ...
+                selected_groups.(current_type)(k).animal_group;
 
-            current_suite2p_group = paths.suite2p;
-            current_TSeries_group = paths.TSeries;
-            current_xml_group     = paths.xml;
-            date_group_paths      = paths.date;
+            fprintf('\n');
+            fprintf('------------------------------------------------------------\n');
+            fprintf('Animal %d/%d\n', k, numSelectedGroups);
+            fprintf('Type  : %s\n', current_type);
+            fprintf('Animal: %s\n', ...
+                char(string(current_animal_group)));
+            fprintf('------------------------------------------------------------\n');
 
-            data = selected_groups.(current_type)(k).data;
+            paths = ...
+                selected_groups.(current_type)(k).paths;
 
-            %======================================================
-            % Sampling rate + synchronous frames depuis metadata
-            %======================================================
-            metadata = selected_groups.(current_type)(k).metadata;
-            
-            sampling_rate_group = metadata.SamplingRatePlane;
-            
-            %======================================================
+            gcamp_output_folders = ...
+                paths.gcamp_output;
+
+            current_ages_group = ...
+                selected_groups.(current_type)(k).ages;
+
+            current_suite2p_group = ...
+                paths.suite2p;
+
+            current_TSeries_group = ...
+                paths.TSeries;
+
+            date_group_paths = ...
+                paths.date;
+
+            data = ...
+                selected_groups.(current_type)(k).data;
+
+            metadata = ...
+                selected_groups.(current_type)(k).metadata;
+
+            sampling_rate_group = ...
+                metadata.SamplingRatePlane;
+
+            %% -----------------------------------------------------
             % Mean images
-            %======================================================
+            % ------------------------------------------------------
+
             meanImgs_gcamp = save_mean_images( ...
                 'GCaMP', ...
                 current_animal_group, ...
@@ -63,12 +86,16 @@ function selected_groups = process_selected_groups(selected_groups, include_blue
                 gcamp_output_folders, ...
                 current_suite2p_group(:, 3));
 
-            data.meanImgs_gcamp = meanImgs_gcamp;
-            data.meanImgs_blue  = meanImgs_blue;
+            data.meanImgs_gcamp = ...
+                meanImgs_gcamp;
 
-            %======================================================
+            data.meanImgs_blue = ...
+                meanImgs_blue;
+
+            %% -----------------------------------------------------
             % Motion energy
-            %======================================================
+            % ------------------------------------------------------
+
             avg_block = 5;
 
             motion = load_or_process_movie( ...
@@ -81,56 +108,134 @@ function selected_groups = process_selected_groups(selected_groups, include_blue
 
             data.motion = motion;
 
-            %======================================================
-            % Whisker stims
-            %======================================================
+            %% -----------------------------------------------------
+            % Whisker stimulation
+            % ------------------------------------------------------
+
             data = load_or_process_stims( ...
                 date_group_paths, ...
                 current_TSeries_group(:, 1), ...
                 data);
 
-            %======================================================
+            %% -----------------------------------------------------
             % GCaMP cells
-            %======================================================
+            % ------------------------------------------------------
+
             gcamp_plane = process_gcamp_cells( ...
                 gcamp_output_folders, ...
                 current_suite2p_group(:, 1), ...
                 meanImgs_gcamp, ...
                 data);
 
-            data.gcamp_plane = gcamp_plane;
+            data.gcamp_plane = ...
+                gcamp_plane;
 
-            %======================================================
-            % Blue cells
-            %======================================================
-            blue_plane = process_blue_cells( ...
-                gcamp_output_folders, ...
-                include_blue_cells, ...
-                date_group_paths, ...
-                current_TSeries_group(:, 3), ...
-                current_suite2p_group(:, 1), ...
-                current_suite2p_group(:, 2), ...
-                current_suite2p_group(:, 3), ...
-                current_suite2p_group(:, 4), ...
-                meanImgs_gcamp, ...
-                data);
+            %% -----------------------------------------------------
+            % Save current animal data
+            % ------------------------------------------------------
 
-            data.blue_plane = blue_plane;
+            selected_groups.(current_type)(k).data = ...
+                data;
+        end
 
-            %======================================================
-            % Combined GCaMP + blue
-            %======================================================
-            combined_plane = combined_gcamp_blue_cells(...
-                gcamp_output_folders, ...
-                data, ...
-                include_blue_cells);
+        %% =========================================================
+        % Cellpose preparation for all animals
+        % ==========================================================
 
-            data.combined_plane = combined_plane;
+        blue_processing_cache = ...
+            cell(numSelectedGroups, 1);
 
-            %======================================================
-            % Save back
-            %======================================================
-            selected_groups.(current_type)(k).data = data;
+        for k = 1:numSelectedGroups
+
+            current_animal_group = ...
+                selected_groups.(current_type)(k).animal_group;
+
+            fprintf('\n');
+            fprintf('------------------------------------------------------------\n');
+            fprintf('Cellpose preparation\n');
+            fprintf('Type  : %s\n', current_type);
+            fprintf('Animal: %s (%d/%d)\n', ...
+                char(string(current_animal_group)), ...
+                k, ...
+                numSelectedGroups);
+            fprintf('------------------------------------------------------------\n');
+
+            paths = ...
+                selected_groups.(current_type)(k).paths;
+
+            data = ...
+                selected_groups.(current_type)(k).data;
+
+            [blue_processing_cache{k}, data] = ...
+                process_blue_cells_pass1( ...
+                    paths.gcamp_output, ...
+                    include_blue_cells, ...
+                    paths.date, ...
+                    paths.TSeries(:, 3), ...
+                    paths.suite2p(:, 1), ...
+                    paths.suite2p(:, 2), ...
+                    paths.suite2p(:, 3), ...
+                    paths.suite2p(:, 4), ...
+                    data);
+
+            selected_groups.(current_type)(k).data = ...
+                data;
+        end
+
+        %% =========================================================
+        % Blue ROI extraction for all animals
+        % ==========================================================
+
+        for k = 1:numSelectedGroups
+
+            current_animal_group = ...
+                selected_groups.(current_type)(k).animal_group;
+
+            fprintf('\n');
+            fprintf('------------------------------------------------------------\n');
+            fprintf('Electroporated ROI extraction\n');
+            fprintf('Type  : %s\n', current_type);
+            fprintf('Animal: %s (%d/%d)\n', ...
+                char(string(current_animal_group)), ...
+                k, ...
+                numSelectedGroups);
+            fprintf('------------------------------------------------------------\n');
+
+            paths = ...
+                selected_groups.(current_type)(k).paths;
+
+            data = ...
+                selected_groups.(current_type)(k).data;
+
+            [blue_plane, data] = ...
+                process_blue_cells_pass2( ...
+                    blue_processing_cache{k}, ...
+                    paths.gcamp_output, ...
+                    data.meanImgs_gcamp, ...
+                    data);
+
+            data.blue_plane = ...
+                blue_plane;
+
+            %% -----------------------------------------------------
+            % Combined GCaMP + electroporated cells
+            % ------------------------------------------------------
+
+            combined_plane = ...
+                combined_gcamp_blue_cells( ...
+                    paths.gcamp_output, ...
+                    data, ...
+                    include_blue_cells);
+
+            data.combined_plane = ...
+                combined_plane;
+
+            %% -----------------------------------------------------
+            % Save current animal data
+            % ------------------------------------------------------
+
+            selected_groups.(current_type)(k).data = ...
+                data;
         end
     end
 end

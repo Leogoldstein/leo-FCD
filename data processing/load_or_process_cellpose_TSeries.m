@@ -1,39 +1,51 @@
 function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
     load_or_process_cellpose_TSeries(filePath, date_group_path, ...
-                                     current_gcamp_folders_group, ...
-                                     current_red_folders_group, ...
-                                     current_blue_folders_group, ...
-                                     current_green_folders_group, ...
-                                     current_blue_TSeries_path, p)
+                                     gcamp_plane_path, ...
+                                     red_plane_path, ...
+                                     blue_plane_path, ...
+                                     green_plane_path, ...
+                                     current_blue_TSeries_path, ...
+                                     gcamp_output_folder_plane)
 
-    % ----- Paramètres locaux -----
+    % Workflow:
+    %   1) Align Blue to the GCaMP mean image.
+    %   2) Open aligned Blue in Cellpose when its *_seg.npy is missing.
+    %   3) Create a GCaMP reference TIFF carrying the same Cellpose masks.
+    %   4) Open the GCaMP reference in Cellpose for manual correction.
+    %   5) Return the corrected gcamp_reference_*_seg.npy.
+    %
+    % The paths gcamp_plane_path/red_plane_path/blue_plane_path/
+    % green_plane_path already correspond to the current plane.
+
     numChannelsLocal = 4;  % 1=GCaMP, 2=Red, 3=Blue, 4=Green
 
-    % Initialisation
     meanImg_channels = cell(numChannelsLocal, 1);
     aligned_image    = [];
+    aligned_image_path = '';
     npy_file_path    = [];
     meanImg          = [];
 
-    % ==========================================================
-    %  Accès au plan p pour GCaMP / Red / Blue / Green
-    % ==========================================================
-    current_gcamp_folders_group_plane = [];
-    current_red_folders_group_plane   = [];
-    current_blue_folders_group_plane  = [];
-    current_green_folders_group_plane = [];
+    current_gcamp_folders_group_plane = gcamp_plane_path;
+    current_red_folders_group_plane   = red_plane_path;
+    current_blue_folders_group_plane  = blue_plane_path;
+    current_green_folders_group_plane = green_plane_path;
 
-    if ~isempty(current_gcamp_folders_group) && numel(current_gcamp_folders_group) >= p
-        current_gcamp_folders_group_plane = current_gcamp_folders_group{p};
+    % Existing code below uses p as a one-based plane index.
+    plane_index_zero_based = infer_plane_index_from_paths( ...
+        gcamp_plane_path, blue_plane_path, gcamp_output_folder_plane);
+    p = plane_index_zero_based + 1;
+
+    if isempty(gcamp_output_folder_plane)
+        if ~isempty(gcamp_plane_path)
+            gcamp_output_folder_plane = gcamp_plane_path;
+        else
+            gcamp_output_folder_plane = date_group_path;
+        end
     end
-    if ~isempty(current_red_folders_group) && numel(current_red_folders_group) >= p
-        current_red_folders_group_plane = current_red_folders_group{p};
-    end
-    if ~isempty(current_blue_folders_group) && numel(current_blue_folders_group) >= p
-        current_blue_folders_group_plane = current_blue_folders_group{p};
-    end
-    if ~isempty(current_green_folders_group) && numel(current_green_folders_group) >= p
-        current_green_folders_group_plane = current_green_folders_group{p};
+
+    if ~isempty(gcamp_output_folder_plane) && ...
+            ~isfolder(gcamp_output_folder_plane)
+        mkdir(gcamp_output_folder_plane);
     end
 
     if iscell(current_blue_TSeries_path)
@@ -44,12 +56,13 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
         end
     end
 
-    % Validation minimale des entrées chemin
-    if isempty(date_group_path) || ~(ischar(date_group_path) || isstring(date_group_path))
+    if isempty(date_group_path) || ...
+            ~(ischar(date_group_path) || isstring(date_group_path))
         warning('load_or_process_cellpose_TSeries:InvalidDateGroupPath', ...
             'Invalid date_group_path for plane %d.', p);
         [meanImg_channels, meanImg] = complete_meanImg_channels( ...
-            meanImg_channels, filePath, current_gcamp_folders_group_plane, meanImg);
+            meanImg_channels, filePath, ...
+            current_gcamp_folders_group_plane, meanImg);
         return;
     end
 
@@ -57,7 +70,7 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
         current_blue_TSeries_path = "";
     end
 
-    % ==========================================================
+% ==========================================================
     %  Pré-remplissage des meanImg_channels depuis suite2p
     % ==========================================================
     if ~isempty(current_gcamp_folders_group_plane)
@@ -447,6 +460,68 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
         end
     end
 
+
+    % ==========================================================
+    %  FLUX CELLPOSE FINAL UNIFIÉ
+    % ==========================================================
+    % Whatever branch produced or recovered the aligned Blue image,
+    % continue toward the GCaMP reference. An existing Blue *_seg.npy
+    % is accepted, but is never returned as the final result.
+    if ~isempty(aligned_image_path) && isfile(aligned_image_path)
+
+        if isempty(aligned_image)
+            aligned_image = safe_read_and_normalize(aligned_image_path);
+        end
+
+        if ~isempty(aligned_image)
+
+            [aligned_folder, aligned_name, ~] = ...
+                fileparts(aligned_image_path);
+
+            blue_seg_path = fullfile( ...
+                aligned_folder, [aligned_name '_seg.npy']);
+
+            % First manual mask drawing on aligned Blue, only when missing.
+            if ~isfile(blue_seg_path)
+                fprintf('\n============================================\n');
+                fprintf('CELLPOSE STEP 1: DRAW MASKS ON ALIGNED BLUE\n');
+                fprintf('Save with Ctrl+S, then close Cellpose.\n');
+                fprintf('============================================\n');
+
+                blue_seg_path = launch_cellpose_from_matlab( ...
+                    aligned_image_path, true, ...
+                    'Draw masks on aligned Blue');
+
+                blue_seg_path = validate_existing_file(blue_seg_path);
+            else
+                fprintf(['Existing aligned-Blue masks found.\n' ...
+                         'Continuing with the GCaMP reference:\n%s\n'], ...
+                         blue_seg_path);
+            end
+
+            if ~isempty(blue_seg_path)
+                npy_file_path = create_and_refine_masks_on_gcamp( ...
+                    aligned_image_path, ...
+                    meanImg_channels{1}, ...
+                    gcamp_output_folder_plane, ...
+                    blue_seg_path);
+
+                npy_file_path = validate_existing_file(npy_file_path);
+            else
+                warning(['No aligned-Blue *_seg.npy was saved. ' ...
+                         'The GCaMP correction step cannot start.']);
+                npy_file_path = [];
+            end
+        else
+            warning('Aligned Blue TIFF exists but could not be read.');
+            npy_file_path = [];
+        end
+    elseif ~isempty(aligned_image)
+        warning(['An aligned Blue image is present in memory, but its ' ...
+                 'TIFF path is unavailable. Cellpose was not launched.']);
+        npy_file_path = [];
+    end
+
     % ==========================================================
     %  Post-traitement
     % ==========================================================
@@ -570,7 +645,6 @@ function [aligned_image, T, source_used] = align_blue_locally_and_confirm( ...
     end
 
 aligned_image = apply_transform_with_phasecorr(moving_img, T, ref_img);
-    aligned_image = apply_transform_with_phasecorr(moving_img, T, ref_img);
 
     if isempty(aligned_image)
         warning('align_blue_locally_and_confirm: transformation vide.');
@@ -1556,13 +1630,377 @@ function tf = isvalid_handle(h)
     tf = ~isempty(h) && isgraphics(h);
 end
 
-function npy_file_path = launch_cellpose_from_matlab(image_path)
+
+function final_npy_path = create_and_refine_masks_on_gcamp( ...
+        aligned_blue_path, ...
+        gcamp_image, ...
+        output_folder, ...
+        blue_seg_path)
+
+    final_npy_path = [];
+
+    % ==========================================================
+    % Vérification des entrées
+    % ==========================================================
+
+    if isempty(aligned_blue_path) || ~isfile(aligned_blue_path)
+
+        warning( ...
+            'create_and_refine_masks_on_gcamp:MissingAlignedBlue', ...
+            'Aligned Blue image not found.');
+
+        return;
+    end
+
+    if isempty(output_folder)
+
+        output_folder = fileparts(aligned_blue_path);
+    end
+
+    if ~isfolder(output_folder)
+        mkdir(output_folder);
+    end
+
+    % ==========================================================
+    % Déterminer les chemins GCaMP attendus
+    % ==========================================================
+
+    [~, blue_name, ~] = fileparts(aligned_blue_path);
+
+    blue_name = regexprep( ...
+        blue_name, ...
+        '^aligned_', ...
+        '');
+
+    gcamp_reference_path = fullfile( ...
+        output_folder, ...
+        ['gcamp_reference_' blue_name '.tif']);
+
+    [gcamp_folder, gcamp_name, ~] = ...
+        fileparts(gcamp_reference_path);
+
+    existing_gcamp_seg_path = fullfile( ...
+        gcamp_folder, ...
+        [gcamp_name '_seg.npy']);
+
+    % ==========================================================
+    % PRIORITÉ ABSOLUE :
+    % Si les masques GCaMP existent déjà, les récupérer directement
+    % sans créer l'image et sans ouvrir Cellpose
+    % ==========================================================
+
+    if isfile(existing_gcamp_seg_path)
+
+        final_npy_path = validate_existing_file( ...
+            existing_gcamp_seg_path);
+
+        fprintf('\n');
+        fprintf('------------------------------------------------------------\n');
+        fprintf('Existing corrected GCaMP masks found\n');
+        fprintf('Action: Cellpose not opened.\n');
+        fprintf('NPY   : %s\n', final_npy_path);
+        fprintf('------------------------------------------------------------\n');
+
+        return;
+    end
+
+    % ==========================================================
+    % Aucun masque GCaMP existant :
+    % vérifier les données nécessaires à leur création
+    % ==========================================================
+
+    if isempty(blue_seg_path) || ~isfile(blue_seg_path)
+
+        warning( ...
+            'create_and_refine_masks_on_gcamp:MissingBlueMasks', ...
+            'Aligned-Blue Cellpose masks not found.');
+
+        return;
+    end
+
+    if isempty(gcamp_image)
+
+        warning( ...
+            'create_and_refine_masks_on_gcamp:MissingGCampImage', ...
+            'GCaMP reference mean image is empty.');
+
+        return;
+    end
+
+    % ==========================================================
+    % Créer l'image GCaMP uniquement si elle n'existe pas
+    % ==========================================================
+
+    if isfile(gcamp_reference_path)
+
+        fprintf('\n');
+        fprintf('Existing GCaMP reference image found:\n');
+        fprintf('%s\n', gcamp_reference_path);
+
+    else
+
+        gcamp_reference_image = ...
+            prepare_image_for_cellpose_display(gcamp_image);
+
+        try
+            imwrite( ...
+                gcamp_reference_image, ...
+                gcamp_reference_path, ...
+                'tif');
+
+        catch ME
+
+            warning( ...
+                'create_and_refine_masks_on_gcamp:SaveReferenceFailed', ...
+                'Unable to save GCaMP reference TIFF: %s', ...
+                ME.message);
+
+            return;
+        end
+
+        fprintf('\nGCaMP reference image created:\n');
+        fprintf('%s\n', gcamp_reference_path);
+    end
+
+    % ==========================================================
+    % Revérifier le fichier NPY après création/récupération du TIFF
+    % ==========================================================
+
+    if isfile(existing_gcamp_seg_path)
+
+        final_npy_path = validate_existing_file( ...
+            existing_gcamp_seg_path);
+
+        fprintf('\n');
+        fprintf('Existing GCaMP masks recovered.\n');
+        fprintf('Cellpose will not be opened.\n');
+        fprintf('%s\n', final_npy_path);
+
+        return;
+    end
+
+    % ==========================================================
+    % Créer le premier fichier GCaMP _seg.npy depuis les masques Blue
+    % ==========================================================
+
+    success = create_gcamp_seg_from_blue_seg( ...
+        blue_seg_path, ...
+        gcamp_reference_path, ...
+        existing_gcamp_seg_path);
+
+    if ~success || ~isfile(existing_gcamp_seg_path)
+
+        warning( ...
+            'create_and_refine_masks_on_gcamp:InitialSegFailed', ...
+            'Unable to create the initial GCaMP *_seg.npy.');
+
+        return;
+    end
+
+    % ==========================================================
+    % À ce stade, le fichier vient d'être créé automatiquement.
+    % On ouvre Cellpose uniquement pour sa première correction.
+    % ==========================================================
+
+    fprintf('\n');
+    fprintf('------------------------------------------------------------\n');
+    fprintf('GCaMP mask correction\n');
+    fprintf('Save with Ctrl+S, then close Cellpose.\n');
+    fprintf('------------------------------------------------------------\n');
+
+    final_npy_path = launch_cellpose_from_matlab( ...
+        gcamp_reference_path, ...
+        false, ...
+        'Correct masks on GCaMP');
+
+    final_npy_path = validate_existing_file( ...
+        final_npy_path);
+
+    if isempty(final_npy_path)
+
+        warning( ...
+            'create_and_refine_masks_on_gcamp:NoCorrectedSeg', ...
+            ['No corrected GCaMP segmentation was found. ' ...
+             'Save with Ctrl+S before closing Cellpose.']);
+
+        return;
+    end
+
+    fprintf('\nFinal corrected masks:\n');
+    fprintf('%s\n', final_npy_path);
+end
+
+
+function success = create_gcamp_seg_from_blue_seg( ...
+        source_seg_path, gcamp_image_path, destination_seg_path)
+
+    success = false;
+
+    if ~isfile(source_seg_path) || ~isfile(gcamp_image_path)
+        warning('Source segmentation or GCaMP TIFF is missing.');
+        return;
+    end
+
+    pyExec = ...
+        'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';
+
+    script_path = [tempname '.py'];
+    fid = fopen(script_path, 'w');
+
+    if fid == -1
+        warning('Unable to create temporary Python script.');
+        return;
+    end
+
+    cleanupObj = onCleanup(@() delete_temp_script(script_path)); %#ok<NASGU>
+
+    lines = {
+        'import sys'
+        'import numpy as np'
+        'import tifffile'
+        ''
+        'source_seg = sys.argv[1]'
+        'gcamp_path = sys.argv[2]'
+        'destination_seg = sys.argv[3]'
+        ''
+        'data = np.load(source_seg, allow_pickle=True).item()'
+        'gcamp_img = tifffile.imread(gcamp_path)'
+        'masks = np.asarray(data["masks"])'
+        ''
+        'if masks.shape[-2:] != gcamp_img.shape[-2:]:'
+        '    raise ValueError(f"Mask and GCaMP dimensions differ: {masks.shape} vs {gcamp_img.shape}")'
+        ''
+        'data["img"] = gcamp_img'
+        'data["filename"] = gcamp_path'
+        'np.save(destination_seg, data, allow_pickle=True)'
+        'print(destination_seg)'
+    };
+
+    for k = 1:numel(lines)
+        fprintf(fid, '%s\n', lines{k});
+    end
+    fclose(fid);
+
+    command = sprintf('"%s" "%s" "%s" "%s" "%s"', ...
+        pyExec, script_path, source_seg_path, ...
+        gcamp_image_path, destination_seg_path);
+
+    [status, command_output] = system(command);
+
+    if status ~= 0
+        warning('Error creating GCaMP *_seg.npy:\n%s', command_output);
+        return;
+    end
+
+    success = isfile(destination_seg_path);
+
+    if success
+        fprintf('GCaMP masks file created:\n%s\n', ...
+            destination_seg_path);
+    else
+        warning('Expected GCaMP *_seg.npy was not created.');
+    end
+end
+
+
+function delete_temp_script(script_path)
+    if isfile(script_path)
+        try
+            delete(script_path);
+        catch
+        end
+    end
+end
+
+
+function image_out = prepare_image_for_cellpose_display(image_in)
+
+    image_in = double(image_in);
+    image_in(~isfinite(image_in)) = 0;
+
+    values = image_in(isfinite(image_in));
+    if isempty(values)
+        image_out = uint16(zeros(size(image_in)));
+        return;
+    end
+
+    low_value  = prctile(values, 1);
+    high_value = prctile(values, 99.8);
+
+    if high_value <= low_value
+        normalized = mat2gray(image_in);
+    else
+        normalized = (image_in - low_value) ./ ...
+            (high_value - low_value);
+        normalized = max(0, min(1, normalized));
+    end
+
+    normalized = normalized .^ 0.7;
+    image_out = uint16(normalized .* 65535);
+end
+
+
+function plane_index = infer_plane_index_from_paths(varargin)
+
+    plane_index = 0;
+
+    for i = 1:nargin
+        path_in = varargin{i};
+
+        if isempty(path_in) || ...
+                ~(ischar(path_in) || isstring(path_in))
+            continue;
+        end
+
+        token = regexp(char(path_in), ...
+            'plane(\d+)', 'tokens', 'once');
+
+        if ~isempty(token)
+            plane_index = str2double(token{1});
+            if isfinite(plane_index)
+                return;
+            end
+        end
+    end
+end
+
+
+function npy_file_path = launch_cellpose_from_matlab( ...
+        image_path, ask_confirmation, dialog_title)
+
     npy_file_path = [];
 
-    pyExec = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';
+    if nargin < 2 || isempty(ask_confirmation)
+        ask_confirmation = true;
+    end
 
+    if nargin < 3 || isempty(dialog_title)
+        dialog_title = 'Launch Cellpose';
+    end
+
+    if isempty(image_path) || ~isfile(image_path)
+        warning('Cellpose image not found: %s', ...
+            char(string(image_path)));
+        return;
+    end
+
+    pyExec = ...
+        'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';
+
+    cellposePath = ...
+        'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts\cellpose.exe';
+
+    if ~isfile(cellposePath)
+        warning('cellpose.exe not found: %s', cellposePath);
+        return;
+    end
+
+    % ---------------------------------------------------------
+    % Configuration Python
+    % ---------------------------------------------------------
     try
         currentPyEnv = pyenv;
+
         if ~strcmp(currentPyEnv.Version, pyExec)
             pyenv('Version', pyExec);
         end
@@ -1576,26 +2014,116 @@ function npy_file_path = launch_cellpose_from_matlab(image_path)
         warning('Python n''est pas correctement configuré dans MATLAB.');
     end
 
-    setenv('PATH', [getenv('PATH') ';C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts']);
+    setenv('PATH', [getenv('PATH') ...
+        ';C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts']);
 
-    answer = questdlg('Do you want to launch Cellpose to process this image?', ...
-        'Launch Cellpose', 'Yes', 'No', 'No');
+    % ---------------------------------------------------------
+    % Fichier _seg.npy attendu
+    % ---------------------------------------------------------
+    [folderPath, fileName, ~] = fileparts(image_path);
 
-    if strcmp(answer, 'Yes')
-        fprintf('Launching Cellpose GUI for image: %s\n', image_path);
-        cellposePath = 'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts\cellpose.exe';
-        system(cellposePath);
+    candidate_npy = fullfile( ...
+        folderPath, ...
+        [fileName '_seg.npy']);
 
-        [folderPath, fileName, ~] = fileparts(image_path);
-        candidate_npy = fullfile(folderPath, [fileName '_seg.npy']);
+    % État du fichier avant ouverture de Cellpose
+    file_existed_before = isfile(candidate_npy);
+    previous_datenum = [];
+    previous_bytes = [];
 
-        if isfile(candidate_npy)
-            npy_file_path = candidate_npy;
-            fprintf('Fichier NPY trouvé : %s\n', npy_file_path);
-        else
-            warning('Aucun fichier NPY trouvé après Cellpose : %s', candidate_npy);
-        end
-    else
-        fprintf('Cellpose non lancé.\n');
+    if file_existed_before
+        info_before = dir(candidate_npy);
+
+        previous_datenum = info_before.datenum;
+        previous_bytes   = info_before.bytes;
     end
+
+    % ---------------------------------------------------------
+    % Confirmation utilisateur
+    % ---------------------------------------------------------
+    if ask_confirmation
+
+        answer = questdlg( ...
+            sprintf([ ...
+                'Do you want to launch Cellpose?\n\n' ...
+                'Open this image manually in Cellpose:\n%s\n\n' ...
+                'Draw or correct the masks.\n' ...
+                'Save with Ctrl+S, then close Cellpose.'], ...
+                image_path), ...
+            dialog_title, ...
+            'Yes', ...
+            'No', ...
+            'Yes');
+
+        if ~strcmp(answer, 'Yes')
+            fprintf('Cellpose non lancé.\n');
+            return;
+        end
+    end
+
+    % ---------------------------------------------------------
+    % Ouverture du GUI Cellpose
+    % ---------------------------------------------------------
+    fprintf('\n============================================\n');
+    fprintf('CELLPOSE GUI\n');
+    fprintf('Open this image manually in Cellpose:\n%s\n', ...
+        image_path);
+    fprintf('Save with Ctrl+S, then close Cellpose.\n');
+    fprintf('============================================\n');
+
+    [status, command_output] = system(['"' cellposePath '"']);
+
+    if status ~= 0
+        warning('Cellpose closed with status %d:\n%s', ...
+            status, command_output);
+        return;
+    end
+
+    % ---------------------------------------------------------
+    % Vérification après fermeture de Cellpose
+    % ---------------------------------------------------------
+    if ~isfile(candidate_npy)
+
+        warning([ ...
+            'Aucun fichier NPY trouvé après Cellpose.\n' ...
+            'Image à ouvrir :\n%s\n\n' ...
+            'Fichier attendu :\n%s'], ...
+            image_path, candidate_npy);
+
+        return;
+    end
+
+    info_after = dir(candidate_npy);
+
+    % ---------------------------------------------------------
+    % Si le fichier existait déjà, vérifier qu'il a été modifié
+    % ---------------------------------------------------------
+    if file_existed_before
+
+        file_was_modified = ...
+            info_after.datenum > previous_datenum || ...
+            info_after.bytes ~= previous_bytes;
+
+        if ~file_was_modified
+
+            warning([ ...
+                'Le fichier _seg.npy existait déjà avant Cellpose, ' ...
+                'mais il n''a pas été modifié.\n\n' ...
+                'Corrigez les masques, utilisez Ctrl+S, ' ...
+                'puis fermez Cellpose.\n\n' ...
+                'Fichier :\n%s'], ...
+                candidate_npy);
+
+            npy_file_path = [];
+            return;
+        end
+    end
+
+    % ---------------------------------------------------------
+    % Résultat final
+    % ---------------------------------------------------------
+    npy_file_path = candidate_npy;
+
+    fprintf('Fichier NPY corrigé et sauvegardé :\n%s\n', ...
+        npy_file_path);
 end

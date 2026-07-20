@@ -1,4 +1,4 @@
-function results_table = compute_export_basic_metrics( ...
+function [results_analysis, results_table] = compute_export_basic_metrics( ...
     current_type, ...
     current_animal_group, ...
     current_ages, ...
@@ -8,8 +8,6 @@ function results_table = compute_export_basic_metrics( ...
     data, ...
     metadata, ...
     include_blue_cells)
-
-
 % COMPUTE_EXPORT_BASIC_METRICS
 % Calcule les métriques de chaque enregistrement et les ajoute directement
 % à une table longue destinée aux figures et aux modèles statistiques.
@@ -37,6 +35,7 @@ function results_table = compute_export_basic_metrics( ...
     current_type = string(current_type);
     current_animal_group = string(current_animal_group);
 
+    results_analysis = init_empty_results_analysis(nRec);
     results_table = init_results_table();
 
     for m = 1:nRec
@@ -56,8 +55,6 @@ function results_table = compute_export_basic_metrics( ...
 
             sampling_rate = sampling_rate(1);
 
-            position = get_metadata_value(metadata, 'PositionZ', m);
-            position = parse_numeric_vector(position);
 
             %======================================================
             % Basic metrics GCaMP
@@ -104,19 +101,63 @@ function results_table = compute_export_basic_metrics( ...
                 sampling_rate);
 
             %======================================================
-            % General metrics, one row per plane
+            % Detailed results structure
             %======================================================
-            results_table = append_values_by_plane( ...
-                results_table, current_type, current_animal_group, ...
-                age_label, age_number, date_name, session_id, m, ...
-                "general", "NumFrames", ...
-                gcamp_metrics.nFrames_by_plane, "frames");
+            results_analysis.gcamp_plane.FrequencyPerCell{m} = ...
+                gcamp_metrics.freq_by_plane;
+            results_analysis.gcamp_plane.InterEventIntervals_ms{m} = ...
+                gcamp_metrics.intervals_ms_by_plane;
+            results_analysis.gcamp_plane.BurstRate_per_min{m} = ...
+                gcamp_metrics.burst_rate_by_plane;
+            results_analysis.gcamp_plane.BurstFraction{m} = ...
+                gcamp_metrics.burst_fraction_by_plane;
+            results_analysis.gcamp_plane.BurstSize{m} = ...
+                gcamp_metrics.burst_size_by_plane;
+            results_analysis.blue_plane.FrequencyPerCell{m} = ...
+                blue_metrics.freq_by_plane;
+            results_analysis.blue_plane.InterEventIntervals_ms{m} = ...
+                blue_metrics.intervals_ms_by_plane;
+            results_analysis.blue_plane.BurstRate_per_min{m} = ...
+                blue_metrics.burst_rate_by_plane;
+            results_analysis.blue_plane.BurstFraction{m} = ...
+                blue_metrics.burst_fraction_by_plane;
+            results_analysis.blue_plane.BurstSize{m} = ...
+                blue_metrics.burst_size_by_plane;
+            results_analysis.gcamp_plane.max_corr_gcamp_gcamp_by_plane{m} = ...
+                corr_metrics.max_corr_gcamp_gcamp_by_plane;
+            results_analysis.blue_plane.max_corr_gcamp_mtor_by_plane{m} = ...
+                corr_metrics.max_corr_gcamp_mtor_by_plane;
+            results_analysis.blue_plane.max_corr_mtor_mtor_by_plane{m} = ...
+                corr_metrics.max_corr_mtor_mtor_by_plane;
 
-            results_table = append_values_by_plane( ...
-                results_table, current_type, current_animal_group, ...
-                age_label, age_number, date_name, session_id, m, ...
-                "general", "ZPosition", ...
-                normalize_values_by_plane(position), "um");
+            results_analysis.SCEs.Race_gcamp{m} = sce_metrics.Race_gcamp;
+            results_analysis.SCEs.TRace_gcamp{m} = sce_metrics.TRace_gcamp;
+            results_analysis.SCEs.sces_distances_gcamp{m} = ...
+                sce_metrics.sces_distances_gcamp;
+            results_analysis.SCEs.RasterRace_gcamp{m} = ...
+                sce_metrics.RasterRace_gcamp;
+            results_analysis.SCEs.sce_n_cells_threshold{m} = ...
+                sce_metrics.sce_n_cells_threshold;
+            results_analysis.SCEs.Threshold{m} = ...
+                sce_metrics.sce_n_cells_threshold;
+            results_analysis.SCEs.Frequency{m} = ...
+                sce_metrics.sce_frequency_per_min;
+            results_analysis.SCEs.CellParticipation_percent{m} = ...
+                sce_metrics.cell_participation_percent;
+            results_analysis.SCEs.Duration_ms{m} = sce_metrics.duration_ms;
+            results_analysis.SCEs.Number{m} = sce_metrics.number;
+            results_analysis.SCEs.RecordingDuration_min{m} = ...
+                sce_metrics.recording_duration_min;
+            results_analysis.SCEs.InterSCEIntervals_ms{m} = ...
+                sce_metrics.inter_sce_intervals_ms;
+            results_analysis.SCEs.MeanCellParticipation_percent{m} = ...
+                sce_metrics.mean_cell_participation_percent;
+            results_analysis.SCEs.MedianCellParticipation_percent{m} = ...
+                sce_metrics.median_cell_participation_percent;
+            results_analysis.SCEs.MeanDuration_ms{m} = ...
+                sce_metrics.mean_duration_ms;
+            results_analysis.SCEs.MedianDuration_ms{m} = ...
+                sce_metrics.median_duration_ms;
 
             %======================================================
             % GCaMP metrics, one row per plane
@@ -257,6 +298,50 @@ function results_table = compute_export_basic_metrics( ...
             {'Type','Animal','AgeNumber','RecordingIndex', ...
              'Plane','Branch','Metric'});
     end
+end
+
+function results_analysis = init_empty_results_analysis(nRec)
+
+    results_analysis = struct( ...
+        'gcamp_plane', struct(), ...
+        'blue_plane', struct(), ...
+        'SCEs', struct());
+
+    % GCaMP metrics retained at recording level, with one entry per plane.
+    results_analysis.gcamp_plane.FrequencyPerCell = cell(nRec, 1);
+    results_analysis.gcamp_plane.InterEventIntervals_ms = cell(nRec, 1);
+    results_analysis.gcamp_plane.BurstRate_per_min = cell(nRec, 1);
+    results_analysis.gcamp_plane.BurstFraction = cell(nRec, 1);
+    results_analysis.gcamp_plane.BurstSize = cell(nRec, 1);
+    results_analysis.gcamp_plane.max_corr_gcamp_gcamp_by_plane = cell(nRec, 1);
+
+    % mTOR-electroporated-cell metrics retained at recording level.y
+    results_analysis.blue_plane.FrequencyPerCell = cell(nRec, 1);
+    results_analysis.blue_plane.InterEventIntervals_ms = cell(nRec, 1);
+    results_analysis.blue_plane.BurstRate_per_min = cell(nRec, 1);
+    results_analysis.blue_plane.BurstFraction = cell(nRec, 1);
+    results_analysis.blue_plane.BurstSize = cell(nRec, 1);
+    results_analysis.blue_plane.max_corr_gcamp_mtor_by_plane = cell(nRec, 1);
+    results_analysis.blue_plane.max_corr_mtor_mtor_by_plane = cell(nRec, 1);
+
+
+    % Detailed and summarized SCE outputs.
+    results_analysis.SCEs.Race_gcamp = cell(nRec, 1);
+    results_analysis.SCEs.TRace_gcamp = cell(nRec, 1);
+    results_analysis.SCEs.sces_distances_gcamp = cell(nRec, 1);
+    results_analysis.SCEs.RasterRace_gcamp = cell(nRec, 1);
+    results_analysis.SCEs.sce_n_cells_threshold = cell(nRec, 1);
+    results_analysis.SCEs.Threshold = cell(nRec, 1);
+    results_analysis.SCEs.Frequency = cell(nRec, 1);
+    results_analysis.SCEs.CellParticipation_percent = cell(nRec, 1);
+    results_analysis.SCEs.Duration_ms = cell(nRec, 1);
+    results_analysis.SCEs.Number = cell(nRec, 1);
+    results_analysis.SCEs.RecordingDuration_min = cell(nRec, 1);
+    results_analysis.SCEs.InterSCEIntervals_ms = cell(nRec, 1);
+    results_analysis.SCEs.MeanCellParticipation_percent = cell(nRec, 1);
+    results_analysis.SCEs.MedianCellParticipation_percent = cell(nRec, 1);
+    results_analysis.SCEs.MeanDuration_ms = cell(nRec, 1);
+    results_analysis.SCEs.MedianDuration_ms = cell(nRec, 1);
 end
 
 function results_table = init_results_table()
@@ -637,7 +722,14 @@ function sce_metrics = load_or_process_sce_for_session( ...
         'sce_n_cells_threshold', [], ...
         'sce_frequency_per_min', NaN, ...
         'cell_participation_percent', [], ...
-        'duration_ms', []);
+        'duration_ms', [], ...
+        'number', 0, ...
+        'recording_duration_min', NaN, ...
+        'inter_sce_intervals_ms', [], ...
+        'mean_cell_participation_percent', NaN, ...
+        'median_cell_participation_percent', NaN, ...
+        'mean_duration_ms', NaN, ...
+        'median_duration_ms', NaN);
 
     if isempty(gcamp_root_folders) || ...
        m > numel(gcamp_root_folders) || ...
@@ -746,14 +838,20 @@ function sce_metrics = load_or_process_sce_for_session( ...
         end
     end
 
-    sce_metrics = compute_sce_summary_metrics(sce_metrics);
+    sce_metrics = compute_sce_summary_metrics(sce_metrics, sampling_rate);
 end
 
-function sce_metrics = compute_sce_summary_metrics(sce_metrics)
+function sce_metrics = compute_sce_summary_metrics(sce_metrics, sampling_rate)
 
     sce_metrics.sce_frequency_per_min = NaN;
     sce_metrics.cell_participation_percent = [];
     sce_metrics.duration_ms = [];
+    sce_metrics.number = 0;
+    sce_metrics.inter_sce_intervals_ms = [];
+    sce_metrics.mean_cell_participation_percent = NaN;
+    sce_metrics.median_cell_participation_percent = NaN;
+    sce_metrics.mean_duration_ms = NaN;
+    sce_metrics.median_duration_ms = NaN;
 
     TRace_gcamp = sce_metrics.TRace_gcamp;
 
@@ -801,6 +899,31 @@ function sce_metrics = compute_sce_summary_metrics(sce_metrics)
         sce_metrics.duration_ms = sces_distances_gcamp(:, 2);
         sce_metrics.duration_ms = sce_metrics.duration_ms(:);
         sce_metrics.duration_ms = sce_metrics.duration_ms(isfinite(sce_metrics.duration_ms));
+    end
+
+    sce_metrics.number = numel(TRace_gcamp);
+
+    if numel(TRace_gcamp) >= 2 && isfinite(sampling_rate) && sampling_rate > 0
+        sce_metrics.inter_sce_intervals_ms = ...
+            diff(double(TRace_gcamp(:))) ./ sampling_rate .* 1000;
+    end
+
+    finite_participation = sce_metrics.cell_participation_percent;
+    finite_participation = finite_participation(isfinite(finite_participation));
+
+    if ~isempty(finite_participation)
+        sce_metrics.mean_cell_participation_percent = ...
+            mean(finite_participation, 'omitnan');
+        sce_metrics.median_cell_participation_percent = ...
+            median(finite_participation, 'omitnan');
+    end
+
+    finite_duration = sce_metrics.duration_ms;
+    finite_duration = finite_duration(isfinite(finite_duration));
+
+    if ~isempty(finite_duration)
+        sce_metrics.mean_duration_ms = mean(finite_duration, 'omitnan');
+        sce_metrics.median_duration_ms = median(finite_duration, 'omitnan');
     end
 end
 

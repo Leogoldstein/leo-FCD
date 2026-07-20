@@ -98,10 +98,10 @@ function [selected_groups, results_table] = ...
             end
 
             % ====================================================
-            % Calcul direct de la table de résultats
+            % Calcul des résultats détaillés et de la table
             % ====================================================
             try
-                results_table_animal = ...
+                [results_analysis, results_table_animal] = ...
                     compute_export_basic_metrics( ...
                         current_type, ...
                         current_animal_group, ...
@@ -120,8 +120,17 @@ function [selected_groups, results_table] = ...
                     char(string(current_animal_group)), ...
                     ME.message);
 
+                fprintf('Function: %s\n', ME.stack(1).name);
+                fprintf('Line: %d\n', ME.stack(1).line);
+
                 continue;
             end
+
+            % ====================================================
+            % Sauvegarde des résultats détaillés dans selected_groups
+            % ====================================================
+            selected_groups.(current_type)(k).results_analysis = ...
+                results_analysis;
 
             % ====================================================
             % Ajout à la table globale
@@ -145,11 +154,16 @@ function [selected_groups, results_table] = ...
     if ~isempty(results_table)
 
         % Supprime les lignes dont Value est non finie
-        if ismember('Value', ...
+        if ismember( ...
+                'Value', ...
                 results_table.Properties.VariableNames)
 
-            valid_rows = isfinite(results_table.Value);
-            results_table = results_table(valid_rows, :);
+            value_column = results_table.Value;
+
+            if isnumeric(value_column)
+                valid_rows = isfinite(value_column);
+                results_table = results_table(valid_rows, :);
+            end
         end
 
         % Tri pour faciliter la lecture
@@ -189,7 +203,9 @@ function sampling_rate = ...
         return;
     end
 
+    % ============================================================
     % Récupération de la valeur de l'enregistrement m
+    % ============================================================
     if iscell(sampling_rate_group)
 
         if numel(sampling_rate_group) < m
@@ -206,7 +222,9 @@ function sampling_rate = ...
         return;
     end
 
+    % ============================================================
     % Conversion en valeur numérique
+    % ============================================================
     if isnumeric(value)
 
         value = double(value(:));

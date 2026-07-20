@@ -1,8 +1,12 @@
-function figs_by_type = visualize_data(selected_groups)
+function figs_by_type = visualize_data(selected_groups, max_gap_days)
 
     if nargin < 1 || isempty(selected_groups)
         figs_by_type = struct();
         return;
+    end
+    
+    if nargin < 2 || isempty(max_gap_days)
+        max_gap_days = 5;
     end
 
     type_names = fieldnames(selected_groups);
@@ -52,5 +56,5 @@ function figs_by_type = visualize_data(selected_groups)
     % ======================================================
     % Pooled basic metrics by type
     % ======================================================
-    figs_by_type = plot_basic_metrics_by_type(selected_groups);
+    figs_by_type = plot_basic_metrics_by_type(selected_groups, max_gap_days);
 end

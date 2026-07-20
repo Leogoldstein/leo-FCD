@@ -1,7 +1,8 @@
 function blue_plane = process_blue_cells( ...
     gcamp_output_folders, include_blue_cells, ...
     date_group_paths, current_blue_TSeries_path, ...
-    current_gcamp_folders_group, current_red_folders_group, current_blue_folders_group, current_green_folders_group, ...
+    current_gcamp_folders_group, current_red_folders_group, ...
+    current_blue_folders_group, current_green_folders_group, ...
     meanImgs_gcamp, ...
     data)
 
@@ -29,349 +30,1043 @@ function blue_plane = process_blue_cells( ...
     fields_blue_all = [fields_blue_saved, fields_blue_memory];
 
     gcamp_needed = { ...
-        'stat_by_plane', 'F_gcamp_by_plane', 'gcamp_props_by_plane', ...
-        'outlines_gcampx_by_plane', 'outlines_gcampy_by_plane', ...
+        'stat_by_plane', ...
+        'F_gcamp_by_plane', ...
+        'gcamp_props_by_plane', ...
+        'outlines_gcampx_by_plane', ...
+        'outlines_gcampy_by_plane', ...
         'iscell_gcamp_by_plane', ...
         'gcamp_mask_by_plane', ...
         'gcamp_props_false_by_plane', ...
-        'outlines_gcampx_false_by_plane', 'outlines_gcampy_false_by_plane', ...
+        'outlines_gcampx_false_by_plane', ...
+        'outlines_gcampy_false_by_plane', ...
         'gcamp_mask_false_by_plane' ...
     };
 
-    data = init_blue_plane_struct_if_needed(data, numFolders, fields_blue_all);
-    data = init_gcamp_plane_struct_if_needed_local(data, numFolders, gcamp_needed);
+    data = init_blue_plane_struct_if_needed( ...
+        data, numFolders, fields_blue_all);
+
+    data = init_gcamp_plane_struct_if_needed_local( ...
+        data, numFolders, gcamp_needed);
+
+    % ==============================================================
+    % Cache utilisé entre les deux passes
+    % ==============================================================
+
+    processing_cache = cell(numFolders, 1);
 
     for m = 1:numFolders
 
-        if isempty(gcamp_output_folders) || m > numel(gcamp_output_folders) || isempty(gcamp_output_folders{m})
-            fprintf('Group %d: empty gcamp_output_folders entry, skipping group.\n', m);
+        processing_cache{m} = struct();
+
+        processing_cache{m}.valid_group = false;
+        processing_cache{m}.skip_group = false;
+        processing_cache{m}.nPlanes = 0;
+
+        processing_cache{m}.filePath_blue = '';
+        processing_cache{m}.filePath_gcamp = '';
+
+        processing_cache{m}.gcamp_planes = {};
+        processing_cache{m}.red_planes = {};
+        processing_cache{m}.blue_planes = {};
+        processing_cache{m}.green_planes = {};
+
+        processing_cache{m}.F_gcamp_by_plane = {};
+        processing_cache{m}.gcamp_props_by_plane = {};
+        processing_cache{m}.iscell_gcamp_by_plane = {};
+        processing_cache{m}.gcamp_mask_by_plane = {};
+        processing_cache{m}.gcamp_mask_false_by_plane = {};
+
+        processing_cache{m}.has_new_blue_data = false;
+
+        processing_cache{m}.planes = {};
+    end
+
+
+    %% =============================================================
+    % PASSE 0
+    % Préparation des groupes et chargement des résultats existants
+    % =============================================================
+
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('PREPARATION OF BLUE-CELL PROCESSING\n');
+    fprintf('============================================================\n');
+
+    for m = 1:numFolders
+
+        fprintf('\nPreparing group %d/%d...\n', m, numFolders);
+
+        % ----------------------------------------------------------
+        % Vérification du dossier de sortie GCaMP
+        % ----------------------------------------------------------
+
+        if isempty(gcamp_output_folders) || ...
+                m > numel(gcamp_output_folders) || ...
+                isempty(gcamp_output_folders{m})
+
+            fprintf(['Group %d: empty gcamp_output_folders entry, ' ...
+                'skipping group.\n'], m);
+
+            processing_cache{m}.skip_group = true;
             continue;
         end
 
-        if ~iscell(gcamp_output_folders{m}) || isempty(gcamp_output_folders{m}{1})
-            fprintf('Group %d: invalid gcamp_output_folders{%d}{1}, skipping group.\n', m, m);
+        if ~iscell(gcamp_output_folders{m}) || ...
+                isempty(gcamp_output_folders{m}) || ...
+                isempty(gcamp_output_folders{m}{1})
+
+            fprintf(['Group %d: invalid gcamp_output_folders{%d}{1}, ' ...
+                'skipping group.\n'], m, m);
+
+            processing_cache{m}.skip_group = true;
             continue;
         end
 
-        root_folder_m  = fileparts(gcamp_output_folders{m}{1});
-        filePath_blue  = fullfile(root_folder_m, 'results_blue.mat');
-        filePath_gcamp = fullfile(root_folder_m, 'results_gcamp.mat');
+        root_folder_m = fileparts(gcamp_output_folders{m}{1});
 
-        if isempty(current_gcamp_folders_group) || m > numel(current_gcamp_folders_group) || isempty(current_gcamp_folders_group{m})
+        filePath_blue = fullfile( ...
+            root_folder_m, 'results_blue.mat');
+
+        filePath_gcamp = fullfile( ...
+            root_folder_m, 'results_gcamp.mat');
+
+        processing_cache{m}.filePath_blue = filePath_blue;
+        processing_cache{m}.filePath_gcamp = filePath_gcamp;
+
+        % ----------------------------------------------------------
+        % Dossiers GCaMP du groupe
+        % ----------------------------------------------------------
+
+        if isempty(current_gcamp_folders_group) || ...
+                m > numel(current_gcamp_folders_group) || ...
+                isempty(current_gcamp_folders_group{m})
+
             gcamp_planes_for_session_m = {};
+
         else
-            gcamp_planes_for_session_m = current_gcamp_folders_group{m};
+            gcamp_planes_for_session_m = ...
+                current_gcamp_folders_group{m};
         end
 
         nPlanes = numel(gcamp_planes_for_session_m);
 
+        processing_cache{m}.gcamp_planes = ...
+            gcamp_planes_for_session_m;
+
+        processing_cache{m}.nPlanes = nPlanes;
+
         if nPlanes == 0
-            fprintf('Group %d: no GCaMP planes found, skipping group.\n', m);
+            fprintf(['Group %d: no GCaMP planes found, ' ...
+                'skipping group.\n'], m);
+
+            processing_cache{m}.skip_group = true;
             continue;
         end
+
+        % ----------------------------------------------------------
+        % Initialisation des emplacements blue
+        % ----------------------------------------------------------
 
         for f = 1:numel(fields_blue_all)
-            data = ensure_blue_plane_cell(data, fields_blue_all{f}, m, nPlanes);
+
+            data = ensure_blue_plane_cell( ...
+                data, fields_blue_all{f}, m, nPlanes);
         end
 
+        % ----------------------------------------------------------
+        % Initialisation des chemins blue par plan
+        % ----------------------------------------------------------
+
         for p = 1:nPlanes
-            blue_path_p = get_blue_plane_folder(current_blue_folders_group, m, p);
+
+            blue_path_p = get_blue_plane_folder( ...
+                current_blue_folders_group, m, p);
+
             if isempty(blue_path_p)
-                data.blue_plane.blue_fall_path_by_plane{m}{p} = '';
+                data.blue_plane. ...
+                    blue_fall_path_by_plane{m}{p} = '';
             else
-                data.blue_plane.blue_fall_path_by_plane{m}{p} = char(blue_path_p);
+                data.blue_plane. ...
+                    blue_fall_path_by_plane{m}{p} = ...
+                    char(blue_path_p);
             end
         end
+
+        % ----------------------------------------------------------
+        % Initialisation des emplacements GCaMP
+        % ----------------------------------------------------------
 
         for f = 1:numel(gcamp_needed)
-            data = ensure_local_gcamp_plane_cell(data, gcamp_needed{f}, m, nPlanes);
+
+            data = ensure_local_gcamp_plane_cell( ...
+                data, gcamp_needed{f}, m, nPlanes);
         end
+
+        % ----------------------------------------------------------
+        % Rechargement des résultats blue existants
+        % ----------------------------------------------------------
 
         if blue_group_already_complete(data, m, nPlanes)
-            fprintf('Group %d: blue déjà complet en mémoire, aucun rechargement.\n', m);
-        else
-            if exist(filePath_blue, 'file') == 2
-                loaded = load(filePath_blue);
-                data = merge_loaded_blue_into_data(data, loaded, fields_blue_saved, m, nPlanes);
-            end
+
+            fprintf(['Group %d: blue already complete in memory, ' ...
+                'no reload required.\n'], m);
+
+        elseif exist(filePath_blue, 'file') == 2
+
+            loaded_blue = load(filePath_blue);
+
+            data = merge_loaded_blue_into_data( ...
+                data, loaded_blue, ...
+                fields_blue_saved, m, nPlanes);
         end
 
-        if ~local_gcamp_group_already_complete(data, gcamp_needed, m, nPlanes)
+        % ----------------------------------------------------------
+        % Rechargement des résultats GCaMP existants
+        % ----------------------------------------------------------
+
+        if ~local_gcamp_group_already_complete( ...
+                data, gcamp_needed, m, nPlanes)
+
             if exist(filePath_gcamp, 'file') == 2
+
                 loaded_gcamp = load(filePath_gcamp);
-                data = merge_loaded_local_gcamp_into_data(data, loaded_gcamp, gcamp_needed, m, nPlanes);
+
+                data = merge_loaded_local_gcamp_into_data( ...
+                    data, loaded_gcamp, ...
+                    gcamp_needed, m, nPlanes);
             end
         end
 
-        if ~strcmp(include_blue_cells, '1')
-            fprintf('Group %d: include_blue_cells != 1, skipping blue processing.\n', m);
+        % ----------------------------------------------------------
+        % Traitement blue désactivé
+        % ----------------------------------------------------------
+
+        if include_blue_cells ~= 1
+
+            fprintf(['Group %d: include_blue_cells ~= 1, ' ...
+                'skipping blue processing.\n'], m);
+
+            processing_cache{m}.skip_group = true;
             continue;
         end
 
-        if ~local_gcamp_group_has_values(data, 'F_gcamp_by_plane', m, nPlanes)
-            fprintf('Group %d: no F_gcamp_by_plane, saving empty blue outputs for all planes.\n', m);
+        % ----------------------------------------------------------
+        % Vérification de F_gcamp_by_plane
+        % ----------------------------------------------------------
 
-            has_new_blue_data_for_group = false;
+        if ~local_gcamp_group_has_values( ...
+                data, 'F_gcamp_by_plane', m, nPlanes)
+
+            fprintf(['Group %d: no F_gcamp_by_plane, ' ...
+                'saving empty blue outputs for all planes.\n'], m);
+
+            has_new_empty_data = false;
 
             for p = 1:nPlanes
+
                 if ~blue_plane_has_meaningful_content(data, m, p)
+
                     data = set_empty_blue_plane(data, m, p);
-                    has_new_blue_data_for_group = true;
+                    has_new_empty_data = true;
                 end
             end
 
-            if has_new_blue_data_for_group
-                saveStruct_blue = collect_blue_fields_for_save(data, m, fields_blue_saved);
+            if has_new_empty_data
+
+                saveStruct_blue = collect_blue_fields_for_save( ...
+                    data, m, fields_blue_saved);
 
                 if exist(filePath_blue, 'file') == 2
-                    save(filePath_blue, '-struct', 'saveStruct_blue', '-append');
+
+                    save( ...
+                        filePath_blue, ...
+                        '-struct', 'saveStruct_blue', '-append');
+
                 else
-                    save(filePath_blue, '-struct', 'saveStruct_blue');
+
+                    save( ...
+                        filePath_blue, ...
+                        '-struct', 'saveStruct_blue');
                 end
             end
 
+            processing_cache{m}.skip_group = true;
             continue;
         end
 
-        F_gcamp_by_plane = coerce_to_plane_cell_local(data.gcamp_plane.F_gcamp_by_plane{m}, nPlanes);
+        % ----------------------------------------------------------
+        % Mise au format cell par plan
+        % ----------------------------------------------------------
 
-        gcamp_props_by_plane = cell(nPlanes,1);
-        if isfield(data.gcamp_plane, 'gcamp_props_by_plane') && numel(data.gcamp_plane.gcamp_props_by_plane) >= m
-            gcamp_props_by_plane = coerce_to_plane_cell_local(data.gcamp_plane.gcamp_props_by_plane{m}, nPlanes);
+        F_gcamp_by_plane = coerce_to_plane_cell_local( ...
+            data.gcamp_plane.F_gcamp_by_plane{m}, ...
+            nPlanes);
+
+        gcamp_props_by_plane = cell(nPlanes, 1);
+
+        if isfield(data.gcamp_plane, ...
+                'gcamp_props_by_plane') && ...
+                numel(data.gcamp_plane. ...
+                gcamp_props_by_plane) >= m
+
+            gcamp_props_by_plane = ...
+                coerce_to_plane_cell_local( ...
+                    data.gcamp_plane. ...
+                    gcamp_props_by_plane{m}, ...
+                    nPlanes);
         end
 
-        iscell_gcamp_by_plane = cell(nPlanes,1);
-        if isfield(data.gcamp_plane, 'iscell_gcamp_by_plane') && numel(data.gcamp_plane.iscell_gcamp_by_plane) >= m
-            iscell_gcamp_by_plane = coerce_to_plane_cell_local(data.gcamp_plane.iscell_gcamp_by_plane{m}, nPlanes);
+        iscell_gcamp_by_plane = cell(nPlanes, 1);
+
+        if isfield(data.gcamp_plane, ...
+                'iscell_gcamp_by_plane') && ...
+                numel(data.gcamp_plane. ...
+                iscell_gcamp_by_plane) >= m
+
+            iscell_gcamp_by_plane = ...
+                coerce_to_plane_cell_local( ...
+                    data.gcamp_plane. ...
+                    iscell_gcamp_by_plane{m}, ...
+                    nPlanes);
         end
 
-        gcamp_mask_by_plane = cell(nPlanes,1);
-        if isfield(data.gcamp_plane, 'gcamp_mask_by_plane') && numel(data.gcamp_plane.gcamp_mask_by_plane) >= m
-            gcamp_mask_by_plane = coerce_to_plane_cell_local(data.gcamp_plane.gcamp_mask_by_plane{m}, nPlanes);
+        gcamp_mask_by_plane = cell(nPlanes, 1);
+
+        if isfield(data.gcamp_plane, ...
+                'gcamp_mask_by_plane') && ...
+                numel(data.gcamp_plane. ...
+                gcamp_mask_by_plane) >= m
+
+            gcamp_mask_by_plane = ...
+                coerce_to_plane_cell_local( ...
+                    data.gcamp_plane. ...
+                    gcamp_mask_by_plane{m}, ...
+                    nPlanes);
         end
 
-        gcamp_mask_false_by_plane = cell(nPlanes,1);
-        if isfield(data.gcamp_plane, 'gcamp_mask_false_by_plane') && numel(data.gcamp_plane.gcamp_mask_false_by_plane) >= m
-            gcamp_mask_false_by_plane = coerce_to_plane_cell_local(data.gcamp_plane.gcamp_mask_false_by_plane{m}, nPlanes);
+        gcamp_mask_false_by_plane = cell(nPlanes, 1);
+
+        if isfield(data.gcamp_plane, ...
+                'gcamp_mask_false_by_plane') && ...
+                numel(data.gcamp_plane. ...
+                gcamp_mask_false_by_plane) >= m
+
+            gcamp_mask_false_by_plane = ...
+                coerce_to_plane_cell_local( ...
+                    data.gcamp_plane. ...
+                    gcamp_mask_false_by_plane{m}, ...
+                    nPlanes);
         end
 
-        if isempty(current_red_folders_group) || m > numel(current_red_folders_group)
+        % ----------------------------------------------------------
+        % Dossiers des autres canaux
+        % ----------------------------------------------------------
+
+        if isempty(current_red_folders_group) || ...
+                m > numel(current_red_folders_group)
+
             red_planes_for_session_m = {};
         else
-            red_planes_for_session_m = current_red_folders_group{m};
+            red_planes_for_session_m = ...
+                current_red_folders_group{m};
         end
 
-        if isempty(current_blue_folders_group) || m > numel(current_blue_folders_group)
+        if isempty(current_blue_folders_group) || ...
+                m > numel(current_blue_folders_group)
+
             blue_planes_for_session_m = {};
         else
-            blue_planes_for_session_m = current_blue_folders_group{m};
+            blue_planes_for_session_m = ...
+                current_blue_folders_group{m};
         end
 
-        if isempty(current_green_folders_group) || m > numel(current_green_folders_group)
+        if isempty(current_green_folders_group) || ...
+                m > numel(current_green_folders_group)
+
             green_planes_for_session_m = {};
         else
-            green_planes_for_session_m = current_green_folders_group{m};
+            green_planes_for_session_m = ...
+                current_green_folders_group{m};
         end
 
-        has_new_blue_data_for_group = false;
+        processing_cache{m}.red_planes = ...
+            red_planes_for_session_m;
 
-        fprintf('Processing blue cells for group %d (%d planes)...\n', m, nPlanes);
+        processing_cache{m}.blue_planes = ...
+            blue_planes_for_session_m;
+
+        processing_cache{m}.green_planes = ...
+            green_planes_for_session_m;
+
+        processing_cache{m}.F_gcamp_by_plane = ...
+            F_gcamp_by_plane;
+
+        processing_cache{m}.gcamp_props_by_plane = ...
+            gcamp_props_by_plane;
+
+        processing_cache{m}.iscell_gcamp_by_plane = ...
+            iscell_gcamp_by_plane;
+
+        processing_cache{m}.gcamp_mask_by_plane = ...
+            gcamp_mask_by_plane;
+
+        processing_cache{m}.gcamp_mask_false_by_plane = ...
+            gcamp_mask_false_by_plane;
+
+        processing_cache{m}.planes = cell(nPlanes, 1);
 
         for p = 1:nPlanes
 
-            blue_plane_folder = get_blue_plane_folder(current_blue_folders_group, m, p);
+            processing_cache{m}.planes{p} = struct( ...
+                'process_plane', false, ...
+                'meanImg_channels', [], ...
+                'aligned_image', [], ...
+                'npy_file_path', '', ...
+                'error_message', '');
+        end
+
+        processing_cache{m}.valid_group = true;
+    end
+
+
+    %% =============================================================
+    % PASSE 1
+    % Exécuter Cellpose pour TOUS les groupes et TOUS les plans
+    % Aucun appel à get_blue_cells_rois dans cette passe
+    % =============================================================
+
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('PASS 1/2: LOAD OR PROCESS CELLPOSE FOR ALL FOLDERS\n');
+    fprintf('============================================================\n');
+
+    for m = 1:numFolders
+
+        if processing_cache{m}.skip_group || ...
+                ~processing_cache{m}.valid_group
+
+            continue;
+        end
+
+        nPlanes = processing_cache{m}.nPlanes;
+
+        gcamp_planes_for_session_m = ...
+            processing_cache{m}.gcamp_planes;
+
+        red_planes_for_session_m = ...
+            processing_cache{m}.red_planes;
+
+        blue_planes_for_session_m = ...
+            processing_cache{m}.blue_planes;
+
+        green_planes_for_session_m = ...
+            processing_cache{m}.green_planes;
+
+        F_gcamp_by_plane = ...
+            processing_cache{m}.F_gcamp_by_plane;
+
+        fprintf('\n');
+        fprintf('Cellpose preparation | Group %d/%d | %d planes\n', ...
+            m, numFolders, nPlanes);
+
+        for p = 1:nPlanes
+
+            fprintf('\n');
+            fprintf('------------------------------------------------------------\n');
+            fprintf('Cellpose | Group %d/%d | Plane %d/%d\n', ...
+                m, numFolders, p, nPlanes);
+            fprintf('------------------------------------------------------------\n');
+
+            % ------------------------------------------------------
+            % Mise à jour du chemin blue par plan
+            % ------------------------------------------------------
+
+            blue_plane_folder = get_blue_plane_folder( ...
+                current_blue_folders_group, m, p);
+
             if isempty(blue_plane_folder)
-                data.blue_plane.blue_fall_path_by_plane{m}{p} = '';
+
+                data.blue_plane. ...
+                    blue_fall_path_by_plane{m}{p} = '';
+
             else
-                data.blue_plane.blue_fall_path_by_plane{m}{p} = char(blue_plane_folder);
+
+                data.blue_plane. ...
+                    blue_fall_path_by_plane{m}{p} = ...
+                    char(blue_plane_folder);
             end
 
-            already_has_blue = blue_plane_has_meaningful_content(data, m, p);
+            % ------------------------------------------------------
+            % Chargement de ops.npy blue
+            % ------------------------------------------------------
 
-            if ~blue_plane_slot_exists(data, 'ops_suite2p_blue_by_plane', m, p) || ...
-                    isempty(data.blue_plane.ops_suite2p_blue_by_plane{m}{p})
+            if ~blue_plane_slot_exists( ...
+                    data, ...
+                    'ops_suite2p_blue_by_plane', ...
+                    m, p) || ...
+                    isempty(data.blue_plane. ...
+                    ops_suite2p_blue_by_plane{m}{p})
 
                 if ~isempty(blue_plane_folder)
-                    data.blue_plane.ops_suite2p_blue_by_plane{m}{p} = load_ops_only(blue_plane_folder);
+
+                    data.blue_plane. ...
+                        ops_suite2p_blue_by_plane{m}{p} = ...
+                        load_ops_only(blue_plane_folder);
+
                 else
-                    data.blue_plane.ops_suite2p_blue_by_plane{m}{p} = [];
+
+                    data.blue_plane. ...
+                        ops_suite2p_blue_by_plane{m}{p} = [];
                 end
             end
 
-            if already_has_blue
-                fprintf('    Plane %d: blue variables already exist in memory, skipping.\n', p);
+            % ------------------------------------------------------
+            % Si le plan est déjà complet, pas besoin de Cellpose
+            % ------------------------------------------------------
+
+            if blue_plane_has_meaningful_content(data, m, p)
+
+                fprintf(['    Plane %d: blue variables already exist ' ...
+                    'in memory, skipping Cellpose.\n'], p);
+
                 continue;
             end
 
-            if p > numel(F_gcamp_by_plane) || isempty(F_gcamp_by_plane{p})
-                fprintf('    Plane %d: empty F_gcamp_plane, saving empty blue outputs.\n', p);
+            % ------------------------------------------------------
+            % Vérification F GCaMP
+            % ------------------------------------------------------
+
+            if p > numel(F_gcamp_by_plane) || ...
+                    isempty(F_gcamp_by_plane{p})
+
+                fprintf(['    Plane %d: empty F_gcamp_plane, ' ...
+                    'saving empty blue outputs.\n'], p);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
+
+            % ------------------------------------------------------
+            % Vérification du dossier GCaMP
+            % ------------------------------------------------------
+
+            if numel(gcamp_planes_for_session_m) < p || ...
+                    isempty(gcamp_planes_for_session_m{p})
+
+                fprintf(['    Plane %d: missing GCaMP plane folder, ' ...
+                    'saving empty blue outputs.\n'], p);
+
+                data = set_empty_blue_plane(data, m, p);
+
+                processing_cache{m}.has_new_blue_data = true;
+
+                continue;
+            end
+
+            % ------------------------------------------------------
+            % Récupération du chemin TSeries blue correspondant
+            % ------------------------------------------------------
+
+            current_blue_TSeries_path_m = '';
+
+            if iscell(current_blue_TSeries_path)
+
+                if m <= numel(current_blue_TSeries_path)
+
+                    current_blue_TSeries_path_m = ...
+                        current_blue_TSeries_path{m};
+                end
+
+            elseif ischar(current_blue_TSeries_path) || ...
+                    isstring(current_blue_TSeries_path)
+
+                current_blue_TSeries_path_m = ...
+                    current_blue_TSeries_path;
+            end
+
+            % ------------------------------------------------------
+            % Exécution ou chargement Cellpose
+            % ------------------------------------------------------
+
+            try
+
+                gcamp_plane_path = get_plane_path( ...
+                    gcamp_planes_for_session_m, p);
+                
+                red_plane_path = get_plane_path( ...
+                    red_planes_for_session_m, p);
+                
+                blue_plane_path = get_plane_path( ...
+                    blue_planes_for_session_m, p);
+                
+                green_plane_path = get_plane_path( ...
+                    green_planes_for_session_m, p);
+                
+                gcamp_output_folder_plane = get_plane_path( ...
+                    gcamp_output_folders{m}, p);
+
+                [meanImg_channels, ...
+                aligned_image_plane, ...
+                npy_file_path, ~] = ...
+                load_or_process_cellpose_TSeries( ...
+                    processing_cache{m}.filePath_blue, ...
+                    date_group_paths{m}, ...
+                    gcamp_plane_path, ...
+                    red_plane_path, ...
+                    blue_plane_path, ...
+                    green_plane_path, ...
+                    current_blue_TSeries_path_m, ...
+                    gcamp_output_folder_plane);
+
+            catch ME
+
+                warning( ...
+                    'process_blue_cells:load_or_process_cellpose_TSeriesFailed', ...
+                    ['Group %d plane %d: ' ...
+                    'load_or_process_cellpose_TSeries failed: %s'], ...
+                    m, p, ME.message);
+
+                processing_cache{m}.planes{p}.error_message = ...
+                    ME.message;
+
+                data = set_empty_blue_plane(data, m, p);
+
+                processing_cache{m}.has_new_blue_data = true;
+
+                continue;
+            end
+
+            % ------------------------------------------------------
+            % Vérification du résultat Cellpose
+            % ------------------------------------------------------
+
+            if isempty(npy_file_path)
+
+                fprintf(['    Plane %d: empty npy_file_path, ' ...
+                    'saving empty blue outputs.\n'], p);
+
+                data = set_empty_blue_plane(data, m, p);
+
+                processing_cache{m}.has_new_blue_data = true;
+
+                continue;
+            end
+
+            if ~(ischar(npy_file_path) || ...
+                    isstring(npy_file_path))
+
+                fprintf(['    Plane %d: invalid npy_file_path type, ' ...
+                    'saving empty blue outputs.\n'], p);
+
+                data = set_empty_blue_plane(data, m, p);
+
+                processing_cache{m}.has_new_blue_data = true;
+
+                continue;
+            end
+
+            npy_file_path = char(npy_file_path);
+
+            if exist(npy_file_path, 'file') ~= 2
+
+                fprintf(['    Plane %d: NPY file does not exist:\n' ...
+                    '    %s\n'], ...
+                    p, npy_file_path);
+
+                data = set_empty_blue_plane(data, m, p);
+
+                processing_cache{m}.has_new_blue_data = true;
+
+                continue;
+            end
+
+            fprintf('    Plane %d: Cellpose NPY ready:\n', p);
+            fprintf('    %s\n', npy_file_path);
+
+            % ------------------------------------------------------
+            % Mise en cache pour la seconde passe
+            % ------------------------------------------------------
+
+            processing_cache{m}.planes{p}.process_plane = true;
+
+            processing_cache{m}.planes{p}.meanImg_channels = ...
+                meanImg_channels;
+
+            processing_cache{m}.planes{p}.aligned_image = ...
+                aligned_image_plane;
+
+            processing_cache{m}.planes{p}.npy_file_path = ...
+                npy_file_path;
+        end
+    end
+
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('ALL CELLPOSE FILES HAVE NOW BEEN PREPARED\n');
+    fprintf('Starting uninterrupted blue ROI extraction...\n');
+    fprintf('============================================================\n');
+
+
+    %% =============================================================
+    % PASSE 2
+    % Charger les données .npy et exécuter get_blue_cells_rois
+    % pour tous les plans successivement
+    % =============================================================
+
+    fprintf('\n');
+    fprintf('============================================================\n');
+    fprintf('PASS 2/2: BLUE ROI EXTRACTION FOR ALL NPY FILES\n');
+    fprintf('============================================================\n');
+
+    for m = 1:numFolders
+
+        if processing_cache{m}.skip_group || ...
+                ~processing_cache{m}.valid_group
+
+            continue;
+        end
+
+        nPlanes = processing_cache{m}.nPlanes;
+
+        gcamp_planes_for_session_m = ...
+            processing_cache{m}.gcamp_planes;
+
+        F_gcamp_by_plane = ...
+            processing_cache{m}.F_gcamp_by_plane;
+
+        gcamp_props_by_plane = ...
+            processing_cache{m}.gcamp_props_by_plane;
+
+        iscell_gcamp_by_plane = ...
+            processing_cache{m}.iscell_gcamp_by_plane;
+
+        gcamp_mask_by_plane = ...
+            processing_cache{m}.gcamp_mask_by_plane;
+
+        gcamp_mask_false_by_plane = ...
+            processing_cache{m}.gcamp_mask_false_by_plane;
+
+        fprintf('\n');
+        fprintf('Blue ROI extraction | Group %d/%d | %d planes\n', ...
+            m, numFolders, nPlanes);
+
+        for p = 1:nPlanes
+
+            % ------------------------------------------------------
+            % Le plan était déjà traité ou invalide pendant passe 1
+            % ------------------------------------------------------
+
+            if ~processing_cache{m}.planes{p}.process_plane
+                continue;
+            end
+
+            fprintf('\n');
+            fprintf('------------------------------------------------------------\n');
+            fprintf('Blue ROIs | Group %d/%d | Plane %d/%d\n', ...
+                m, numFolders, p, nPlanes);
+            fprintf('------------------------------------------------------------\n');
+
+            npy_file_path = ...
+                processing_cache{m}.planes{p}.npy_file_path;
+
+            meanImg_channels = ...
+                processing_cache{m}.planes{p}.meanImg_channels;
+
+            aligned_image_plane = ...
+                processing_cache{m}.planes{p}.aligned_image;
+
+            fprintf('NPY used:\n%s\n', npy_file_path);
+
+            % ------------------------------------------------------
+            % Données GCaMP du plan
+            % ------------------------------------------------------
 
             F_gcamp_plane = F_gcamp_by_plane{p};
 
             if p <= numel(gcamp_props_by_plane)
-                gcamp_props_plane = gcamp_props_by_plane{p}; %#ok<NASGU>
+                gcamp_props_plane = ...
+                    gcamp_props_by_plane{p}; %#ok<NASGU>
             end
 
             if p <= numel(gcamp_mask_by_plane)
-                gcamp_mask_plane = gcamp_mask_by_plane{p};
+                gcamp_mask_plane = ...
+                    gcamp_mask_by_plane{p};
             else
                 gcamp_mask_plane = [];
             end
 
             if p <= numel(iscell_gcamp_by_plane)
-                iscell_gcamp_plane = iscell_gcamp_by_plane{p};
+                iscell_gcamp_plane = ...
+                    iscell_gcamp_by_plane{p};
             else
                 iscell_gcamp_plane = [];
             end
 
-            if m <= numel(meanImgs_gcamp) && ~isempty(meanImgs_gcamp{m}) && numel(meanImgs_gcamp{m}) >= p
+            if p <= numel(gcamp_mask_false_by_plane)
+                gcamp_mask_false_plane = ...
+                    gcamp_mask_false_by_plane{p};
+            else
+                gcamp_mask_false_plane = [];
+            end
+
+            if m <= numel(meanImgs_gcamp) && ...
+                    ~isempty(meanImgs_gcamp{m}) && ...
+                    numel(meanImgs_gcamp{m}) >= p
+
                 meanImg_plane = meanImgs_gcamp{m}{p};
             else
                 meanImg_plane = [];
             end
 
-            if p <= numel(gcamp_mask_false_by_plane)
-                gcamp_mask_false_plane = gcamp_mask_false_by_plane{p};
-            else
-                gcamp_mask_false_plane = [];
-            end
-
-            if numel(gcamp_planes_for_session_m) < p || isempty(gcamp_planes_for_session_m{p})
-                fprintf('    Plane %d: missing gcamp plane folder, saving empty blue outputs.\n', p);
-                data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
-                continue;
-            end
+            % ------------------------------------------------------
+            % Chargement des données Cellpose
+            % ------------------------------------------------------
 
             try
-                [meanImg_channels, aligned_image_plane, npy_file_path, ~] = ...
-                    load_or_process_cellpose_TSeries( ...
-                        filePath_blue, date_group_paths{m}, ...
-                        gcamp_planes_for_session_m, ...
-                        red_planes_for_session_m, ...
-                        blue_planes_for_session_m, ...
-                        green_planes_for_session_m, ...
-                        current_blue_TSeries_path, p);
+
+                [num_cellpose_raw_p, ...
+                    mask_cellpose_raw_p, ...
+                    props_cellpose_raw_p, ...
+                    outlines_x_raw_p, ...
+                    outlines_y_raw_p] = ...
+                    load_or_process_cellpose_data( ...
+                        npy_file_path); %#ok<ASGLU>
+
             catch ME
-                warning('process_blue_cells:load_or_process_cellpose_TSeriesFailed', ...
-                    'Group %d plane %d: load_or_process_cellpose_TSeries failed: %s', ...
+
+                warning( ...
+                    'process_blue_cells:load_or_process_cellpose_dataFailed', ...
+                    ['Group %d plane %d: ' ...
+                    'load_or_process_cellpose_data failed: %s'], ...
                     m, p, ME.message);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
 
-            if isempty(npy_file_path)
-                fprintf('    Plane %d: empty npy_file_path, saving empty blue outputs.\n', p);
-                data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
-                continue;
-            end
+            % ------------------------------------------------------
+            % Conversion des masques Cellpose en stack
+            % ------------------------------------------------------
 
             try
-                [num_cellpose_raw_p, mask_cellpose_raw_p, props_cellpose_raw_p, outlines_x_raw_p, outlines_y_raw_p] = ...
-                    load_or_process_cellpose_data(npy_file_path); %#ok<ASGLU>
+
+                mask_cellpose_raw_p = ...
+                    cell_mask_list_to_stack( ...
+                        mask_cellpose_raw_p);
+
             catch ME
-                warning('process_blue_cells:load_or_process_cellpose_dataFailed', ...
-                    'Group %d plane %d: load_or_process_cellpose_data failed: %s', ...
+
+                warning( ...
+                    'process_blue_cells:cellMaskConversionFailed', ...
+                    ['Group %d plane %d: ' ...
+                    'Cellpose mask conversion failed: %s'], ...
                     m, p, ME.message);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
 
-            mask_cellpose_raw_p = cell_mask_list_to_stack(mask_cellpose_raw_p);
+            if isempty(props_cellpose_raw_p) || ...
+                    isempty(meanImg_channels)
 
-            if isempty(props_cellpose_raw_p) || isempty(meanImg_channels)
-                fprintf('    Plane %d: empty Cellpose props or meanImg_channels, saving empty blue outputs.\n', p);
+                fprintf(['    Plane %d: empty Cellpose props or ' ...
+                    'meanImg_channels, saving empty outputs.\n'], p);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
+
+            % ------------------------------------------------------
+            % Appariement GCaMP / Cellpose
+            % ------------------------------------------------------
 
             try
-                [matched_gcamp_idx_p, matched_cellpose_idx_p, ...
-                    matched_gcamp_false_idx_p, matched_cellpose_false_idx_p, ...
-                    gcamp_unmatched_idx_p, cellpose_unmatched_idx_p, ...
-                    is_cellpose_matched_to_true_gcamp_p, IoU_matrix_p] = ...
+
+                [matched_gcamp_idx_p, ...
+                    matched_cellpose_idx_p, ...
+                    matched_gcamp_false_idx_p, ...
+                    matched_cellpose_false_idx_p, ...
+                    gcamp_unmatched_idx_p, ...
+                    cellpose_unmatched_idx_p, ...
+                    is_cellpose_matched_to_true_gcamp_p, ...
+                    IoU_matrix_p] = ...
                     match_gcamp_cellpose_masks_iou( ...
                         iscell_gcamp_plane, ...
                         gcamp_mask_plane, ...
                         gcamp_mask_false_plane, ...
                         mask_cellpose_raw_p, ...
                         0.05); %#ok<ASGLU>
+
             catch ME
-                warning('process_blue_cells:matchMasksFailed', ...
-                    'Group %d plane %d: match_gcamp_cellpose_masks_iou failed: %s', ...
+
+                warning( ...
+                    'process_blue_cells:matchMasksFailed', ...
+                    ['Group %d plane %d: ' ...
+                    'match_gcamp_cellpose_masks_iou failed: %s'], ...
                     m, p, ME.message);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
 
-            matched_iou_values_p = nan(numel(matched_gcamp_idx_p),1);
+            % ------------------------------------------------------
+            % Valeurs d'IoU des appariements
+            % ------------------------------------------------------
+
+            matched_iou_values_p = ...
+                nan(numel(matched_gcamp_idx_p), 1);
 
             for kk = 1:numel(matched_gcamp_idx_p)
+
                 gi = matched_gcamp_idx_p(kk);
                 cj = matched_cellpose_idx_p(kk);
 
-                if gi >= 1 && gi <= size(IoU_matrix_p,1) && ...
-                        cj >= 1 && cj <= size(IoU_matrix_p,2)
-                    matched_iou_values_p(kk) = IoU_matrix_p(gi,cj);
+                if gi >= 1 && ...
+                        gi <= size(IoU_matrix_p, 1) && ...
+                        cj >= 1 && ...
+                        cj <= size(IoU_matrix_p, 2)
+
+                    matched_iou_values_p(kk) = ...
+                        IoU_matrix_p(gi, cj);
                 end
             end
 
-            cellpose_unmatched_or_false_idx_p = unique([ ...
-                cellpose_unmatched_idx_p(:); ...
-                matched_cellpose_false_idx_p(:) ...
-            ], 'stable');
+            cellpose_unmatched_or_false_idx_p = unique( ...
+                [ ...
+                    cellpose_unmatched_idx_p(:); ...
+                    matched_cellpose_false_idx_p(:) ...
+                ], ...
+                'stable');
+
+            % ------------------------------------------------------
+            % Visualisation des appariements
+            % ------------------------------------------------------
 
             try
+
                 show_masks_and_overlaps( ...
-                    meanImg_plane, aligned_image_plane, ...
-                    gcamp_mask_plane, mask_cellpose_raw_p, ...
-                    matched_gcamp_idx_p, matched_cellpose_idx_p, ...
+                    meanImg_plane, ...
+                    aligned_image_plane, ...
+                    gcamp_mask_plane, ...
+                    mask_cellpose_raw_p, ...
+                    matched_gcamp_idx_p, ...
+                    matched_cellpose_idx_p, ...
                     cellpose_unmatched_or_false_idx_p, ...
                     matched_iou_values_p, ...
                     gcamp_output_folders{m}{p}, ...
-                    sprintf('GCaMP_vs_Cellpose_group_%d_plane_%d', m, p));
-            catch
+                    sprintf( ...
+                        'GCaMP_vs_Cellpose_group_%d_plane_%d', ...
+                        m, p));
+
+            catch ME
+
+                fprintf(['    Plane %d: overlap visualization ' ...
+                    'could not be displayed: %s\n'], ...
+                    p, ME.message);
             end
 
-            data.blue_plane.matched_gcamp_idx_by_plane{m}{p}      = matched_gcamp_idx_p(:);
-            data.blue_plane.matched_cellpose_idx_by_plane{m}{p}   = matched_cellpose_idx_p(:);
-            data.blue_plane.gcamp_unmatched_idx_by_plane{m}{p}    = gcamp_unmatched_idx_p(:);
-            data.blue_plane.cellpose_unmatched_idx_by_plane{m}{p} = cellpose_unmatched_or_false_idx_p(:);
+            % ------------------------------------------------------
+            % Sauvegarde des informations d'appariement
+            % ------------------------------------------------------
 
-            nCellpose = size(mask_cellpose_raw_p,1);
+            data.blue_plane. ...
+                matched_gcamp_idx_by_plane{m}{p} = ...
+                matched_gcamp_idx_p(:);
+
+            data.blue_plane. ...
+                matched_cellpose_idx_by_plane{m}{p} = ...
+                matched_cellpose_idx_p(:);
+
+            data.blue_plane. ...
+                gcamp_unmatched_idx_by_plane{m}{p} = ...
+                gcamp_unmatched_idx_p(:);
+
+            data.blue_plane. ...
+                cellpose_unmatched_idx_by_plane{m}{p} = ...
+                cellpose_unmatched_or_false_idx_p(:);
+
+            % ------------------------------------------------------
+            % Toutes les cellules Cellpose sont présentées
+            % à get_blue_cells_rois
+            % ------------------------------------------------------
+
+            nCellpose = size(mask_cellpose_raw_p, 1);
+
             cellpose_blue_idx_p = (1:nCellpose)';
 
-            mask_blue_final_p       = subset_mask_stack(mask_cellpose_raw_p, cellpose_blue_idx_p);
-            props_blue_final_p      = subset_cells_or_struct(props_cellpose_raw_p, cellpose_blue_idx_p);
-            outlines_x_blue_final_p = subset_cells_or_struct(outlines_x_raw_p, cellpose_blue_idx_p);
-            outlines_y_blue_final_p = subset_cells_or_struct(outlines_y_raw_p, cellpose_blue_idx_p);
+            mask_blue_final_p = subset_mask_stack( ...
+                mask_cellpose_raw_p, ...
+                cellpose_blue_idx_p);
 
-            num_blue_cellpose_p = numel(cellpose_blue_idx_p);
+            props_blue_final_p = subset_cells_or_struct( ...
+                props_cellpose_raw_p, ...
+                cellpose_blue_idx_p);
+
+            outlines_x_blue_final_p = subset_cells_or_struct( ...
+                outlines_x_raw_p, ...
+                cellpose_blue_idx_p);
+
+            outlines_y_blue_final_p = subset_cells_or_struct( ...
+                outlines_y_raw_p, ...
+                cellpose_blue_idx_p);
+
+            num_blue_cellpose_p = ...
+                numel(cellpose_blue_idx_p);
+
+            % ------------------------------------------------------
+            % Extraction manuelle des ROIs blue
+            %
+            % Tous les load_or_process_cellpose_TSeries ont déjà été
+            % exécutés avant d'arriver ici.
+            % ------------------------------------------------------
 
             try
+
                 F_blue_final_p = get_blue_cells_rois( ...
-                    F_gcamp_plane, [], ...
-                    num_blue_cellpose_p, mask_blue_final_p, ...
+                    F_gcamp_plane, ...
+                    [], ...
+                    num_blue_cellpose_p, ...
+                    mask_blue_final_p, ...
                     props_blue_final_p, ...
-                    outlines_x_blue_final_p, outlines_y_blue_final_p, ...
-                    gcamp_planes_for_session_m{p}, "all");
+                    outlines_x_blue_final_p, ...
+                    outlines_y_blue_final_p, ...
+                    gcamp_planes_for_session_m{p}, ...
+                    "all");
+
             catch ME
-                warning('process_blue_cells:get_blue_cells_roisFailed', ...
-                    'Group %d plane %d: get_blue_cells_rois failed: %s', ...
+
+                warning( ...
+                    'process_blue_cells:get_blue_cells_roisFailed', ...
+                    ['Group %d plane %d: ' ...
+                    'get_blue_cells_rois failed: %s'], ...
                     m, p, ME.message);
+
                 data = set_empty_blue_plane(data, m, p);
-                has_new_blue_data_for_group = true;
+
+                processing_cache{m}.has_new_blue_data = true;
+
                 continue;
             end
+
+            % ------------------------------------------------------
+            % Mise au format double
+            % ------------------------------------------------------
 
             if ~isempty(F_blue_final_p)
                 F_blue_final_p = double(F_blue_final_p);
@@ -379,39 +1074,105 @@ function blue_plane = process_blue_cells( ...
                 F_blue_final_p = [];
             end
 
-            blue_from_matched_gcamp_mask_p = ismember( ...
-                cellpose_blue_idx_p(:), ...
-                unique(round(matched_cellpose_idx_p(:))));
+            % ------------------------------------------------------
+            % Identification des Cellpose également appariées
+            % à une ROI GCaMP vraie
+            % ------------------------------------------------------
 
-            data.blue_plane.F_blue_by_plane{m}{p}              = F_blue_final_p;
-            data.blue_plane.mask_cellpose_by_plane{m}{p}       = mask_blue_final_p;
-            data.blue_plane.props_cellpose_by_plane{m}{p}      = props_blue_final_p;
-            data.blue_plane.outlines_x_cellpose_by_plane{m}{p} = outlines_x_blue_final_p;
-            data.blue_plane.outlines_y_cellpose_by_plane{m}{p} = outlines_y_blue_final_p;
-            data.blue_plane.num_cells_mask_by_plane{m}{p}      = size(F_blue_final_p, 1);
-            data.blue_plane.blue_match_mask_by_plane{m}{p}     = blue_from_matched_gcamp_mask_p(:);
+            valid_matched_cellpose_idx = ...
+                matched_cellpose_idx_p(:);
 
-            has_new_blue_data_for_group = true;
+            valid_matched_cellpose_idx = ...
+                valid_matched_cellpose_idx( ...
+                    isfinite(valid_matched_cellpose_idx));
+
+            valid_matched_cellpose_idx = ...
+                unique(round(valid_matched_cellpose_idx));
+
+            blue_from_matched_gcamp_mask_p = ...
+                ismember( ...
+                    cellpose_blue_idx_p(:), ...
+                    valid_matched_cellpose_idx);
+
+            % ------------------------------------------------------
+            % Stockage final
+            % ------------------------------------------------------
+
+            data.blue_plane. ...
+                F_blue_by_plane{m}{p} = ...
+                F_blue_final_p;
+
+            data.blue_plane. ...
+                mask_cellpose_by_plane{m}{p} = ...
+                mask_blue_final_p;
+
+            data.blue_plane. ...
+                props_cellpose_by_plane{m}{p} = ...
+                props_blue_final_p;
+
+            data.blue_plane. ...
+                outlines_x_cellpose_by_plane{m}{p} = ...
+                outlines_x_blue_final_p;
+
+            data.blue_plane. ...
+                outlines_y_cellpose_by_plane{m}{p} = ...
+                outlines_y_blue_final_p;
+
+            data.blue_plane. ...
+                num_cells_mask_by_plane{m}{p} = ...
+                size(F_blue_final_p, 1);
+
+            data.blue_plane. ...
+                blue_match_mask_by_plane{m}{p} = ...
+                blue_from_matched_gcamp_mask_p(:);
+
+            processing_cache{m}.has_new_blue_data = true;
         end
 
-        if has_new_blue_data_for_group
-            saveStruct_blue = collect_blue_fields_for_save(data, m, fields_blue_saved);
+        % ----------------------------------------------------------
+        % Sauvegarde du groupe après tous ses plans
+        % ----------------------------------------------------------
+
+        if processing_cache{m}.has_new_blue_data
+
+            saveStruct_blue = collect_blue_fields_for_save( ...
+                data, m, fields_blue_saved);
+
+            filePath_blue = ...
+                processing_cache{m}.filePath_blue;
 
             if exist(filePath_blue, 'file') == 2
-                save(filePath_blue, '-struct', 'saveStruct_blue', '-append');
+
+                save( ...
+                    filePath_blue, ...
+                    '-struct', ...
+                    'saveStruct_blue', ...
+                    '-append');
+
             else
-                save(filePath_blue, '-struct', 'saveStruct_blue');
+
+                save( ...
+                    filePath_blue, ...
+                    '-struct', ...
+                    'saveStruct_blue');
             end
 
-            fprintf('Group %d: blue extraction fields updated in results_blue.mat.\n', m);
+            fprintf('\n');
+            fprintf(['Group %d: blue extraction fields updated ' ...
+                'in results_blue.mat.\n'], m);
+
         else
-            fprintf('Group %d: no new blue data, results_blue.mat not modified.\n', m);
+
+            fprintf('\n');
+            fprintf(['Group %d: no new blue data, ' ...
+                'results_blue.mat not modified.\n'], m);
         end
     end
 
     blue_plane = data.blue_plane;
 end
 
+%%%% Helpers %%%%%
 
 function tf = blue_group_already_complete(data, m, nPlanes)
 
@@ -836,4 +1597,23 @@ function blue_plane_folder = get_blue_plane_folder(current_blue_folders_group, m
     end
 
     blue_plane_folder = planes_m{p};
+end
+
+function plane_path = get_plane_path(paths_by_plane, p)
+
+    plane_path = '';
+
+    if isempty(paths_by_plane) || ~iscell(paths_by_plane)
+        return;
+    end
+
+    if p > numel(paths_by_plane) || isempty(paths_by_plane{p})
+        return;
+    end
+
+    candidate = paths_by_plane{p};
+
+    if ischar(candidate) || isstring(candidate)
+        plane_path = char(candidate);
+    end
 end

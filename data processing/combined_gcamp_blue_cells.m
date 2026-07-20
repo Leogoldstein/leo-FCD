@@ -5,8 +5,7 @@ function combined_plane = combined_gcamp_blue_cells(gcamp_output_folders, data, 
     if nargin < 3 || isempty(include_blue_cells)
         include_blue_cells = '1';
     end
-    include_blue_cells = char(string(include_blue_cells));
-
+    
     fields_combined_saved = { ...
         'F_combined_by_plane', ...
         'mask_combined_by_plane', ...
@@ -25,13 +24,13 @@ function combined_plane = combined_gcamp_blue_cells(gcamp_output_folders, data, 
     data = init_combined_plane_struct_if_needed(data, numFolders, fields_combined_all);
 
     % ==========================================================
-    % include_blue_cells = 2 :
+    % include_blue_cells = 0 :
     % pas de combined, suppression en mémoire uniquement
     % ne modifie PAS results_combined.mat
     % ==========================================================
-    if strcmp(include_blue_cells, '2')
+    if include_blue_cells ~= 1
 
-        fprintf('[COMBINED] include_blue_cells = 2 -> combined non utilisé.\n');
+        fprintf('[COMBINED] include_blue_cells = 0 -> combined non utilisé.\n');
 
         combined_plane = data.combined_plane;
         return;
