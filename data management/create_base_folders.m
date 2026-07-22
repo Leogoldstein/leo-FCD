@@ -224,20 +224,17 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
 
                     recover_processing = true;
 
-                    versions_gcamp = get_versions_from_vfolders({existing_subfolders.name});
-                    valid_versions = ~isnan(versions_gcamp);
+                    most_recent_gcamp = get_most_recent_vfolder( ...
+                        existing_subfolders);
 
-                    if ~any(valid_versions)
-                        error('Aucune version valide trouvée pour récupérer les anciens results.');
+                    if isempty(most_recent_gcamp)
+                        error(['Aucune version valide trouvée pour récupérer ' ...
+                               'les anciens results.']);
                     end
 
-                    versions_valid = versions_gcamp(valid_versions);
-                    folders_valid = existing_subfolders(valid_versions);
-
-                    [~, idx_gcamp] = max(versions_valid);
-
-                    most_recent_gcamp = folders_valid(idx_gcamp);
-                    source_root_folder = fullfile(after_processing_root, most_recent_gcamp.name);
+                    source_root_folder = fullfile( ...
+                        after_processing_root, ...
+                        most_recent_gcamp.name);
 
                     fprintf('  Récupération depuis le dossier le plus récent : %s\n', source_root_folder);
 
@@ -251,20 +248,16 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
 
         elseif strcmpi(user_choice1, '1')
 
-            versions_gcamp = get_versions_from_vfolders({existing_subfolders.name});
-            valid_versions = ~isnan(versions_gcamp);
+            most_recent_gcamp = get_most_recent_vfolder( ...
+                existing_subfolders);
 
-            if ~any(valid_versions)
+            if isempty(most_recent_gcamp)
                 error('Aucune version valide trouvée.');
             end
 
-            versions_valid = versions_gcamp(valid_versions);
-            folders_valid = existing_subfolders(valid_versions);
-
-            [~, idx_gcamp] = max(versions_valid);
-
-            most_recent_gcamp = folders_valid(idx_gcamp);
-            current_root_folder = fullfile(after_processing_root, most_recent_gcamp.name);
+            current_root_folder = fullfile( ...
+                after_processing_root, ...
+                most_recent_gcamp.name);
 
             fprintf('  Choix 1 -> dossier vX le plus récent sélectionné : %s\n', current_root_folder);
 
@@ -452,6 +445,125 @@ function versions = get_versions_from_vfolders(folder_names)
             versions(i) = str2double(tok{1});
         end
     end
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function most_recent_folder = get_most_recent_vfolder(folders)
+% Sélectionne le dossier de processing le plus récent.
+%
+% Priorité de tri :
+%   1) numéro de version vX le plus élevé ;
+%   2) à version égale, date et heure inscrites dans le nom ;
+%   3) si le nom ne contient pas l'heure, 00:00 est utilisé.
+%
+% Formats acceptés :
+%   v1_25_10_11
+%   v1_26_06_29_10_37
+
+    most_recent_folder = [];
+
+    if isempty(folders)
+        return;
+    end
+
+    nFolders = numel(folders);
+
+    version_numbers = nan(nFolders, 1);
+    folder_dates = NaT(nFolders, 1);
+
+    for i = 1:nFolders
+
+        folder_name = folders(i).name;
+
+        tokens = regexp( ...
+            folder_name, ...
+            '^v(\d+)_(\d{2})_(\d{2})_(\d{2})(?:_(\d{2})_(\d{2}))?$', ...
+            'tokens', ...
+            'once');
+
+        if isempty(tokens)
+            continue;
+        end
+
+        version_value = str2double(tokens{1});
+        year_value    = 2000 + str2double(tokens{2});
+        month_value   = str2double(tokens{3});
+        day_value     = str2double(tokens{4});
+
+        hour_value = 0;
+        minute_value = 0;
+
+        if numel(tokens) >= 6 && ...
+                ~isempty(tokens{5}) && ...
+                ~isempty(tokens{6})
+
+            hour_value = str2double(tokens{5});
+            minute_value = str2double(tokens{6});
+        end
+
+        try
+            this_date = datetime( ...
+                year_value, ...
+                month_value, ...
+                day_value, ...
+                hour_value, ...
+                minute_value, ...
+                0);
+
+            version_numbers(i) = version_value;
+            folder_dates(i) = this_date;
+
+        catch
+            version_numbers(i) = NaN;
+            folder_dates(i) = NaT;
+        end
+    end
+
+    valid_idx = ...
+        ~isnan(version_numbers) & ...
+        ~isnat(folder_dates);
+
+    if ~any(valid_idx)
+        return;
+    end
+
+    valid_original_indices = find(valid_idx);
+
+    sorting_table = table( ...
+        version_numbers(valid_idx), ...
+        folder_dates(valid_idx), ...
+        valid_original_indices, ...
+        'VariableNames', { ...
+            'Version', ...
+            'FolderDate', ...
+            'OriginalIndex'});
+
+    sorting_table = sortrows( ...
+        sorting_table, ...
+        {'Version', 'FolderDate'}, ...
+        {'descend', 'descend'});
+
+    selected_idx = sorting_table.OriginalIndex(1);
+    most_recent_folder = folders(selected_idx);
+
+    fprintf('  Dossiers vX valides, du plus récent au plus ancien :\n');
+
+    for i = 1:height(sorting_table)
+
+        idx = sorting_table.OriginalIndex(i);
+
+        fprintf( ...
+            '    - %s | version %d | %s\n', ...
+            folders(idx).name, ...
+            sorting_table.Version(i), ...
+            char(string(sorting_table.FolderDate(i), ...
+                'yyyy-MM-dd HH:mm')));
+    end
+
+    fprintf( ...
+        '  Dossier le plus récent retenu : %s\n', ...
+        most_recent_folder.name);
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

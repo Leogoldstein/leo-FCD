@@ -1,4 +1,5 @@
-function selected_groups = DF_peak_detection(selected_groups, include_blue_cells)
+function [selected_groups, output_folders] = DF_peak_detection( ...
+        selected_groups, include_blue_cells, automatic_selection, root_folders)
 
     if nargin < 1 || isempty(selected_groups)
         return;
@@ -18,45 +19,64 @@ function selected_groups = DF_peak_detection(selected_groups, include_blue_cells
             fprintf('Type: %s\n', current_type);
             fprintf('Animal %d / %d: %s\n', ...
                 k, numel(selected_groups.(current_type)), ...
-                char(string(selected_groups.(current_type)(k).animal_group)));
+                char(string( ...
+                    selected_groups.(current_type)(k).animal_group)));
             fprintf('==============================\n');
 
             paths = selected_groups.(current_type)(k).paths;
 
-            gcamp_root_folders   = paths.gcamp_root;
+            gcamp_root_folders = paths.gcamp_root;
             gcamp_output_folders = paths.gcamp_output;
 
-            current_animal_group = selected_groups.(current_type)(k).animal_group;
-            current_ages_group   = selected_groups.(current_type)(k).ages;
+            current_animal_group = ...
+                selected_groups.(current_type)(k).animal_group;
+
+            current_ages_group = ...
+                selected_groups.(current_type)(k).ages;
 
             current_suite2p_group = paths.suite2p;
             current_TSeries_group = paths.TSeries;
 
             metadata = selected_groups.(current_type)(k).metadata;
-            data     = selected_groups.(current_type)(k).data;
+            data = selected_groups.(current_type)(k).data;
 
             animal_path = '';
 
-            if isfield(paths,'date') && ~isempty(paths.date)
-            
+            if isfield(paths, 'date') && ~isempty(paths.date)
+
                 if iscell(paths.date)
-                    animal_path = fileparts(paths.date{1});
+                    first_valid_date = find( ...
+                        ~cellfun(@isempty, paths.date), 1, 'first');
+
+                    if ~isempty(first_valid_date)
+                        animal_path = ...
+                            fileparts(paths.date{first_valid_date});
+                    end
                 else
                     animal_path = fileparts(paths.date);
                 end
-            
             end
 
             %======================================================
-            % Sampling rate + synchronous frames depuis metadata
+            % Sampling rate + synchronous frames
             %======================================================
             sampling_rate_group = metadata.SamplingRatePlane;
 
-            synchronous_frames_group = cell(size(sampling_rate_group));
-            
+            synchronous_frames_group = ...
+                cell(size(sampling_rate_group));
+
             for m = 1:numel(sampling_rate_group)
-                synchronous_frames_group{m} = ...
-                    round(0.2 * sampling_rate_group{m});
+
+                sampling_rate = ...
+                    get_numeric_cell_value( ...
+                        sampling_rate_group, m);
+
+                if isfinite(sampling_rate) && sampling_rate > 0
+                    synchronous_frames_group{m} = ...
+                        round(0.2 * sampling_rate);
+                else
+                    synchronous_frames_group{m} = [];
+                end
             end
 
             %======================================================
@@ -77,9 +97,11 @@ function selected_groups = DF_peak_detection(selected_groups, include_blue_cells
             data = run_gcamp_peak_detection( ...
                 gcamp_output_folders, ...
                 metadata, ...
-                sampling_rate_group, synchronous_frames_group, ...
-                data, meanImgs_gcamp, ...
-                current_TSeries_group(:,1), ...
+                sampling_rate_group, ...
+                synchronous_frames_group, ...
+                data, ...
+                meanImgs_gcamp, ...
+                current_TSeries_group(:, 1), ...
                 current_animal_group, ...
                 include_blue_cells, ...
                 peak_detection_mode);
@@ -87,7 +109,7 @@ function selected_groups = DF_peak_detection(selected_groups, include_blue_cells
             selected_groups.(current_type)(k).data = data;
 
             %======================================================
-            % Rasterplots
+            % Figures internes à l’animal
             %======================================================
             build_rasterplot_DF( ...
                 data, ...
@@ -98,7 +120,7 @@ function selected_groups = DF_peak_detection(selected_groups, include_blue_cells
                 current_animal_group, ...
                 current_ages_group, ...
                 sampling_rate_group);
-            
+
             build_rasterplot_peaks( ...
                 data, ...
                 metadata, ...
@@ -108,10 +130,39 @@ function selected_groups = DF_peak_detection(selected_groups, include_blue_cells
                 current_animal_group, ...
                 current_ages_group, ...
                 sampling_rate_group);
-
-            %plot_raster_mean_gcamp_blue_window(data, 1, 1, sampling_rate_group)
         end
     end
+
+    %==============================================================
+    % SUMMARY GLOBAL DF
+    %==============================================================
+    output_folders = build_all_selected_DF_raster_summary( ...
+        selected_groups, ...
+        root_folders, ...
+        automatic_selection, ...
+        include_blue_cells);
+end
+
+
+function value = get_numeric_cell_value(values, index)
+
+    value = NaN;
+
+    if isempty(values) || numel(values) < index
+        return;
+    end
+
+    if iscell(values)
+        current_value = values{index};
+    else
+        current_value = values(index);
+    end
+
+    if isempty(current_value)
+        return;
+    end
+
+    value = double(current_value(1));
 end
 
 function mode = ask_initial_peak_detection_mode()

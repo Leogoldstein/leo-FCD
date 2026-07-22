@@ -8,7 +8,7 @@ setup_python_env()
 [choices, group_order] = choose_group_selection();
 
 % Choix du ou des animaux
-[dataFolders_by_group, include_blue_cells] = select_data_folders_by_group(choices, group_order);
+[root_folders, dataFolders_by_group, include_blue_cells, automatic_selection] = select_data_folders_by_group(choices, group_order);
 
 if ~exist('selected_groups','var')
     selected_groups = [];
@@ -18,30 +18,28 @@ end
     choices, group_order, dataFolders_by_group, selected_groups);
 
 selected_groups = create_data(selected_groups);
-
+%%
 [selected_groups, metadata_table] = create_metadata(selected_groups);
 
 %recap_all = create_summary_sheets(selected_gr0oups);
 
 % Data processing
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-
-selected_groups = DF_peak_detection(selected_groups, include_blue_cells);
-
-%selected_groups = data_checking(selected_groups, include_blue_cells);
 %%
+[selected_groups, output_folders] = DF_peak_detection(selected_groups, include_blue_cells, automatic_selection, root_folders);
+
+%%
+%selected_groups = data_checking(selected_groups, include_blue_cells);
+
 [selected_groups, results_table] = compute_DF(selected_groups, include_blue_cells);
+
 
 %plot_traces_sorted_by_burst_rate(selected_groups)
 
 %build_rasterplot_DF_random_traces(selected_groups)
 
-% Plots during development
-%[figs, stats_results, plot_table] = ...
-    %compare_groups_barplots(results_table, 4, 'gcamp_plane');
-
 %% Plots during adulthood
-figs_by_type = visualize_data(selected_groups, 1);
+figs_by_type = visualize_data(selected_groups, automatic_selection, include_blue_cells, results_table, legend_table);
 
 
 

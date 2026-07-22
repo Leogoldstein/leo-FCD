@@ -172,12 +172,85 @@ function data = run_gcamp_peak_detection( ...
             end
         end
 
-        outdir_m = fileparts(gcamp_output_folders{m}{1});
-
-        filePath_gcamp    = fullfile(outdir_m, 'results_gcamp.mat');
-        filePath_blue     = fullfile(outdir_m, 'results_blue.mat');
-        filePath_combined = fullfile(outdir_m, 'results_combined.mat');
-        filePath_motion   = fullfile(outdir_m, 'results_motion.mat');
+        %--------------------------------------------------------------
+        % Vérifier le dossier de sortie de l'enregistrement
+        %--------------------------------------------------------------
+        current_output_folders = [];
+        
+        if m <= numel(gcamp_output_folders)
+            current_output_folders = gcamp_output_folders{m};
+        end
+        
+        % Uniformiser en cellule
+        if ischar(current_output_folders) || isstring(current_output_folders)
+            current_output_folders = cellstr(current_output_folders);
+        end
+        
+        if isempty(current_output_folders) || ...
+                ~iscell(current_output_folders)
+        
+            fprintf( ...
+                '%s: aucun dossier de sortie GCaMP, enregistrement ignoré.\n', ...
+                record_label_m);
+        
+            continue;
+        end
+        
+        % Chercher le premier dossier de plan non vide
+        valid_output_index = find( ...
+            ~cellfun(@isempty, current_output_folders), ...
+            1, ...
+            'first');
+        
+        if isempty(valid_output_index)
+        
+            fprintf( ...
+                '%s: tous les dossiers de sortie des plans sont vides, enregistrement ignoré.\n', ...
+                record_label_m);
+        
+            continue;
+        end
+        
+        first_output_folder = current_output_folders{valid_output_index};
+        
+        if isstring(first_output_folder)
+            first_output_folder = char(first_output_folder);
+        end
+        
+        if ~ischar(first_output_folder) || isempty(strtrim(first_output_folder))
+        
+            fprintf( ...
+                '%s: dossier de sortie GCaMP invalide, enregistrement ignoré.\n', ...
+                record_label_m);
+        
+            continue;
+        end
+        
+        outdir_m = fileparts(first_output_folder);
+        
+        if isempty(outdir_m)
+            outdir_m = first_output_folder;
+        end
+        
+        if exist(outdir_m, 'dir') ~= 7
+            mkdir(outdir_m);
+        end
+        
+        filePath_gcamp = fullfile( ...
+            outdir_m, ...
+            'results_gcamp.mat');
+        
+        filePath_blue = fullfile( ...
+            outdir_m, ...
+            'results_blue.mat');
+        
+        filePath_combined = fullfile( ...
+            outdir_m, ...
+            'results_combined.mat');
+        
+        filePath_motion = fullfile( ...
+            outdir_m, ...
+            'results_motion.mat');
 
         oldMotionPath = fullfile(outdir_m, 'results_movie.mat');
 
@@ -682,15 +755,67 @@ function data = run_gcamp_peak_detection( ...
 
                 F_view = F_nostims;
             end
-
+            
             if isempty(F_view)
-                fprintf('%s - plane %d: F_view empty.\n', record_label_m, p);
+                fprintf( ...
+                    '%s - plane %d: F_view empty.\n', ...
+                    record_label_m, ...
+                    p);
+            
                 continue;
             end
-
+            
+            %--------------------------------------------------------------
+            % Dossier de sortie du plan courant
+            %--------------------------------------------------------------
+            gcamp_output_folder_p = '';
+            
+            if m <= numel(gcamp_output_folders)
+            
+                current_recording_outputs = ...
+                    gcamp_output_folders{m};
+            
+                if ischar(current_recording_outputs) || ...
+                        isstring(current_recording_outputs)
+            
+                    current_recording_outputs = ...
+                        cellstr(current_recording_outputs);
+                end
+            
+                if iscell(current_recording_outputs) && ...
+                        p <= numel(current_recording_outputs) && ...
+                        ~isempty(current_recording_outputs{p})
+            
+                    gcamp_output_folder_p = ...
+                        current_recording_outputs{p};
+                end
+            end
+            
+            if isstring(gcamp_output_folder_p)
+                gcamp_output_folder_p = char(gcamp_output_folder_p);
+            end
+            
+            if isempty(gcamp_output_folder_p) || ...
+                    ~ischar(gcamp_output_folder_p) || ...
+                    isempty(strtrim(gcamp_output_folder_p))
+            
+                fprintf( ...
+                    '%s - plane %d: gcamp output folder empty, plane skipped.\n', ...
+                    record_label_m, ...
+                    p);
+            
+                continue;
+            end
+            
+            if exist(gcamp_output_folder_p, 'dir') ~= 7
+                mkdir(gcamp_output_folder_p);
+            end
+            
             [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
-             Acttmp2, MAct, thresholds, bad_segs_det, opts_det, has_new, request_reprocess] = ...
-                peak_detection_tuner(F_view, ...
+             Acttmp2, MAct, thresholds, bad_segs_det, opts_det, ...
+             has_new, request_reprocess] = ...
+                peak_detection_tuner( ...
+                    F_view, ...
                     sampling_rate_m, ...
                     sync_frames_m, ...
                     'viewer_mode', viewer_mode, ...
@@ -716,8 +841,7 @@ function data = run_gcamp_peak_detection( ...
                     'motion_energy', motion_energy, ...
                     'metadata', metadata_m, ...
                     'stim_frames', stim_frames_m, ...
-                    'gcamp_output_folder', gcamp_output_folders{m}{p});
-            
+                    'gcamp_output_folder', gcamp_output_folder_p);
             if request_reprocess
 
                 if process_blue_combined

@@ -1,58 +1,59 @@
 function [figs, stats_results, plot_table] = compare_groups_barplots( ...
-    results_table, pooled_level, branch_name)
-% COMPARE_GROUPS_BARPLOTS
-% Compare les mesures quantitatives entre les types et les groupes d'âge
-% avec un modèle linéaire mixte :
-%
-%   Value ~ Type * AgeGroup + (1|Animal)
-%
-% Les données sont d'abord moyennées au niveau Animal x AgeGroup afin que
-% plusieurs plans ou plusieurs sessions d'un même animal ne soient pas
-% considérés comme des répétitions biologiques indépendantes.
-%
-% SORTIES
-%   figs          : handle de la figure
-%   stats_results : structure contenant le modèle, l'ANOVA et les post-hoc
-%   plot_table    : table agrégée réellement utilisée pour les figures/tests
-%
-% EXEMPLE
-%   [figs, stats_results, plot_table] = ...
-%       compare_groups_barplots(results_table, [], 'gcamp_plane');
-%
-%   Avec regroupement des âges deux par deux :
-%   [figs, stats_results] = ...
-%       compare_groups_barplots(results_table, 2, 'gcamp_plane');
+    results_table, num_age_groups, branch_name, legend_table)
 
-    if nargin < 2
-        pooled_level = [];
+    % COMPARE_GROUPS_BARPLOTS
+    % Compare les mesures quantitatives entre les types et les groupes d'âge
+    % avec un modèle linéaire mixte :
+    %
+    %   Value ~ Type * AgeGroup + (1|Animal)
+    %
+    % Les données sont d'abord moyennées au niveau Animal x AgeGroup afin que
+    % plusieurs plans ou plusieurs sessions d'un même animal ne soient pas
+    % considérés comme des répétitions biologiques indépendantes.
+    %
+    % SORTIES
+    %   figs          : handle de la figure
+    %   stats_results : structure contenant le modèle, l'ANOVA et les post-hoc
+    %   plot_table    : table agrégée réellement utilisée pour les figures/tests
+    %
+    % EXEMPLE
+    %   [figs, stats_results, plot_table] = ...
+    %       compare_groups_barplots(results_table, [], 'gcamp_plane');
+    %
+    %   Avec répartition des âges en quatre groupes :
+    %   [figs, stats_results] = ...
+    %       compare_groups_barplots(results_table, 4, 'gcamp_plane');
+
+    if nargin < 2 || isempty(num_age_groups)
+        num_age_groups = 2;
     end
-
+    
     if nargin < 3 || isempty(branch_name)
         branch_name = 'gcamp_plane';
     end
+    
+
+    if nargin < 4
+        legend_table = table();
+    end
+
+    if ~isempty(legend_table) && ~istable(legend_table)
+        error('legend_table must be a MATLAB table or empty.');
+    end
 
     branch_name = string(branch_name);
-
+    
+    validate_results_table(results_table);
+    
     % ============================================================
     % Conditions minimales pour lancer la comparaison
     % ============================================================
-
     valid_age_mask = ...
         isfinite(results_table.AgeNumber) & ...
         results_table.AgeNumber >= 7 & ...
         results_table.AgeNumber <= 15;
-
+    
     results_table = results_table(valid_age_mask, :);
-
-    if isempty(results_table)
-        figs = [];
-        stats_results = struct();
-        plot_table = table();
-
-        fprintf( ...
-            'compare_groups_barplots skipped: no data between P7 and P15.\n');
-        return;
-    end
 
     available_types = unique(string(results_table.Type));
     available_types = available_types(strlength(available_types) > 0);
@@ -71,16 +72,69 @@ function [figs, stats_results, plot_table] = compare_groups_barplots( ...
     validate_results_table(results_table);
     
     % ============================================================
+    % Types disponibles et ordre d'affichage
+    % ============================================================
+    available_types = unique( ...
+        string(results_table.Type), ...
+        'stable');
+    
+    available_types = available_types( ...
+        strlength(available_types) > 0);
+    
+    if numel(available_types) < 2
+    
+        figs = [];
+        stats_results = struct();
+        plot_table = table();
+    
+        fprintf([ ...
+            'compare_groups_barplots skipped: ', ...
+            'at least two animal types are required.\n']);
+    
+        return;
+    end
+    
+    % Ordre préféré des groupes
+    preferred_order = ["WT", "SHAM", "FCD"];
+    
+    animal_types = strings(0,1);
+    
+    for i = 1:numel(preferred_order)
+    
+        if any(strcmpi(available_types, preferred_order(i)))
+            animal_types(end+1,1) = preferred_order(i); %#ok<AGROW>
+        end
+    end
+    
+    % Ajouter les éventuels autres types non prévus
+    for i = 1:numel(available_types)
+    
+        if ~any(strcmpi(animal_types, available_types(i)))
+            animal_types(end+1,1) = available_types(i); %#ok<AGROW>
+        end
+    end
+    
+    num_groups = numel(animal_types);
+    
+    validate_results_table(results_table);
+    
+    % ============================================================
     % Couleurs
     % ============================================================
     colors = lines(num_groups);
-
+    
     for g = 1:num_groups
+    
         switch upper(animal_types(g))
+    
             case "WT"
-                colors(g,:) = [0 0.60 0];
+                colors(g,:) = [0.00, 0.60, 0.00];
+    
+            case "SHAM"
+                colors(g,:) = [0.45, 0.45, 0.45];
+    
             case "FCD"
-                colors(g,:) = [0 0.45 0.74];
+                colors(g,:) = [0.00, 0.45, 0.74];
         end
     end
 
@@ -110,7 +164,7 @@ function [figs, stats_results, plot_table] = compare_groups_barplots( ...
         error('No valid AgeNumber values were found in results_table.');
     end
 
-    [age_pools, pooled_labels] = make_age_pools(base_ages, pooled_level);
+    [age_pools, pooled_labels] = make_age_pools(base_ages, num_age_groups);
     num_pools = numel(age_pools);
 
     % ============================================================
@@ -284,7 +338,7 @@ function [figs, stats_results, plot_table] = compare_groups_barplots( ...
         % --------------------------------------------------------
         [x_positions, plot_top] = plot_measure_panel( ...
             ax, measure_table, measure_name, ...
-            animal_types, pooled_labels, colors);
+            animal_types, pooled_labels, colors, legend_table);
 
         % --------------------------------------------------------
         % Significativité
@@ -450,50 +504,66 @@ end
 % ========================================================================
 % GROUPES D'ÂGE
 % ========================================================================
-function [age_pools, pooled_labels] = make_age_pools(base_ages, pooled_level)
+function [age_pools, pooled_labels] = make_age_pools(base_ages, num_age_groups)
 
-    if isempty(pooled_level)
+    base_ages = double(base_ages(:)');
+    base_ages = base_ages(isfinite(base_ages));
+    base_ages = unique(base_ages, 'sorted');
 
-        age_pools = num2cell(base_ages);
-        pooled_labels = arrayfun( ...
-            @(x) sprintf('P%d', x), ...
-            base_ages, ...
-            'UniformOutput', false);
-
-    elseif isnumeric(pooled_level) && isscalar(pooled_level)
-
-        pool_size = pooled_level;
-
-        if pool_size < 1 || mod(pool_size,1) ~= 0
-            error('Numeric pooled_level must be a positive integer.');
-        end
-
-        age_pools = cell(1, ceil(numel(base_ages) / pool_size));
-
-        for i = 1:numel(age_pools)
-            i1 = (i-1) * pool_size + 1;
-            i2 = min(i * pool_size, numel(base_ages));
-            age_pools{i} = base_ages(i1:i2);
-        end
-
-        pooled_labels = cellfun( ...
-            @make_age_pool_label, ...
-            age_pools, ...
-            'UniformOutput', false);
-
-    elseif iscell(pooled_level)
-
-        age_pools = pooled_level;
-        pooled_labels = cellfun( ...
-            @make_age_pool_label, ...
-            age_pools, ...
-            'UniformOutput', false);
-
-    else
-        error('pooled_level must be empty, a positive integer, or a cell array.');
+    if numel(base_ages) < 2
+        error([ ...
+            'At least two distinct ages are required to create ', ...
+            'two age groups.']);
     end
-end
 
+    if nargin < 2 || isempty(num_age_groups)
+        num_age_groups = 2;
+    end
+
+    if ~isnumeric(num_age_groups) || ...
+            ~isscalar(num_age_groups) || ...
+            ~isfinite(num_age_groups) || ...
+            num_age_groups < 2 || ...
+            mod(num_age_groups, 1) ~= 0
+
+        error('num_age_groups must be an integer greater than or equal to 2.');
+    end
+
+    % Il est impossible de créer plus de groupes que d'âges distincts.
+    actual_num_groups = min(num_age_groups, numel(base_ages));
+
+    if actual_num_groups < num_age_groups
+        warning([ ...
+            'Requested %d age groups, but only %d distinct ages are ', ...
+            'available. Using %d age groups.'], ...
+            num_age_groups, numel(base_ages), actual_num_groups);
+    end
+
+    % Répartition des âges triés en groupes contigus aussi équilibrés
+    % que possible. Chaque groupe contient au moins un âge.
+    group_sizes = floor(numel(base_ages) / actual_num_groups) .* ...
+        ones(1, actual_num_groups);
+
+    remainder = mod(numel(base_ages), actual_num_groups);
+
+    if remainder > 0
+        group_sizes(1:remainder) = group_sizes(1:remainder) + 1;
+    end
+
+    age_pools = cell(1, actual_num_groups);
+    first_index = 1;
+
+    for group_index = 1:actual_num_groups
+        last_index = first_index + group_sizes(group_index) - 1;
+        age_pools{group_index} = base_ages(first_index:last_index);
+        first_index = last_index + 1;
+    end
+
+    pooled_labels = cellfun( ...
+        @make_age_pool_label, ...
+        age_pools, ...
+        'UniformOutput', false);
+end
 
 function label = make_age_pool_label(age_values)
 
@@ -553,7 +623,23 @@ function [lme, anova_table, comparisons] = ...
     end
 
     if numel(categories(T.AgeGroup)) < 2
-        error('At least two age groups are required for the Type x Age model.');
+        % Un seul groupe d'âge après regroupement : le terme AgeGroup et
+        % l'interaction Type x AgeGroup ne sont pas estimables. On utilise
+        % donc un modèle de repli qui compare uniquement les types.
+        lme = fitlme( ...
+            T, ...
+            'Value ~ Type + (1|Animal)', ...
+            'FitMethod', 'REML', ...
+            'DummyVarCoding', 'reference');
+
+        anova_table = anova( ...
+            lme, ...
+            'DFMethod', 'Satterthwaite');
+
+        comparisons = pairwise_type_comparisons_single_age( ...
+            lme, T, present_types, present_ages(1));
+
+        return;
     end
 
     lme = fitlme( ...
@@ -568,6 +654,99 @@ function [lme, anova_table, comparisons] = ...
 
     comparisons = pairwise_type_comparisons( ...
         lme, T, present_types, present_ages);
+end
+
+
+% ========================================================================
+% POST-HOC : TYPES LORSQU'IL N'EXISTE QU'UN GROUPE D'ÂGE
+% ========================================================================
+function comparisons = pairwise_type_comparisons_single_age( ...
+    lme, T, type_order, age_name)
+
+    coefficient_names = string(lme.CoefficientNames);
+    beta = fixedEffects(lme);
+
+    type_pairs = nchoosek(1:numel(type_order), 2);
+    comparisons = init_comparisons_table();
+
+    for pair_idx = 1:size(type_pairs,1)
+
+        type1 = type_order(type_pairs(pair_idx,1));
+        type2 = type_order(type_pairs(pair_idx,2));
+
+        type1_exists = any(string(T.Type) == type1);
+        type2_exists = any(string(T.Type) == type2);
+
+        if ~type1_exists || ~type2_exists
+            continue;
+        end
+
+        x1 = fixed_effect_design_row_type_only( ...
+            type1, coefficient_names, type_order(1));
+
+        x2 = fixed_effect_design_row_type_only( ...
+            type2, coefficient_names, type_order(1));
+
+        contrast = x1 - x2;
+        estimate = contrast * beta;
+
+        [p_value, F_value, df_num, df_den] = coefTest( ...
+            lme, contrast, 0, ...
+            'DFMethod', 'Satterthwaite');
+
+        if F_value >= 0
+            t_value = sign(estimate) * sqrt(F_value);
+        else
+            t_value = NaN;
+        end
+
+        row = table( ...
+            string(age_name), ...
+            type1, ...
+            type2, ...
+            double(estimate), ...
+            double(t_value), ...
+            double(df_num), ...
+            double(df_den), ...
+            double(p_value), ...
+            NaN, ...
+            "", ...
+            'VariableNames', comparisons.Properties.VariableNames);
+
+        comparisons = [comparisons; row]; %#ok<AGROW>
+    end
+
+    if ~isempty(comparisons)
+        comparisons.PAdjusted = holm_correction(comparisons.PValue);
+        comparisons.Significance = arrayfun( ...
+            @p_to_stars, ...
+            comparisons.PAdjusted, ...
+            'UniformOutput', false);
+        comparisons.Significance = string(comparisons.Significance);
+    end
+end
+
+
+function x = fixed_effect_design_row_type_only( ...
+    type_name, coefficient_names, reference_type)
+
+    x = zeros(1, numel(coefficient_names));
+
+    for c = 1:numel(coefficient_names)
+
+        coefficient = coefficient_names(c);
+
+        if coefficient == "(Intercept)"
+            x(c) = 1;
+            continue;
+        end
+
+        type_term = "Type_" + type_name;
+
+        if coefficient == type_term
+            x(c) = type_name ~= reference_type;
+        end
+    end
 end
 
 
@@ -785,7 +964,7 @@ end
 % TRACÉ D'UN PANNEAU
 % ========================================================================
 function [x_positions, plot_top] = plot_measure_panel( ...
-    ax, T, measure_name, animal_types, age_labels, colors)
+    ax, T, measure_name, animal_types, age_labels, colors, legend_table)
 
     num_groups = numel(animal_types);
     num_pools = numel(age_labels);
@@ -794,6 +973,7 @@ function [x_positions, plot_top] = plot_measure_panel( ...
     stds = nan(num_groups, num_pools);
     medians = nan(num_groups, num_pools);
     values_by_group = cell(num_groups, num_pools);
+    animals_by_group = cell(num_groups, num_pools);
 
     for g = 1:num_groups
         for p = 1:num_pools
@@ -803,9 +983,14 @@ function [x_positions, plot_top] = plot_measure_panel( ...
                 string(T.AgeGroup) == string(age_labels{p});
 
             values = T.Value(mask);
-            values = values(isfinite(values));
+            animals = string(T.Animal(mask));
+
+            valid_values = isfinite(values);
+            values = values(valid_values);
+            animals = animals(valid_values);
 
             values_by_group{g,p} = values;
+            animals_by_group{g,p} = animals;
 
             if isempty(values)
                 continue;
@@ -842,26 +1027,34 @@ function [x_positions, plot_top] = plot_measure_panel( ...
 
     if measure_name == "SCEFrequency"
 
-        b = bar(ax, means', 'grouped');
+        % Tracé manuel des barres groupées. Cette méthode reste stable
+        % même lorsqu'il n'existe qu'un seul groupe d'âge : dans ce cas,
+        % bar(means', 'grouped') peut créer un nombre inattendu d'objets et
+        % XEndPoints n'a alors pas la taille num_groups x num_pools.
+        bar_width = 0.80 * group_width / max(num_groups, 1);
 
         for g = 1:num_groups
-            b(g).FaceColor = colors(g,:);
-            b(g).EdgeColor = 'none';
-            b(g).FaceAlpha = 0.85;
-
-            if isprop(b(g), 'XEndPoints')
-                x_positions(g,:) = b(g).XEndPoints;
-            end
+            bar(ax, ...
+                x_positions(g,:), ...
+                means(g,:), ...
+                bar_width, ...
+                'FaceColor', colors(g,:), ...
+                'EdgeColor', 'none', ...
+                'FaceAlpha', 0.85);
         end
 
         for g = 1:num_groups
-            errorbar(ax, ...
-                x_positions(g,:), ...
-                means(g,:), ...
-                stds(g,:), ...
-                'k.', ...
-                'LineWidth', 1.5, ...
-                'CapSize', 8);
+            valid_error = isfinite(means(g,:)) & isfinite(stds(g,:));
+
+            if any(valid_error)
+                errorbar(ax, ...
+                    x_positions(g,valid_error), ...
+                    means(g,valid_error), ...
+                    stds(g,valid_error), ...
+                    'k.', ...
+                    'LineWidth', 1.5, ...
+                    'CapSize', 8);
+            end
 
             for p = 1:num_pools
                 values = values_by_group{g,p};
@@ -870,15 +1063,18 @@ function [x_positions, plot_top] = plot_measure_panel( ...
                     continue;
                 end
 
-                jitter = linspace(-0.025, 0.025, numel(values));
+                animals = animals_by_group{g,p};
+                jitter = make_centered_jitter(numel(values), 0.025);
 
-                scatter(ax, ...
+                plot_animal_points( ...
+                    ax, ...
                     x_positions(g,p) + jitter, ...
                     values, ...
-                    28, ...
-                    'k', ...
-                    'filled', ...
-                    'MarkerFaceAlpha', 0.65);
+                    animals, ...
+                    animal_types(g), ...
+                    legend_table, ...
+                    30, ...
+                    0.80);
             end
         end
 
@@ -902,22 +1098,28 @@ function [x_positions, plot_top] = plot_measure_panel( ...
                 draw_single_violin( ...
                     ax, values, x_center, violin_width, colors(g,:));
 
-                plot(ax, ...
-                    [x_center - violin_width*0.22, ...
-                     x_center + violin_width*0.22], ...
-                    [medians(g,p), medians(g,p)], ...
-                    'k-', ...
-                    'LineWidth', 2);
+                if numel(values) >= 3
+                    plot(ax, ...
+                        [x_center - violin_width*0.22, ...
+                         x_center + violin_width*0.22], ...
+                        [medians(g,p), medians(g,p)], ...
+                        'k-', ...
+                        'LineWidth', 2, ...
+                        'HandleVisibility', 'off');
+                end
 
-                jitter = linspace(-0.025, 0.025, numel(values));
+                animals = animals_by_group{g,p};
+                jitter = make_centered_jitter(numel(values), 0.025);
 
-                scatter(ax, ...
+                plot_animal_points( ...
+                    ax, ...
                     x_center + jitter, ...
                     values, ...
-                    22, ...
-                    'k', ...
-                    'filled', ...
-                    'MarkerFaceAlpha', 0.55);
+                    animals, ...
+                    animal_types(g), ...
+                    legend_table, ...
+                    26, ...
+                    0.75);
             end
         end
 
@@ -939,6 +1141,154 @@ function [x_positions, plot_top] = plot_measure_panel( ...
 end
 
 
+% ========================================================================
+% COULEURS DES POINTS PAR ANIMAL
+% ========================================================================
+function plot_animal_points( ...
+    ax, x_values, y_values, animal_names, type_name, ...
+    legend_table, marker_size, marker_alpha)
+
+    x_values = x_values(:);
+    y_values = y_values(:);
+    animal_names = string(animal_names(:));
+
+    n_points = numel(y_values);
+
+    for i = 1:n_points
+
+        point_color = get_animal_color_from_legend( ...
+            legend_table, type_name, animal_names(i));
+
+        scatter(ax, ...
+            x_values(i), ...
+            y_values(i), ...
+            marker_size, ...
+            'filled', ...
+            'MarkerFaceColor', point_color, ...
+            'MarkerEdgeColor', 'k', ...
+            'LineWidth', 0.5, ...
+            'MarkerFaceAlpha', marker_alpha, ...
+            'HandleVisibility', 'off');
+    end
+end
+
+
+function point_color = get_animal_color_from_legend( ...
+    legend_table, type_name, animal_name)
+
+    point_color = [0.35, 0.35, 0.35];
+
+    if nargin < 1 || isempty(legend_table) || ~istable(legend_table)
+        return;
+    end
+
+    variable_names = string(legend_table.Properties.VariableNames);
+    animal_name = string(animal_name);
+    type_name = string(type_name);
+
+    row = [];
+
+    type_col = find(strcmpi(variable_names, "Type"), 1);
+    animal_col = find(strcmpi(variable_names, "Animal"), 1);
+    display_col = find(strcmpi(variable_names, "DisplayAnimal"), 1);
+
+    if ~isempty(type_col) && ~isempty(animal_col)
+        type_values = string(legend_table.(char(variable_names(type_col))));
+        animal_values = string(legend_table.(char(variable_names(animal_col))));
+        row = find(strcmpi(type_values, type_name) & ...
+                   strcmpi(animal_values, animal_name), 1, 'first');
+    end
+
+    if isempty(row) && ~isempty(animal_col)
+        animal_values = string(legend_table.(char(variable_names(animal_col))));
+        row = find(strcmpi(animal_values, animal_name), 1, 'first');
+    end
+
+    if isempty(row) && ~isempty(display_col)
+        display_values = string(legend_table.(char(variable_names(display_col))));
+        row = find(strcmpi(display_values, animal_name), 1, 'first');
+    end
+
+    if isempty(row)
+        warning('No legend_table color found for animal %s (%s).', ...
+            animal_name, type_name);
+        return;
+    end
+
+    candidate_color = [];
+
+    color_col = find(strcmpi(variable_names, "Color"), 1);
+    rgb_col = find(strcmpi(variable_names, "RGB"), 1);
+
+    if ~isempty(color_col)
+        candidate_color = extract_rgb_value( ...
+            legend_table.(char(variable_names(color_col))), row);
+    elseif ~isempty(rgb_col)
+        candidate_color = extract_rgb_value( ...
+            legend_table.(char(variable_names(rgb_col))), row);
+    else
+        red_col = find(strcmpi(variable_names, "Red"), 1);
+        green_col = find(strcmpi(variable_names, "Green"), 1);
+        blue_col = find(strcmpi(variable_names, "Blue"), 1);
+
+        if ~isempty(red_col) && ~isempty(green_col) && ~isempty(blue_col)
+            candidate_color = [ ...
+                double(legend_table.(char(variable_names(red_col)))(row)), ...
+                double(legend_table.(char(variable_names(green_col)))(row)), ...
+                double(legend_table.(char(variable_names(blue_col)))(row))];
+        end
+    end
+
+    if isempty(candidate_color) || numel(candidate_color) ~= 3 || ...
+            any(~isfinite(candidate_color))
+        warning_once_missing_legend_columns();
+        return;
+    end
+
+    candidate_color = double(candidate_color(:)');
+
+    if any(candidate_color > 1)
+        candidate_color = candidate_color ./ 255;
+    end
+
+    point_color = max(0, min(1, candidate_color));
+end
+
+
+function rgb = extract_rgb_value(column_data, row)
+
+    rgb = [];
+
+    if isnumeric(column_data)
+        if size(column_data, 2) == 3 && size(column_data, 1) >= row
+            rgb = double(column_data(row, :));
+        elseif isvector(column_data) && numel(column_data) == 3 && row == 1
+            rgb = double(column_data(:)');
+        end
+        return;
+    end
+
+    if iscell(column_data) && numel(column_data) >= row
+        value = column_data{row};
+        if isnumeric(value) && numel(value) == 3
+            rgb = double(value(:)');
+        end
+    end
+end
+
+
+function warning_once_missing_legend_columns()
+
+    persistent warning_already_shown
+
+    if isempty(warning_already_shown) || ~warning_already_shown
+        warning([ ...
+            'legend_table must contain Red, Green and Blue columns. ', ...
+            'Default gray colors will be used for individual points.']);
+        warning_already_shown = true;
+    end
+end
+
 function draw_single_violin(ax, vals, x_center, max_width, color_val)
 
     vals = vals(:);
@@ -949,10 +1299,8 @@ function draw_single_violin(ax, vals, x_center, max_width, color_val)
     end
 
     if numel(vals) < 3
-        plot(ax, x_center, median(vals, 'omitnan'), 'o', ...
-            'MarkerFaceColor', color_val, ...
-            'MarkerEdgeColor', 'k', ...
-            'MarkerSize', 7);
+        % Pas assez de valeurs pour estimer une densité fiable.
+        % Seuls les points individuels colorés par animal sont tracés.
         return;
     end
 
@@ -1170,4 +1518,39 @@ function text_value = format_pvalue(p)
     else
         text_value = sprintf('p=%.4f', p);
     end
+end
+
+function jitter = make_centered_jitter(n_points, max_jitter)
+
+    if nargin < 1 || isempty(n_points)
+        n_points = 0;
+    end
+
+    if nargin < 2 || isempty(max_jitter)
+        max_jitter = 0.025;
+    end
+
+    n_points = round(double(n_points));
+    max_jitter = double(max_jitter);
+
+    if ~isscalar(n_points) || ~isfinite(n_points) || n_points < 0
+        error('n_points must be a finite non-negative scalar.');
+    end
+
+    if ~isscalar(max_jitter) || ~isfinite(max_jitter) || max_jitter < 0
+        error('max_jitter must be a finite non-negative scalar.');
+    end
+
+    if n_points == 0
+        jitter = zeros(0,1);
+        return;
+    end
+
+    if n_points == 1 || max_jitter == 0
+        jitter = zeros(n_points,1);
+        return;
+    end
+
+    jitter = linspace(-max_jitter, max_jitter, n_points).';
+    jitter = jitter - mean(jitter);
 end

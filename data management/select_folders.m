@@ -1,4 +1,5 @@
-function selectedFolders = select_folders(initial_folder, include_blue_cells)
+function [selectedFolders, automatic_selection] = select_folders( ...
+        initial_folder, include_blue_cells)
 
     if ~isfolder(initial_folder)
         error('The initial folder does not exist.');
@@ -14,6 +15,11 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
 
     [~, lastFolderName] = fileparts(initial_folder);
 
+    % False by default:
+    % - manual selection
+    % - canceled selection
+    automatic_selection = false;
+
     %==============================================================%
     %   Folder selection mode
     %==============================================================%
@@ -21,9 +27,9 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
         'Do you want to select specific folders or all folders?', ...
         'Folder Selection Mode', ...
         'Specific Folders', ...
-        'All Good Folders', ...
+        'Pre-selected folders', ...
         'Cancel', ...
-        'All Good Folders');
+        'Pre-selected folders');
 
     selectedFolders = {};
 
@@ -33,6 +39,8 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
         %   Manual selection
         %==========================================================%
         case 'Specific Folders'
+
+            automatic_selection = false;
 
             while true
 
@@ -47,7 +55,7 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
 
                 selectedFolders = [ ...
                     selectedFolders, ...
-                    process_folder(selectedFolder)];
+                    process_folder(selectedFolder)]; %#ok<AGROW>
 
                 anotherChoice = questdlg( ...
                     'Select another folder?', ...
@@ -56,7 +64,7 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
                     'No', ...
                     'No');
 
-                if strcmp(anotherChoice, 'No')
+                if ~strcmp(anotherChoice, 'Yes')
                     break;
                 end
             end
@@ -64,7 +72,9 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
         %==========================================================%
         %   Automatic selection
         %==========================================================%
-        case 'All Good Folders'
+        case 'Pre-selected folders'
+
+            automatic_selection = true;
 
             if strcmpi(lastFolderName, 'FCD')
 
@@ -94,9 +104,21 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
 
         otherwise
 
+            automatic_selection = false;
+
             disp('User canceled the selection. No folders selected.');
+
             selectedFolders = {};
             return;
+    end
+
+    %==============================================================%
+    %   Display selection mode
+    %==============================================================%
+    if automatic_selection
+        fprintf('[SELECT] Automatic folder selection.\n');
+    else
+        fprintf('[SELECT] Manual folder selection.\n');
     end
 
     %==============================================================%
@@ -104,25 +126,31 @@ function selectedFolders = select_folders(initial_folder, include_blue_cells)
     %==============================================================%
     disp('Selected folders:');
 
-    for k = 1:length(selectedFolders)
+    for k = 1:numel(selectedFolders)
         disp(selectedFolders{k});
     end
 end
 
 %% --- Helper Functions ---
 
-function selectedFolders = process_folder_list(folder_names, initial_folder)
+function selectedFolders = process_folder_list( ...
+        folder_names, initial_folder)
 
     selectedFolders = {};
 
-    for idx = 1:length(folder_names)
+    for idx = 1:numel(folder_names)
 
         item_name = folder_names{idx};
         item_path = fullfile(initial_folder, item_name);
 
         if isfolder(item_path)
+
             fprintf('Processing folder: %s\n', item_path);
-            selectedFolders = [selectedFolders, process_folder(item_path)];
+
+            selectedFolders = [ ...
+                selectedFolders, ...
+                process_folder(item_path)]; %#ok<AGROW>
+
         else
             fprintf('Folder not found: %s\n', item_path);
         end
@@ -134,7 +162,14 @@ function folder_names = get_folder_list(type, lastFolderName)
     switch lastFolderName
 
         case "jm"
-            folder_names = {'jm031','jm032','jm038','jm039','jm040','jm046'};
+            folder_names = {
+                'jm031';
+                'jm032';
+                'jm038';
+                'jm039';
+                'jm040';
+                'jm046'
+            };
 
         case "WT"
             folder_names = {
@@ -166,6 +201,7 @@ function folder_names = get_folder_list(type, lastFolderName)
             };
 
         case "FCD"
+
             switch type
 
                 case 'gcamp'
@@ -194,7 +230,7 @@ function folder_names = get_folder_list(type, lastFolderName)
                         'mTor17\ani3\2024-12-21';
                         %'mTor17\ani3\2024-12-20';
                         'mTor17\ani3\2024-12-19';
-                        'mTor17\ani2\2024-12-20';
+                        %'mTor17\ani2\2024-12-20';
                         %'mTor17\ani2\2024-12-19';
                         'mTor17\ani1\2024-12-21';
                         %'mTor17\ani1\2024-12-20';
@@ -215,49 +251,59 @@ end
 function processedFolders = process_folder(folderPath)
 
     processedFolders = {};
+
     [~, folderName] = fileparts(folderPath);
 
     if is_date_format(folderName)
-        processedFolders{end+1} = [folderPath, filesep];
+        processedFolders{end + 1} = [folderPath, filesep];
         return;
     end
 
     subFolders = dir(folderPath);
 
-    for j = 1:length(subFolders)
+    for j = 1:numel(subFolders)
 
         subFolderName = subFolders(j).name;
 
-        if subFolders(j).isdir && ~ismember(subFolderName, {'.','..'})
+        if subFolders(j).isdir && ...
+                ~ismember(subFolderName, {'.', '..'})
 
-            subFolderPath = fullfile(folderPath, subFolderName);
+            subFolderPath = fullfile( ...
+                folderPath, subFolderName);
 
-            if contains(folderName, 'mTor') || contains(folderName, 'mtor')
+            if contains(folderName, 'mTor') || ...
+                    contains(folderName, 'mtor')
 
                 secondLevelSubFolders = dir(subFolderPath);
 
-                for k = 1:length(secondLevelSubFolders)
+                for k = 1:numel(secondLevelSubFolders)
 
-                    secondName = secondLevelSubFolders(k).name;
+                    secondName = ...
+                        secondLevelSubFolders(k).name;
 
                     if secondLevelSubFolders(k).isdir && ...
-                            ~ismember(secondName, {'.','..'}) && ...
+                            ~ismember(secondName, {'.', '..'}) && ...
                             is_date_format(secondName)
 
-                        processedFolders{end+1} = ...
-                            fullfile(subFolderPath, secondName, filesep);
+                        processedFolders{end + 1} = ...
+                            fullfile( ...
+                                subFolderPath, ...
+                                secondName, ...
+                                filesep);
                     end
                 end
 
             elseif is_date_format(subFolderName)
 
-                processedFolders{end+1} = [subFolderPath, filesep];
+                processedFolders{end + 1} = ...
+                    [subFolderPath, filesep];
             end
         end
     end
 
     if isempty(processedFolders)
-        processedFolders{end+1} = [folderPath, filesep];
+        processedFolders{end + 1} = ...
+            [folderPath, filesep];
     end
 end
 
@@ -272,40 +318,48 @@ function isDate = is_date_format(folderName)
     folderName = char(folderName);
 
     base = folderName;
-    if numel(base) >= 2 && strcmp(base(end-1:end), '_a')
-        base = base(1:end-2);
+
+    if numel(base) >= 2 && ...
+            strcmp(base(end - 1:end), '_a')
+
+        base = base(1:end - 2);
     end
 
     if numel(base) ~= 10
         return;
     end
 
-    if ~isempty(regexp(base, '^\d{4}-\d{2}-\d{2}$', 'once'))
+    if ~isempty(regexp( ...
+            base, ...
+            '^\d{4}-\d{2}-\d{2}$', ...
+            'once'))
 
         y = str2double(base(1:4));
         m = str2double(base(6:7));
         d = str2double(base(9:10));
 
-        isDate = is_valid_ymd(y,m,d);
+        isDate = is_valid_ymd(y, m, d);
         return;
     end
 
-    if ~isempty(regexp(base, '^\d{2}-\d{2}-\d{4}$', 'once'))
+    if ~isempty(regexp( ...
+            base, ...
+            '^\d{2}-\d{2}-\d{4}$', ...
+            'once'))
 
         d = str2double(base(1:2));
         m = str2double(base(4:5));
         y = str2double(base(7:10));
 
-        isDate = is_valid_ymd(y,m,d);
-        return;
+        isDate = is_valid_ymd(y, m, d);
     end
 end
 
-function ok = is_valid_ymd(y,m,d)
+function ok = is_valid_ymd(y, m, d)
 
     ok = false;
 
-    if any(isnan([y m d]))
+    if any(isnan([y, m, d]))
         return;
     end
 
@@ -322,7 +376,7 @@ function ok = is_valid_ymd(y,m,d)
     end
 
     try
-        datetime(y,m,d);
+        datetime(y, m, d);
         ok = true;
     catch
         ok = false;

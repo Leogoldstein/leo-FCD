@@ -1,13 +1,22 @@
-function figs_by_type = visualize_data(selected_groups, max_gap_days)
+function figs_by_type = visualize_data(selected_groups, automatic_selection, include_blue_cells, results_table)
+    
+    [figs, day_table, animal_table, legend_table] = ...
+    plot_selected_groups_overview( ...
+        selected_groups, ...
+        include_blue_cells, ...
+        automatic_selection, ...
+        output_folders);
 
-    if nargin < 1 || isempty(selected_groups)
-        figs_by_type = struct();
-        return;
+    if any(automatic_selection) && ~include_blue_cells
+        [figs, stats_results, plot_table] = ...
+            compare_groups_barplots(results_table, 3, ...
+            'gcamp_plane', legend_table);
     end
     
-    if nargin < 2 || isempty(max_gap_days)
-        max_gap_days = 5;
-    end
+    % ======================================================
+    % Pooled basic metrics by type
+    % ======================================================
+    figs_by_type = plot_basic_metrics_by_type(selected_groups, max_gap_days, legend_table);
 
     type_names = fieldnames(selected_groups);
 
@@ -52,9 +61,4 @@ function figs_by_type = visualize_data(selected_groups, max_gap_days)
                 current_ages_group);
         end
     end
-
-    % ======================================================
-    % Pooled basic metrics by type
-    % ======================================================
-    figs_by_type = plot_basic_metrics_by_type(selected_groups, max_gap_days);
 end

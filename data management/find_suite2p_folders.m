@@ -70,6 +70,35 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
             continue;
         end
+        
+        % ==========================================================
+        % Sélection manuelle si plusieurs TSeries GCaMP existent
+        % ==========================================================
+        if numel(gcamp_paths) > 1
+        
+            fprintf('\n');
+            fprintf('Plusieurs TSeries GCaMP trouvés dans :\n%s\n', ...
+                selectedFolder);
+        
+            for ii = 1:numel(gcamp_paths)
+                fprintf('    %d) %s\n', ii, gcamp_paths{ii});
+            end
+        
+            selected_gcamp_path = select_one_gcamp_tseries( ...
+                selectedFolder, gcamp_paths);
+        
+            if isempty(selected_gcamp_path)
+        
+                fprintf([ ...
+                    'Aucun TSeries GCaMP sélectionné pour :\n' ...
+                    '%s\n'], selectedFolder);
+        
+                continue;
+            end
+        
+            % Ne conserver que le TSeries choisi par l'utilisateur
+            gcamp_paths = {selected_gcamp_path};
+        end
 
         % ==========================================================
         % UNE LIGNE PAR TSERIES GCAMP
@@ -410,17 +439,95 @@ function dataFolders = process_TSeries(TSeriesPath)
     end
 end
 
-function s = to_char_path(x)
-% Convertit x (char/string/cell) en char pour affichage warnings
-    if isempty(x)
-        s = '';
+function selected_path = select_one_gcamp_tseries( ...
+        parent_folder, available_gcamp_paths)
+
+    selected_path = '';
+
+    if isempty(available_gcamp_paths)
         return;
     end
-    if iscell(x)
-        x = x{1};
+
+    if numel(available_gcamp_paths) == 1
+        selected_path = available_gcamp_paths{1};
+        return;
     end
-    if isstring(x)
-        x = x(1);
+
+    while true
+
+        chosen_folder = uigetdir( ...
+            parent_folder, ...
+            sprintf([ ...
+                'Plusieurs TSeries GCaMP trouvés - ' ...
+                'sélectionnez le TSeries à utiliser']));
+
+        % Annulation par l'utilisateur
+        if isequal(chosen_folder, 0)
+
+            choice = questdlg( ...
+                ['Aucun dossier sélectionné. ' ...
+                 'Voulez-vous ignorer cette date ?'], ...
+                'Sélection TSeries', ...
+                'Ignorer la date', ...
+                'Réessayer', ...
+                'Ignorer la date');
+
+            if strcmp(choice, 'Réessayer')
+                continue;
+            end
+
+            selected_path = '';
+            return;
+        end
+
+        chosen_folder_normalized = normalize_folder_path( ...
+            chosen_folder);
+
+        available_normalized = cellfun( ...
+            @normalize_folder_path, ...
+            available_gcamp_paths, ...
+            'UniformOutput', false);
+
+        matched_idx = find(strcmpi( ...
+            available_normalized, ...
+            chosen_folder_normalized), 1);
+
+        if ~isempty(matched_idx)
+
+            selected_path = ...
+                available_gcamp_paths{matched_idx};
+
+            fprintf('TSeries GCaMP sélectionné :\n%s\n', ...
+                selected_path);
+
+            return;
+        end
+
+        uiwait(warndlg( ...
+            sprintf([ ...
+                'Le dossier sélectionné ne correspond pas à un ' ...
+                'TSeries GCaMP valide trouvé dans cette date.\n\n' ...
+                'Dossier sélectionné :\n%s'], ...
+                chosen_folder), ...
+            'TSeries invalide', ...
+            'modal'));
     end
-    s = char(x);
+end
+
+
+function path_out = normalize_folder_path(path_in)
+
+    if isempty(path_in)
+        path_out = '';
+        return;
+    end
+
+    path_out = char(string(path_in));
+    path_out = strrep(path_out, '/', '\');
+
+    while numel(path_out) > 3 && ...
+            path_out(end) == '\'
+
+        path_out(end) = [];
+    end
 end
