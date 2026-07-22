@@ -1,4 +1,4 @@
-function figs_by_type = visualize_data(selected_groups, automatic_selection, include_blue_cells, results_table)
+function visualize_data(selected_groups, automatic_selection, include_blue_cells, results_table, output_folders)
     
     [figs, day_table, animal_table, legend_table] = ...
     plot_selected_groups_overview( ...
@@ -13,10 +13,7 @@ function figs_by_type = visualize_data(selected_groups, automatic_selection, inc
             'gcamp_plane', legend_table);
     end
     
-    % ======================================================
-    % Pooled basic metrics by type
-    % ======================================================
-    figs_by_type = plot_basic_metrics_by_type(selected_groups, max_gap_days, legend_table);
+    figs_by_type = plot_basic_metrics_by_type(selected_groups, 4, legend_table, output_folders);
 
     type_names = fieldnames(selected_groups);
 
@@ -49,6 +46,7 @@ function figs_by_type = visualize_data(selected_groups, automatic_selection, inc
                 current_animal_group);
 
             plot_frequency_boxplot( ...
+                include_blue_cells, ...
                 results_analysis, ...
                 gcamp_root_folders, ...
                 current_animal_group, ...

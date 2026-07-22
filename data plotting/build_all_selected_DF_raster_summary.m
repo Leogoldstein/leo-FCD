@@ -1,138 +1,134 @@
-function output_folders = build_all_selected_DF_raster_summary( ...
+function build_all_selected_DF_raster_summary( ...
         selected_groups, ...
-        root_folders, ...
-        automatic_selection, ...
+        output_folders, ...
         include_blue_cells)
 %BUILD_ALL_SELECTED_DF_RASTER_SUMMARY
 %
 % Crée une figure DF séparée pour chaque type d'animal.
 %
-% Chaque type utilise son propre dossier racine contenu dans
-% root_folders. L'ordre de root_folders et automatic_selection doit
-% correspondre à l'ordre des champs de selected_groups.
+% Entrées :
+%   selected_groups
+%       Structure contenant les animaux sélectionnés, organisés par type.
+%
+%   output_folders
+%       Cellule contenant un dossier de sortie pour chaque type.
+%       L'ordre doit correspondre à :
+%
+%           fieldnames(selected_groups)
+%
+%       Ces dossiers peuvent être générés avec :
+%
+%           output_folders = build_output_folders( ...
+%               selected_groups, ...
+%               root_folders, ...
+%               automatic_selection, ...
+%               include_blue_cells);
+%
+%   include_blue_cells
+%       Indique si les cellules électroporées doivent être incluses.
 %
 % Exemple :
 %
-%   selected_groups.WT
-%   selected_groups.FCD
+%   output_folders = build_output_folders( ...
+%       selected_groups, ...
+%       root_folders, ...
+%       automatic_selection, ...
+%       include_blue_cells);
 %
-%   root_folders = {
-%       'D:\Imaging\WT'
-%       'D:\Imaging\FCD'
-%   };
-%
-%   automatic_selection = [true; true];
-%
-% Sortie :
-%   output_folders : cellule contenant le dossier de sortie de chaque
-%                    type, dans l'ordre de fieldnames(selected_groups).
-%
-% Les figures sont enregistrées dans :
-%
-% root_folders{i}/
-% └── Summary plots/
-%     ├── Pre-selection GCaMP only/
-%     ├── Pre-selection electroporated cells/
-%     ├── Manual selection GCaMP only/
-%     └── Manual selection electroporated cells/
+%   build_all_selected_DF_raster_summary( ...
+%       selected_groups, ...
+%       output_folders, ...
+%       include_blue_cells);
 
     %==============================================================%
-    % Vérification des entrées
+    % Vérification de selected_groups
     %==============================================================%
     if nargin < 1 || isempty(selected_groups)
+
         fprintf('Global DF summary: selected_groups vide.\n');
-        output_folders = {};
         return;
+    end
+
+    if ~isstruct(selected_groups)
+
+        error( ...
+            'build_all_selected_DF_raster_summary:InvalidSelectedGroups', ...
+            'selected_groups doit être une structure.');
     end
 
     type_names = fieldnames(selected_groups);
     n_types = numel(type_names);
 
-    if nargin < 2 || isempty(root_folders)
-        root_folders = repmat({pwd}, n_types, 1);
+    if n_types == 0
+
+        fprintf('Global DF summary: aucun type trouvé.\n');
+        return;
     end
 
-    if nargin < 3 || isempty(automatic_selection)
-        automatic_selection = false(n_types, 1);
+    %==============================================================%
+    % Vérification de output_folders
+    %==============================================================%
+    if nargin < 2 || isempty(output_folders)
+
+        error( ...
+            'build_all_selected_DF_raster_summary:MissingOutputFolders', ...
+            ['output_folders doit être fourni. Utiliser ', ...
+             'build_output_folders avant cette fonction.']);
     end
 
-    if nargin < 4 || isempty(include_blue_cells)
+    output_folders = normalize_output_folders_DF( ...
+        output_folders, ...
+        n_types);
+
+    %==============================================================%
+    % Vérification de include_blue_cells
+    %==============================================================%
+    if nargin < 3 || isempty(include_blue_cells)
         include_blue_cells = false;
     end
 
-    root_folders = normalize_root_folders_DF( ...
-        root_folders, n_types);
-
-    automatic_selection = normalize_automatic_selection_DF( ...
-        automatic_selection, n_types);
-
     include_blue_cells = parse_logical_scalar_DF( ...
-        include_blue_cells, false);
-
-    output_folders = cell(n_types, 1);
+        include_blue_cells, ...
+        false);
 
     %==============================================================%
-    % Une figure et un dossier de sortie par type
+    % Une figure par type
     %==============================================================%
     for t = 1:n_types
 
         current_type = type_names{t};
         current_animals = selected_groups.(current_type);
-        current_root_folder = root_folders{t};
-        current_automatic_selection = automatic_selection(t);
+        current_output_folder = output_folders{t};
 
         %==========================================================%
-        % Dossier principal des figures résumées pour ce type
-        %==========================================================%
-        summary_root_folder = fullfile( ...
-            current_root_folder, ...
-            'Summary plots');
-
-        %==========================================================%
-        % Sous-dossier selon le type de sélection
-        %==========================================================%
-        if current_automatic_selection && include_blue_cells
-
-            summary_subfolder = ...
-                'Pre-selection electroporated cells';
-
-        elseif current_automatic_selection && ~include_blue_cells
-
-            summary_subfolder = ...
-                'Pre-selection GCaMP only';
-
-        elseif ~current_automatic_selection && include_blue_cells
-
-            summary_subfolder = ...
-                'Manual selection electroporated cells';
-
-        else
-
-            summary_subfolder = ...
-                'Manual selection GCaMP only';
-        end
-
-        current_output_folder = fullfile( ...
-            summary_root_folder, ...
-            summary_subfolder);
-
-        output_folders{t} = current_output_folder;
-
-        %==========================================================%
-        % Création du dossier
+        % Création du dossier de sortie
         %==========================================================%
         if exist(current_output_folder, 'dir') ~= 7
-            mkdir(current_output_folder);
+
+            [mkdir_success, mkdir_message] = mkdir( ...
+                current_output_folder);
+
+            if ~mkdir_success
+
+                warning( ...
+                    'build_all_selected_DF_raster_summary:FolderCreationFailed', ...
+                    ['Impossible de créer le dossier pour le type %s :\n', ...
+                     '%s\n%s'], ...
+                    current_type, ...
+                    current_output_folder, ...
+                    mkdir_message);
+
+                continue;
+            end
         end
 
         fprintf('\n');
         fprintf('============================================\n');
         fprintf('GLOBAL DF RASTER SUMMARY\n');
         fprintf('Type: %s\n', current_type);
-        fprintf('Root folder: %s\n', current_root_folder);
         fprintf('Output folder: %s\n', current_output_folder);
-        fprintf('Automatic selection: %d\n', ...
-            current_automatic_selection);
+        fprintf('Include electroporated cells: %d\n', ...
+            include_blue_cells);
         fprintf('============================================\n');
 
         if isempty(current_animals)

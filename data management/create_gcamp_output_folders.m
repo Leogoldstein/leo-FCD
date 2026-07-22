@@ -24,7 +24,7 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
 
         for k = 1:numel(selected_groups.(current_type))
 
-            current_animal_group = selected_groups.(current_type)(k).animal_group;
+            current_animal = selected_groups.(current_type)(k).animal;
 
             if isfield(selected_groups.(current_type)(k), 'paths') && ...
                isfield(selected_groups.(current_type)(k).paths, 'date')
@@ -61,7 +61,7 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
                 daytime, ...
                 processing_choice1, ...
                 processing_choice2, ...
-                current_animal_group);
+                current_animal);
 
             selected_groups.(current_type)(k).paths.gcamp_root = gcamp_root_folders;
             selected_groups.(current_type)(k).paths.gcamp_output = gcamp_output_folders;
