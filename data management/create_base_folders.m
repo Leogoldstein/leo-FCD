@@ -1,7 +1,19 @@
-function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_folders( ...
-    date_group_paths, current_gcamp_folders_group, daytime, user_choice1, user_choice2, current_animal_group)
+function [selected_root_folder, chosen_folder_processing_gcamp] = ...
+    create_base_folders( ...
+        date_group_paths, ...
+        current_gcamp_folders_group, ...
+        daytime, ...
+        user_choice1, ...
+        user_choice2, ...
+        processing_choice, ...
+        delete_choice, ...
+        current_animal_group)
 
+    %==========================================================
+    % Initialisation
+    %==========================================================
     numFolders = numel(date_group_paths);
+
     chosen_folder_processing_gcamp = cell(numFolders, 1);
     selected_root_folder = cell(numFolders, 1);
 
@@ -10,26 +22,43 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
     all_tseries_roots = cell(numFolders, 1);
     all_plane_names = cell(numFolders, 1);
 
-    empty_dir_struct = struct('name', {}, 'folder', {}, 'date', {}, ...
-                              'bytes', {}, 'isdir', {}, 'datenum', {});
+    empty_dir_struct = struct( ...
+        'name', {}, ...
+        'folder', {}, ...
+        'date', {}, ...
+        'bytes', {}, ...
+        'isdir', {}, ...
+        'datenum', {});
 
     fprintf('\n[create_base_folders]\n');
 
+    %==========================================================
+    % Première passe :
+    % rechercher les versions existantes pour chaque date
+    %==========================================================
     for m = 1:numFolders
 
         fprintf('\nDate %d / %d\n', m, numFolders);
 
+        %------------------------------------------------------
+        % Récupération des chemins des plans Suite2p
+        %------------------------------------------------------
         if isempty(current_gcamp_folders_group) || ...
            m > numel(current_gcamp_folders_group) || ...
            isempty(current_gcamp_folders_group{m})
 
             gcamp_planes = {};
-            fprintf('  Aucun chemin gcamp/suite2p trouvé.\n');
+
+            fprintf( ...
+                '  Aucun chemin gcamp/suite2p trouvé.\n');
 
         else
-            gcamp_planes = current_gcamp_folders_group{m};
+            gcamp_planes = ...
+                current_gcamp_folders_group{m};
 
-            while iscell(gcamp_planes) && numel(gcamp_planes) == 1
+            while iscell(gcamp_planes) && ...
+                  numel(gcamp_planes) == 1
+
                 gcamp_planes = gcamp_planes{1};
             end
         end
@@ -43,74 +72,144 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
 
         fprintf('  Nombre de plans : %d\n', nPlanes);
 
+        %------------------------------------------------------
+        % Aucun plan disponible
+        %------------------------------------------------------
         if nPlanes == 0
+
             all_existing_subfolders{m} = empty_dir_struct;
             all_tseries_roots{m} = '';
             all_plane_names{m} = {};
+
             chosen_folder_processing_gcamp{m} = {};
             selected_root_folder{m} = '';
+
             continue;
         end
 
-        tseries_root = get_tseries_root_from_plane(gcamp_planes{1});
+        %------------------------------------------------------
+        % Racine TSeries
+        %------------------------------------------------------
+        tseries_root = ...
+            get_tseries_root_from_plane(gcamp_planes{1});
+
         all_tseries_roots{m} = tseries_root;
 
         fprintf('  TSeries root : %s\n', tseries_root);
 
+        %------------------------------------------------------
+        % Noms des plans
+        %------------------------------------------------------
         for p = 1:nPlanes
-            [~, plane_names{p}] = fileparts(gcamp_planes{p});
+
+            [~, plane_names{p}] = ...
+                fileparts(gcamp_planes{p});
+
             if isempty(plane_names{p})
-                plane_names{p} = sprintf('plane%d', p-1);
+                plane_names{p} = ...
+                    sprintf('plane%d', p - 1);
             end
-            fprintf('    Plan %d : %s\n', p, plane_names{p});
+
+            fprintf( ...
+                '    Plan %d : %s\n', ...
+                p, ...
+                plane_names{p});
         end
 
         all_plane_names{m} = plane_names;
 
-        folder_gcamp = fullfile(tseries_root, 'after processing');
+        %------------------------------------------------------
+        % Dossier after processing
+        %------------------------------------------------------
+        folder_gcamp = fullfile( ...
+            tseries_root, ...
+            'after processing');
 
-        fprintf('  after processing : %s\n', folder_gcamp);
+        fprintf( ...
+            '  after processing : %s\n', ...
+            folder_gcamp);
 
+        %------------------------------------------------------
+        % Recherche des dossiers de version
+        %------------------------------------------------------
         if isfolder(folder_gcamp)
 
             subfolders_gcamp = dir(folder_gcamp);
-            subfolders_gcamp = subfolders_gcamp([subfolders_gcamp.isdir]);
-            subfolders_gcamp = subfolders_gcamp(~ismember({subfolders_gcamp.name}, {'.', '..'}));
+
+            subfolders_gcamp = ...
+                subfolders_gcamp([subfolders_gcamp.isdir]);
+
+            subfolders_gcamp = ...
+                subfolders_gcamp( ...
+                    ~ismember( ...
+                        {subfolders_gcamp.name}, ...
+                        {'.', '..'}));
 
             if isempty(subfolders_gcamp)
-                specificSubfolders_gcamp = empty_dir_struct;
-                fprintf('  Aucun sous-dossier trouvé.\n');
-            else
-                mask_v = ~cellfun('isempty', regexp({subfolders_gcamp.name}, ...
-                    '^v\d+_\d{2}_\d{2}_\d{2}(_\d{2}_\d{2})?$', 'once'));
 
-                specificSubfolders_gcamp = subfolders_gcamp(mask_v);
+                specificSubfolders_gcamp = ...
+                    empty_dir_struct;
+
+                fprintf( ...
+                    '  Aucun sous-dossier trouvé.\n');
+
+            else
+                mask_v = ~cellfun( ...
+                    'isempty', ...
+                    regexp( ...
+                        {subfolders_gcamp.name}, ...
+                        '^v\d+_\d{2}_\d{2}_\d{2}(_\d{2}_\d{2})?$', ...
+                        'once'));
+
+                specificSubfolders_gcamp = ...
+                    subfolders_gcamp(mask_v);
 
                 if isempty(specificSubfolders_gcamp)
-                    specificSubfolders_gcamp = empty_dir_struct;
-                    fprintf('  Aucun sous-dossier vX_yy_mm_dd trouvé.\n');
+
+                    specificSubfolders_gcamp = ...
+                        empty_dir_struct;
+
+                    fprintf( ...
+                        '  Aucun sous-dossier vX_yy_mm_dd trouvé.\n');
+
                 else
-                    fprintf('  Sous-dossiers vX trouvés :\n');
+                    fprintf( ...
+                        '  Sous-dossiers vX trouvés :\n');
+
                     for j = 1:numel(specificSubfolders_gcamp)
-                        fprintf('    - %s\n', specificSubfolders_gcamp(j).name);
+
+                        fprintf( ...
+                            '    - %s\n', ...
+                            specificSubfolders_gcamp(j).name);
                     end
                 end
             end
 
         else
-            specificSubfolders_gcamp = empty_dir_struct;
-            fprintf('  Aucun dossier after processing existant.\n');
+            specificSubfolders_gcamp = ...
+                empty_dir_struct;
+
+            fprintf( ...
+                '  Aucun dossier after processing existant.\n');
         end
 
-        all_existing_subfolders{m} = specificSubfolders_gcamp;
+        all_existing_subfolders{m} = ...
+            specificSubfolders_gcamp;
 
         if ~isempty(specificSubfolders_gcamp)
-            all_unique_subfolders = [all_unique_subfolders, {specificSubfolders_gcamp.name}]; %#ok<AGROW>
+
+            all_unique_subfolders = [ ...
+                all_unique_subfolders, ...
+                {specificSubfolders_gcamp.name}]; %#ok<AGROW>
         end
     end
 
     unique_subfolders = unique(all_unique_subfolders);
 
+    %==========================================================
+    % Deuxième passe :
+    % sélection ou création des dossiers
+    %==========================================================
     for m = 1:numFolders
 
         plane_names = all_plane_names{m};
@@ -120,136 +219,233 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
         recover_processing = false;
         source_root_folder = '';
 
+        %------------------------------------------------------
+        % Aucun plan disponible
+        %------------------------------------------------------
         if isempty(plane_names)
+
             chosen_folder_processing_gcamp{m} = {};
             selected_root_folder{m} = '';
+
             continue;
         end
 
-        after_processing_root = fullfile(tseries_root, 'after processing');
+        %------------------------------------------------------
+        % Création éventuelle de after processing
+        %------------------------------------------------------
+        after_processing_root = fullfile( ...
+            tseries_root, ...
+            'after processing');
 
         if ~isfolder(after_processing_root)
+
             mkdir(after_processing_root);
-            fprintf('  Dossier after processing créé : %s\n', after_processing_root);
+
+            fprintf( ...
+                '  Dossier after processing créé : %s\n', ...
+                after_processing_root);
         end
 
         current_root_folder = '';
 
-        fprintf('\nSélection dossier processing date %d / %d\n', m, numFolders);
+        fprintf( ...
+            '\nSélection dossier processing date %d / %d\n', ...
+            m, ...
+            numFolders);
 
+        %======================================================
+        % CAS 1 : aucune ancienne version
+        %======================================================
         if isempty(existing_subfolders)
 
-            fprintf('\nAucune ancienne version trouvée pour %s\n', current_animal_group);
+            fprintf( ...
+                '\nAucune ancienne version trouvée pour %s\n', ...
+                current_animal_group);
 
-            version_number = input('Entrer un numéro de version : ', 's');
-            version_number = strtrim(version_number);
-
-            if isempty(regexp(version_number, '^\d+$', 'once'))
-                error('Le numéro de version doit être un nombre, exemple : 4');
-            end
-
-            daytime_parts = regexp(daytime, '^v\d+_(.*)$', 'tokens', 'once');
+            %--------------------------------------------------
+            % Réutiliser automatiquement la version contenue
+            % dans daytime
+            %--------------------------------------------------
+            daytime_parts = regexp( ...
+                daytime, ...
+                '^v(\d+)_(.*)$', ...
+                'tokens', ...
+                'once');
 
             if isempty(daytime_parts)
-                error('Format inattendu pour daytime : %s', daytime);
+
+                error( ...
+                    'Format inattendu pour daytime : %s', ...
+                    daytime);
             end
 
-            daytime_custom = sprintf('v%s_%s', version_number, daytime_parts{1});
-            current_root_folder = fullfile(after_processing_root, daytime_custom);
+            current_root_folder = fullfile( ...
+                after_processing_root, ...
+                daytime);
 
             if ~isfolder(current_root_folder)
                 mkdir(current_root_folder);
             end
 
-            fprintf('  Nouveau dossier créé : %s\n', current_root_folder);
+            fprintf( ...
+                '  Nouveau dossier créé : %s\n', ...
+                current_root_folder);
 
-        elseif ~isempty(user_choice1) && strcmpi(user_choice1, '2')
+        %======================================================
+        % CAS 2 : choix d'une ancienne version ou création
+        %======================================================
+        elseif strcmpi(user_choice1, '2')
 
-            if ~isempty(user_choice2) && strcmpi(user_choice2, '1')
+            %--------------------------------------------------
+            % Sélection d'une version existante
+            %--------------------------------------------------
+            if strcmpi(user_choice2, '1')
 
-                disp(['Available versions for ', current_animal_group, ':']);
+                fprintf( ...
+                    '\nVersions disponibles pour %s :\n', ...
+                    current_animal_group);
 
-                versions_available = get_versions_from_vfolders(unique_subfolders);
+                versions_available = ...
+                    get_versions_from_vfolders( ...
+                        unique_subfolders);
 
-                valid_idx = ~isnan(versions_available);
+                valid_idx = ...
+                    ~isnan(versions_available);
 
-                versions_available = versions_available(valid_idx);
-                unique_subfolders_valid = unique_subfolders(valid_idx);
+                versions_available = ...
+                    versions_available(valid_idx);
 
-                [versions_available, sort_idx] = sort(versions_available);
-                unique_subfolders_valid = unique_subfolders_valid(sort_idx);
+                unique_subfolders_valid = ...
+                    unique_subfolders(valid_idx);
+
+                [versions_available, sort_idx] = ...
+                    sort(versions_available);
+
+                unique_subfolders_valid = ...
+                    unique_subfolders_valid(sort_idx);
+
+                if isempty(unique_subfolders_valid)
+
+                    error( ...
+                        ['Aucune version valide disponible ' ...
+                         'pour la sélection.']);
+                end
 
                 for j = 1:numel(versions_available)
-                    fprintf('%d : version %d\n', j, versions_available(j));
+
+                    fprintf( ...
+                        '%d : version %d - %s\n', ...
+                        j, ...
+                        versions_available(j), ...
+                        unique_subfolders_valid{j});
                 end
 
-                selectedIndex = input('Enter the number corresponding to your choice: ');
+                selectedIndex = input( ...
+                    'Entrer le numéro correspondant à votre choix : ');
 
-                if selectedIndex < 1 || selectedIndex > numel(unique_subfolders_valid)
-                    error('Invalid choice.');
+                if isempty(selectedIndex) || ...
+                   ~isscalar(selectedIndex) || ...
+                   selectedIndex < 1 || ...
+                   selectedIndex > numel(unique_subfolders_valid) || ...
+                   selectedIndex ~= floor(selectedIndex)
+
+                    error('Choix invalide.');
                 end
 
-                selected_subfolder_name = unique_subfolders_valid{selectedIndex};
-                current_root_folder = fullfile(after_processing_root, selected_subfolder_name);
+                selected_subfolder_name = ...
+                    unique_subfolders_valid{selectedIndex};
+
+                current_root_folder = fullfile( ...
+                    after_processing_root, ...
+                    selected_subfolder_name);
 
                 if ~isfolder(current_root_folder)
+
                     mkdir(current_root_folder);
-                    fprintf('  Dossier sélectionné inexistant localement -> créé : %s\n', current_root_folder);
+
+                    fprintf( ...
+                        ['  Dossier sélectionné inexistant ' ...
+                         'localement -> créé : %s\n'], ...
+                        current_root_folder);
+
                 else
-                    fprintf('  Dossier sélectionné : %s\n', current_root_folder);
+                    fprintf( ...
+                        '  Dossier sélectionné : %s\n', ...
+                        current_root_folder);
                 end
 
-            elseif ~isempty(user_choice2) && strcmpi(user_choice2, '2')
+            %--------------------------------------------------
+            % Création d'une nouvelle version
+            %--------------------------------------------------
+            elseif strcmpi(user_choice2, '2')
 
-                current_root_folder = fullfile(after_processing_root, daytime);
+                current_root_folder = fullfile( ...
+                    after_processing_root, ...
+                    daytime);
 
                 if ~isfolder(current_root_folder)
                     mkdir(current_root_folder);
                 end
 
-                fprintf('  Nouveau dossier créé : %s\n', current_root_folder);
+                fprintf( ...
+                    '  Nouveau dossier créé : %s\n', ...
+                    current_root_folder);
 
-                disp('Nouveau dossier créé.');
-                disp('1 = Refaire tout le processing depuis les données brutes');
-                disp('2 = Récupérer les anciens fichiers results depuis le processing le plus récent');
-
-                processing_choice = input('Votre choix : ', 's');
-
+                %----------------------------------------------
+                % Le choix est transmis par
+                % create_gcamp_output_folders
+                %----------------------------------------------
                 if strcmpi(processing_choice, '1')
 
                     recover_processing = false;
-                    fprintf('  Choix : refaire tout le processing.\n');
+
+                    fprintf( ...
+                        ['  Choix global : refaire tout le ' ...
+                         'processing depuis les données brutes.\n']);
 
                 elseif strcmpi(processing_choice, '2')
 
                     recover_processing = true;
 
-                    most_recent_gcamp = get_most_recent_vfolder( ...
-                        existing_subfolders);
+                    most_recent_gcamp = ...
+                        get_most_recent_vfolder( ...
+                            existing_subfolders);
 
                     if isempty(most_recent_gcamp)
-                        error(['Aucune version valide trouvée pour récupérer ' ...
-                               'les anciens results.']);
+
+                        error( ...
+                            ['Aucune version valide trouvée pour ' ...
+                             'récupérer les anciens results.']);
                     end
 
                     source_root_folder = fullfile( ...
                         after_processing_root, ...
                         most_recent_gcamp.name);
 
-                    fprintf('  Récupération depuis le dossier le plus récent : %s\n', source_root_folder);
+                    fprintf( ...
+                        ['  Récupération depuis le dossier ' ...
+                         'le plus récent : %s\n'], ...
+                        source_root_folder);
 
                 else
-                    error('Invalid processing_choice.');
+                    error( ...
+                        ['processing_choice doit être égal ' ...
+                         'à ''1'' ou ''2''.']);
                 end
 
             else
-                error('Invalid user_choice2.');
+                error( ...
+                    'user_choice2 doit être égal à ''1'' ou ''2''.');
             end
 
+        %======================================================
+        % CAS 3 : utiliser le dossier le plus récent
+        %======================================================
         elseif strcmpi(user_choice1, '1')
 
-            most_recent_gcamp = get_most_recent_vfolder( ...
-                existing_subfolders);
+            most_recent_gcamp = ...
+                get_most_recent_vfolder( ...
+                    existing_subfolders);
 
             if isempty(most_recent_gcamp)
                 error('Aucune version valide trouvée.');
@@ -259,145 +455,327 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = create_base_fo
                 after_processing_root, ...
                 most_recent_gcamp.name);
 
-            fprintf('  Choix 1 -> dossier vX le plus récent sélectionné : %s\n', current_root_folder);
+            fprintf( ...
+                ['  Choix 1 -> dossier vX le plus récent ' ...
+                 'sélectionné : %s\n'], ...
+                current_root_folder);
 
         else
-            error('Invalid user_choice1.');
+            error( ...
+                'user_choice1 doit être égal à ''1'' ou ''2''.');
         end
 
-        selected_root_folder{m} = current_root_folder;
+        %======================================================
+        % Enregistrement du dossier racine sélectionné
+        %======================================================
+        selected_root_folder{m} = ...
+            current_root_folder;
 
-        chosen_folder_processing_gcamp{m} = cell(numel(plane_names), 1);
+        chosen_folder_processing_gcamp{m} = ...
+            cell(numel(plane_names), 1);
 
+        %======================================================
+        % Création des dossiers de plans
+        %======================================================
         for p = 1:numel(plane_names)
 
-            plane_output_folder = fullfile(current_root_folder, plane_names{p});
+            plane_output_folder = fullfile( ...
+                current_root_folder, ...
+                plane_names{p});
 
             if ~isfolder(plane_output_folder)
+
                 mkdir(plane_output_folder);
-                fprintf('    Dossier plan créé : %s\n', plane_output_folder);
+
+                fprintf( ...
+                    '    Dossier plan créé : %s\n', ...
+                    plane_output_folder);
+
             else
-                fprintf('    Dossier plan existant : %s\n', plane_output_folder);
+                fprintf( ...
+                    '    Dossier plan existant : %s\n', ...
+                    plane_output_folder);
             end
 
-            chosen_folder_processing_gcamp{m}{p} = plane_output_folder;
+            chosen_folder_processing_gcamp{m}{p} = ...
+                plane_output_folder;
         end
 
+        %======================================================
+        % Récupération des anciens fichiers results
+        %======================================================
         if recover_processing
-
+        
             files_to_copy = { ...
                 'results_gcamp.mat', ...
                 'results_blue.mat', ...
-                'results_combined.mat' ...
-            };
-
+                'results_combined.mat', ...
+                'metadata_results.xlsx'};
+        
             for f = 1:numel(files_to_copy)
-
-                source_file = fullfile(source_root_folder, files_to_copy{f});
-                dest_file   = fullfile(current_root_folder, files_to_copy{f});
-
+        
+                source_file = fullfile( ...
+                    source_root_folder, ...
+                    files_to_copy{f});
+        
+                dest_file = fullfile( ...
+                    current_root_folder, ...
+                    files_to_copy{f});
+        
                 if isfile(source_file)
+        
                     copyfile(source_file, dest_file);
-                    fprintf('  Copié : %s -> %s\n', source_file, dest_file);
+        
+                    fprintf( ...
+                        '  Copié : %s -> %s\n', ...
+                        source_file, ...
+                        dest_file);
+        
                 else
-                    warning('  Fichier absent, non copié : %s', source_file);
+                    warning( ...
+                        'Fichier absent, non copié : %s', ...
+                        source_file);
                 end
             end
-
-            source_motion = fullfile(source_root_folder, 'results_motion.mat');
-            source_movie  = fullfile(source_root_folder, 'results_movie.mat');
-
-            dest_motion = fullfile(current_root_folder, 'results_motion.mat');
-
+        
+            %--------------------------------------------------
+            % Fichier motion ou ancien fichier movie
+            %--------------------------------------------------
+            source_motion = fullfile( ...
+                source_root_folder, ...
+                'results_motion.mat');
+        
+            source_movie = fullfile( ...
+                source_root_folder, ...
+                'results_movie.mat');
+        
+            dest_motion = fullfile( ...
+                current_root_folder, ...
+                'results_motion.mat');
+        
             if isfile(source_motion)
-
+        
                 copyfile(source_motion, dest_motion);
-                fprintf('  Copié : %s -> %s\n', source_motion, dest_motion);
-
+        
+                fprintf( ...
+                    '  Copié : %s -> %s\n', ...
+                    source_motion, ...
+                    dest_motion);
+        
             elseif isfile(source_movie)
-
+        
                 copyfile(source_movie, dest_motion);
-                fprintf('  Copié : %s -> %s (renommé)\n', source_movie, dest_motion);
-
+        
+                fprintf( ...
+                    '  Copié : %s -> %s (renommé)\n', ...
+                    source_movie, ...
+                    dest_motion);
+        
             else
-                warning('  Aucun fichier motion trouvé (results_motion.mat ou results_movie.mat)');
+                warning( ...
+                    ['Aucun fichier motion trouvé ' ...
+                     '(results_motion.mat ou results_movie.mat)']);
             end
-            
-            % --------------------------------------------------
+        
+            %--------------------------------------------------
             % Copier tous les recording_summary*
-            % --------------------------------------------------
-            summary_files = dir(fullfile(source_root_folder, 'recording_summary*'));
-            
+            %--------------------------------------------------
+            summary_files = dir( ...
+                fullfile( ...
+                    source_root_folder, ...
+                    'recording_summary*'));
+        
             for s = 1:numel(summary_files)
-            
-                source_summary = fullfile(source_root_folder, summary_files(s).name);
-                dest_summary   = fullfile(current_root_folder, summary_files(s).name);
-            
+        
+                if summary_files(s).isdir
+                    continue;
+                end
+        
+                source_summary = fullfile( ...
+                    source_root_folder, ...
+                    summary_files(s).name);
+        
+                dest_summary = fullfile( ...
+                    current_root_folder, ...
+                    summary_files(s).name);
+        
                 copyfile(source_summary, dest_summary);
-            
-                fprintf('  Copié : %s -> %s\n', ...
-                    source_summary, dest_summary);
+        
+                fprintf( ...
+                    '  Copié : %s -> %s\n', ...
+                    source_summary, ...
+                    dest_summary);
             end
-            
+        
             if isempty(summary_files)
-                warning('  Aucun fichier recording_summary* trouvé dans : %s', ...
+        
+                warning( ...
+                    ['Aucun fichier recording_summary* ' ...
+                     'trouvé dans : %s'], ...
                     source_root_folder);
             end
-
-            clear_detection_outputs(chosen_folder_processing_gcamp(m), {'gcamp','blue','combined'});
+        
+            %--------------------------------------------------
+            % Copier uniquement les .tif et .npy des dossiers plane*
+            %--------------------------------------------------
+            source_plane_folders = dir( ...
+                fullfile(source_root_folder, 'plane*'));
+        
+            source_plane_folders = source_plane_folders( ...
+                [source_plane_folders.isdir]);
+        
+            for pFolder = 1:numel(source_plane_folders)
+        
+                plane_folder_name = ...
+                    source_plane_folders(pFolder).name;
+        
+                source_plane_folder = fullfile( ...
+                    source_root_folder, ...
+                    plane_folder_name);
+        
+                destination_plane_folder = fullfile( ...
+                    current_root_folder, ...
+                    plane_folder_name);
+        
+                if ~isfolder(destination_plane_folder)
+        
+                    mkdir(destination_plane_folder);
+        
+                    fprintf( ...
+                        ['  Dossier plan créé pour la ' ...
+                         'récupération : %s\n'], ...
+                        destination_plane_folder);
+                end
+        
+                plane_files = [ ...
+                    dir(fullfile(source_plane_folder, '*.tif')); ...
+                    dir(fullfile(source_plane_folder, '*.npy'))];
+        
+                if isempty(plane_files)
+        
+                    fprintf( ...
+                        ['  Aucun fichier .tif ou .npy ' ...
+                         'trouvé dans : %s\n'], ...
+                        source_plane_folder);
+        
+                    continue;
+                end
+        
+                for fileIdx = 1:numel(plane_files)
+        
+                    source_plane_file = fullfile( ...
+                        source_plane_folder, ...
+                        plane_files(fileIdx).name);
+        
+                    destination_plane_file = fullfile( ...
+                        destination_plane_folder, ...
+                        plane_files(fileIdx).name);
+        
+                    copyfile( ...
+                        source_plane_file, ...
+                        destination_plane_file);
+        
+                    fprintf( ...
+                        '  Copié : %s -> %s\n', ...
+                        source_plane_file, ...
+                        destination_plane_file);
+                end
+            end
+        
+            clear_detection_outputs( ...
+                chosen_folder_processing_gcamp(m), ...
+                {'gcamp', 'blue', 'combined'});
         end
 
         %======================================================
         % Suppression des anciennes versions
+        % Le choix est transmis par create_gcamp_output_folders
         %======================================================
-        if ~isempty(user_choice2) && strcmpi(user_choice2,'2')
-        
+        if strcmpi(user_choice1, '2') && ...
+           strcmpi(user_choice2, '2')
+
             fprintf('\nAnciennes versions trouvées :\n');
-        
+
             folders_to_delete = {};
-        
+
             for j = 1:numel(existing_subfolders)
-        
-                old_folder = fullfile(after_processing_root, ...
-                                      existing_subfolders(j).name);
-        
-                if ~strcmp(old_folder, current_root_folder)
-        
+
+                old_folder = fullfile( ...
+                    after_processing_root, ...
+                    existing_subfolders(j).name);
+
+                if ~strcmpi( ...
+                        remove_trailing_filesep_local(old_folder), ...
+                        remove_trailing_filesep_local( ...
+                            current_root_folder))
+
                     fprintf('  %s\n', old_folder);
-                    folders_to_delete{end+1} = old_folder; %#ok<AGROW>
-        
+
+                    folders_to_delete{end + 1} = ...
+                        old_folder; %#ok<AGROW>
                 end
             end
-        
-            if ~isempty(folders_to_delete)
-        
-                delete_choice = input( ...
-                    'Supprimer toutes les anciennes versions ? (y/n) : ', ...
-                    's');
-        
-                if strcmpi(delete_choice,'y')
-        
-                    for j = 1:numel(folders_to_delete)
-        
-                        try
-                            rmdir(folders_to_delete{j}, 's');
-                            fprintf('  Supprimé : %s\n', folders_to_delete{j});
-        
-                        catch ME
-                            warning('Impossible de supprimer %s : %s', ...
-                                folders_to_delete{j}, ME.message);
-                        end
+
+            if isempty(folders_to_delete)
+
+                fprintf( ...
+                    '  Aucune ancienne version à supprimer.\n');
+
+            elseif strcmpi(delete_choice, 'y')
+
+                for j = 1:numel(folders_to_delete)
+
+                    try
+                        rmdir(folders_to_delete{j}, 's');
+
+                        fprintf( ...
+                            '  Supprimé : %s\n', ...
+                            folders_to_delete{j});
+
+                    catch ME
+                        warning( ...
+                            'Impossible de supprimer %s : %s', ...
+                            folders_to_delete{j}, ...
+                            ME.message);
                     end
-        
-                else
-                    fprintf('Suppression annulée.\n');
                 end
+
+            elseif strcmpi(delete_choice, 'n')
+
+                fprintf( ...
+                    '  Conservation des anciennes versions.\n');
+
+            else
+                error( ...
+                    'delete_choice doit être égal à ''y'' ou ''n''.');
             end
         end
-
     end
 
     fprintf('\n[create_base_folders] Terminé.\n');
+end
+
+
+%==============================================================
+% Fonction locale :
+% normalise un chemin pour permettre une comparaison fiable
+%==============================================================
+function path_out = remove_trailing_filesep_local(path_in)
+
+    if isempty(path_in)
+        path_out = '';
+        return;
+    end
+
+    path_out = char(path_in);
+
+    while numel(path_out) > 1 && ...
+          (path_out(end) == filesep || ...
+           path_out(end) == '/' || ...
+           path_out(end) == '\')
+
+        path_out(end) = [];
+    end
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

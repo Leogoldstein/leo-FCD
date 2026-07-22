@@ -5,17 +5,107 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
         return;
     end
 
+    %==========================================================
+    % Nom de la nouvelle version
+    %==========================================================
     daytime_date = datestr(datetime('now'), 'yy_mm_dd_HH_MM');
-    daytime = ['v' get_next_version_number_from_suite2p(selected_groups) '_' daytime_date];
 
-    processing_choice1 = input('Do you want to process the most recent folder for processing (1/2)? ', 's');
+    daytime = [ ...
+        'v' ...
+        get_next_version_number_from_suite2p(selected_groups) ...
+        '_' ...
+        daytime_date];
 
-    if strcmp(processing_choice1, '2')
-        processing_choice2 = input('Do you want to select an existing folder or create a new one? (1/2): ', 's');
-    else
-        processing_choice2 = [];
+    %==========================================================
+    % Choix principal du dossier de processing
+    %==========================================================
+    fprintf('\n============================================\n');
+    fprintf('SÉLECTION DU DOSSIER DE PROCESSING\n');
+    fprintf('============================================\n');
+
+    disp('1 = Utiliser le dossier de processing le plus récent');
+    disp('2 = Sélectionner un ancien dossier ou créer une nouvelle version');
+
+    processing_choice1 = input('Votre choix : ', 's');
+    processing_choice1 = strtrim(processing_choice1);
+
+    if ~ismember(processing_choice1, {'1', '2'})
+        error('Le choix doit être 1 ou 2.');
     end
 
+    %==========================================================
+    % Choix ancien dossier / nouveau dossier
+    %==========================================================
+    if strcmp(processing_choice1, '2')
+
+        fprintf('\n');
+        disp('1 = Sélectionner une version existante');
+        disp('2 = Créer une nouvelle version');
+
+        processing_choice2 = input('Votre choix : ', 's');
+        processing_choice2 = strtrim(processing_choice2);
+
+        if ~ismember(processing_choice2, {'1', '2'})
+            error('Le choix doit être 1 ou 2.');
+        end
+
+    else
+        processing_choice2 = '';
+    end
+
+    %==========================================================
+    % Si création d'une nouvelle version :
+    % demander une seule fois si les anciens résultats doivent
+    % être récupérés
+    %==========================================================
+    processing_choice = '';
+
+    if strcmp(processing_choice1, '2') && ...
+       strcmp(processing_choice2, '2')
+
+        fprintf('\n============================================\n');
+        fprintf('MODE DE PROCESSING DE LA NOUVELLE VERSION\n');
+        fprintf('============================================\n');
+
+        disp('1 = Refaire tout le processing depuis les données brutes');
+        disp('2 = Récupérer les anciens fichiers results depuis le processing le plus récent');
+
+        processing_choice = input('Votre choix : ', 's');
+        processing_choice = strtrim(processing_choice);
+
+        if ~ismember(processing_choice, {'1', '2'})
+            error('Le choix doit être 1 ou 2.');
+        end
+    end
+
+    %==========================================================
+    % Si création d'une nouvelle version :
+    % demander une seule fois si les anciennes versions doivent
+    % être supprimées
+    %==========================================================
+    delete_choice = 'n';
+
+    if strcmp(processing_choice1, '2') && ...
+       strcmp(processing_choice2, '2')
+
+        fprintf('\n============================================\n');
+        fprintf('SUPPRESSION DES ANCIENNES VERSIONS\n');
+        fprintf('============================================\n');
+
+        delete_choice = input( ...
+            'Supprimer toutes les anciennes versions ? (y/n) : ', ...
+            's');
+
+        delete_choice = lower(strtrim(delete_choice));
+
+        if ~ismember(delete_choice, {'y', 'n'})
+            error('Le choix de suppression doit être y ou n.');
+        end
+    end
+
+    %==========================================================
+    % Traitement de tous les types et animaux
+    %==========================================================
     type_names = fieldnames(selected_groups);
 
     for t = 1:numel(type_names)
@@ -24,12 +114,18 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
 
         for k = 1:numel(selected_groups.(current_type))
 
-            current_animal = selected_groups.(current_type)(k).animal;
+            current_animal = ...
+                selected_groups.(current_type)(k).animal;
 
+            %--------------------------------------------------
+            % Chemins des dates
+            %--------------------------------------------------
             if isfield(selected_groups.(current_type)(k), 'paths') && ...
                isfield(selected_groups.(current_type)(k).paths, 'date')
 
-                date_group_paths = selected_groups.(current_type)(k).paths.date;
+                date_group_paths = ...
+                    selected_groups.(current_type)(k).paths.date;
+
             else
                 date_group_paths = {};
                 fprintf('  Aucun paths.date trouvé.\n');
@@ -41,34 +137,54 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
 
             nDates = numel(date_group_paths);
 
+            %--------------------------------------------------
+            % Chemins Suite2p
+            %--------------------------------------------------
             if isfield(selected_groups.(current_type)(k), 'paths') && ...
                isfield(selected_groups.(current_type)(k).paths, 'suite2p') && ...
                ~isempty(selected_groups.(current_type)(k).paths.suite2p)
 
-                current_suite2p_group = selected_groups.(current_type)(k).paths.suite2p;
+                current_suite2p_group = ...
+                    selected_groups.(current_type)(k).paths.suite2p;
+
             else
-                current_suite2p_group = cell(nDates, 4);   
+                current_suite2p_group = cell(nDates, 4);
             end
 
-            current_suite2p_group = force_4col(current_suite2p_group, nDates);
-            current_gcamp_folders_group = current_suite2p_group(:, 1);
+            current_suite2p_group = ...
+                force_4col(current_suite2p_group, nDates);
 
-            rename_old_processing_folders_from_suite2p(current_gcamp_folders_group);
-            
-            [gcamp_root_folders, gcamp_output_folders] = create_base_folders( ...
-                date_group_paths, ...
-                current_gcamp_folders_group, ...
-                daytime, ...
-                processing_choice1, ...
-                processing_choice2, ...
-                current_animal);
+            current_gcamp_folders_group = ...
+                current_suite2p_group(:, 1);
 
-            selected_groups.(current_type)(k).paths.gcamp_root = gcamp_root_folders;
-            selected_groups.(current_type)(k).paths.gcamp_output = gcamp_output_folders;
+            %--------------------------------------------------
+            % Renommage éventuel des anciens dossiers
+            %--------------------------------------------------
+            rename_old_processing_folders_from_suite2p( ...
+                current_gcamp_folders_group);
+
+            %--------------------------------------------------
+            % Création ou sélection des dossiers
+            %--------------------------------------------------
+            [gcamp_root_folders, gcamp_output_folders] = ...
+                create_base_folders( ...
+                    date_group_paths, ...
+                    current_gcamp_folders_group, ...
+                    daytime, ...
+                    processing_choice1, ...
+                    processing_choice2, ...
+                    processing_choice, ...
+                    delete_choice, ...
+                    current_animal);
+
+            selected_groups.(current_type)(k).paths.gcamp_root = ...
+                gcamp_root_folders;
+
+            selected_groups.(current_type)(k).paths.gcamp_output = ...
+                gcamp_output_folders;
         end
     end
 end
-
 
 function C4 = force_4col(C, nRowsWanted)
 

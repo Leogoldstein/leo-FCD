@@ -15,7 +15,7 @@ setup_python_env()
 if ~exist('selected_groups','var')
     selected_groups = [];
 end
-%%
+
 [selected_groups, animal_date_list] = folder_selection( ...
     choices, group_order, dataFolders_by_group, selected_groups);
 
@@ -29,7 +29,7 @@ selected_groups = create_data(selected_groups);
 
 % Data processing
 selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-
+%%
 [selected_groups, output_folders] = DF_peak_detection(selected_groups, include_blue_cells, output_folders);
 
 %%
