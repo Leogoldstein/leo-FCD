@@ -166,6 +166,7 @@ function selected_groups = build_selected_groups_minimal( ...
         'type', '', ...
         'line', '', ...
         'sex', '', ...
+        'dates', {{}}, ...
         'ages', {{}}, ...
         'paths', struct( ...
             'animal', '', ...
@@ -191,8 +192,9 @@ function selected_groups = build_selected_groups_minimal( ...
         animal_path = infer_animal_path_from_tseries(TSeriesPaths, idx);
 
         dates_group = cellstr(T.date(idx));
-        ages  = cellstr(T.age(idx));
+        ages        = cellstr(T.age(idx));
 
+        dates = cell(numel(idx),1);
         date_group_path = cell(numel(idx),1);
 
         for j = 1:numel(idx)
@@ -200,14 +202,28 @@ function selected_groups = build_selected_groups_minimal( ...
             this_tseries = get_cell_safe(TSeriesPaths, idx(j), 1);
 
             if ~isempty(this_tseries)
-                [date_path, ~, ~] = fileparts(this_tseries);
+                [date_path, ~, ~] = fileparts( ...
+                    force_char_path(this_tseries));
+
                 date_group_path{j} = date_path;
 
+                [~, date_name] = fileparts( ...
+                    force_char_path(date_path));
+
+                dates{j} = date_name;
+
             elseif ~isempty(animal_path) && ~isempty(dates_group{j})
-                date_group_path{j} = fullfile(animal_path, dates_group{j});
+                date_group_path{j} = fullfile( ...
+                    animal_path, dates_group{j});
+
+                [~, date_name] = fileparts( ...
+                    force_char_path(date_group_path{j}));
+
+                dates{j} = date_name;
 
             else
                 date_group_path{j} = '';
+                dates{j} = dates_group{j};
             end
         end
 
@@ -215,6 +231,7 @@ function selected_groups = build_selected_groups_minimal( ...
         selected_groups(k).type         = type_value;
         selected_groups(k).line         = line_name;
         selected_groups(k).sex          = sex_value;
+        selected_groups(k).dates        = dates;
         selected_groups(k).ages         = ages;
 
         selected_groups(k).paths.animal  = animal_path;
@@ -349,7 +366,7 @@ function final_group = keep_group_current_selection( ...
 
     protected_fields = { ...
         'animal', 'type', 'line', 'sex', ...
-        'ages', 'paths', 'data'};
+        'dates', 'ages', 'paths', 'data'};
 
     for f = 1:numel(old_fields)
 
@@ -394,8 +411,42 @@ function final_group = keep_group_current_selection( ...
             final_ages{j} = old_ages{old_indices(j)};
         end
     end
+    
+    % Dates : priorité à la sélection actuelle.
+    new_dates = get_group_vector(new_group, 'dates', nNew);
+    old_dates = get_group_vector(old_group, 'dates', nOld);
 
-    final_group.ages = final_ages;
+    final_dates = cell(nNew,1);
+
+    for j = 1:nNew
+
+        if j <= numel(new_dates) && ~isempty(new_dates{j})
+
+            final_dates{j} = new_dates{j};
+
+        elseif old_indices(j) > 0 && ...
+                old_indices(j) <= numel(old_dates) && ...
+                ~isempty(old_dates{old_indices(j)})
+
+            final_dates{j} = old_dates{old_indices(j)};
+
+        elseif isfield(final_group, 'paths') && ...
+                isstruct(final_group.paths) && ...
+                isfield(final_group.paths, 'date') && ...
+                iscell(final_group.paths.date) && ...
+                size(final_group.paths.date,1) >= j && ...
+                ~isempty(final_group.paths.date{j,1})
+
+            [~, date_name] = fileparts( ...
+                force_char_path( ...
+                    final_group.paths.date{j,1}));
+
+            final_dates{j} = date_name;
+        end
+    end
+
+    final_group.dates = final_dates;
+    final_group.ages  = final_ages;
 
     % Conserver uniquement les données des recordings sélectionnés.
     if isfield(old_group, 'data') && ...
@@ -657,6 +708,34 @@ function out = subset_recording_cell(C, old_indices, nNew)
 end
 
 
+function out = force_char_path(in)
+
+    if isempty(in)
+
+        out = '';
+
+    elseif ischar(in)
+
+        out = in;
+
+    elseif isstring(in)
+
+        out = char(in(1));
+
+    elseif iscell(in)
+
+        if isempty(in)
+            out = '';
+        else
+            out = force_char_path(in{1});
+        end
+
+    else
+
+        out = char(string(in));
+    end
+end
+
 function tf = is_recording_indexed_cell(value, nRecordings)
 
     tf = false;
@@ -866,6 +945,10 @@ end
 function n = get_recording_count(group)
 
     counts = 0;
+
+    if isfield(group, 'dates') && iscell(group.dates)
+        counts(end+1) = numel(group.dates);
+    end
 
     if isfield(group, 'ages') && iscell(group.ages)
         counts(end+1) = numel(group.ages);

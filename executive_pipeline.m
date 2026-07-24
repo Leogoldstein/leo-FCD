@@ -28,21 +28,19 @@ selected_groups = create_data(selected_groups);
 %recap_all = create_summary_sheets(selected_gr0oups);
 
 % Data processing
-selected_groups = process_selected_groups(selected_groups, include_blue_cells);
-%%
+selected_groups = process_selected_groups(selected_groups, include_blue_cells, output_folders);
+
 [selected_groups, output_folders] = DF_peak_detection(selected_groups, include_blue_cells, output_folders);
 
-%%
 %selected_groups = data_checking(selected_groups, include_blue_cells);
 
 [selected_groups, results_table] = compute_DF(selected_groups, include_blue_cells);
-
 
 %plot_traces_sorted_by_burst_rate(selected_groups)
 
 %build_rasterplot_DF_random_traces(selected_groups)
 
-%% Plots during adulthood
+% Plots during adulthood
 visualize_data(selected_groups, automatic_selection, include_blue_cells, results_table, output_folders);
 
 

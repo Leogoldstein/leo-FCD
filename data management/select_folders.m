@@ -173,9 +173,11 @@ function folder_names = get_folder_list(type, lastFolderName)
 
         case "WT"
             folder_names = {
-                'an1\2024-03-04';
+                'an1\2024-04-03';
                 'an2\2024-04-29';
-                %'an2\2024-04-30';
+                'an2\2024-05-06';
+                'an2\2024-05-07';
+                'an2\2024-04-30';
                 'an4\2024-06-07';
                 'an5\2024-06-12';
                 'an5\2024-06-13';
@@ -207,36 +209,50 @@ function folder_names = get_folder_list(type, lastFolderName)
                 case 'gcamp'
                     folder_names = {
                         'ani3\2024-06-28';
+                        'ani4\2024-06-29';
                         'ani5\2024-06-27';
                         'mTor13\ani2\2024-10-22';
+                        'mTor13\ani2\2024-10-24';
+                        'mTor14\ani1\2024-10-22';
+                        'mTor14\ani1\2024-10-23';
                         'mTor14\ani1\2024-10-24';
                         'mTor14\ani1\2024-10-25';
                         'mTor14\ani3\2024-10-24';
+                        %'mTor14\ani3\2024-10-25'; %doit etre croppé
                         'mTor14\ani3\2024-10-26';
                         'mTor14\ani3\2024-10-27';
-                        'mTor14\ani3\2024-10-28';
+                        %'mTor14\ani3\2024-10-28'; SNR low
+                        %'mTor15\ani5\2024-11-23'; %trop peu de cellules
+                        'mTor15\ani5\2024-11-24';
+                        'mTor15\ani5\2024-11-25';
+                        'mTor15\ani5\2024-11-26';
                         'mTor16\ani3\2024-11-21';
-                        'mTor16\ani4\2024-11-21';
+                        %'mTor16\ani4\2024-11-21'; %trop d'artefacts
+                        'mTor17\ani1\2024-12-17';
                         'mTor17\ani3\2024-12-19';
+                        'mTor17\ani3\2024-12-21';
+                        'mTor19\ani6\2025-01-31';
                     };
 
                 case 'blue'
                     folder_names = {
-                        'mTor20\ani5\2025-01-30';
-                        'mTor19\ani6\2025-01-31';
-                        'mTor19\ani6\2025-02-01';
-                        %'mTor17\ani3\2024-12-23';
-                        %'mTor17\ani3\2024-12-22';
-                        'mTor17\ani3\2024-12-21';
-                        %'mTor17\ani3\2024-12-20';
-                        'mTor17\ani3\2024-12-19';
-                        %'mTor17\ani2\2024-12-20';
-                        %'mTor17\ani2\2024-12-19';
-                        'mTor17\ani1\2024-12-21';
-                        %'mTor17\ani1\2024-12-20';
-                        'mTor17\ani1\2024-12-19';
-                        'mTor17\ani1\2024-12-18';
                         'mTor17\ani1\2024-12-17';
+                        %'mTor17\ani1\2024-12-18'; % pas assez de neurones
+                        % 'mTor17\ani1\2024-12-19'; %artefacts
+                        %'mTor17\ani1\2024-12-20'; %artefacts
+                        %'mTor17\ani1\2024-12-21'; %artefacts
+                        %'mTor17\ani2\2024-12-19'; % artefacts et peu de
+                        %neurones
+                        %'mTor17\ani2\2024-12-20'; %pas assez de neurones
+                        'mTor17\ani3\2024-12-19'; % très peu de nerones mais artefacts convenables
+                        'mTor17\ani3\2024-12-20';
+                        'mTor17\ani3\2024-12-21';
+                        'mTor17\ani3\2024-12-22';
+                        %'mTor17\ani3\2024-12-23'; % bcp d'artefacts mais
+                        %peut valoir le coup car bcp de neurones
+                        'mTor19\ani6\2025-01-31';
+                        'mTor19\ani6\2025-02-01';  
+                        %'mTor20\ani5\2025-01-30'; % attention aux artefacts                                                                     
                     };
 
                 otherwise

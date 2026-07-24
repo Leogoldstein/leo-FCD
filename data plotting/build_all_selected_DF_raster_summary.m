@@ -2,6 +2,7 @@ function build_all_selected_DF_raster_summary( ...
         selected_groups, ...
         output_folders, ...
         include_blue_cells)
+
 %BUILD_ALL_SELECTED_DF_RASTER_SUMMARY
 %
 % Crée une figure DF séparée pour chaque type d'animal.
@@ -185,125 +186,6 @@ function build_all_selected_DF_raster_summary( ...
 end
 
 %==============================================================
-% NORMALISER LES DOSSIERS RACINES
-%==============================================================
-function root_folders = normalize_root_folders_DF( ...
-        root_folders, n_types)
-
-    if ischar(root_folders) || ...
-            (isstring(root_folders) && isscalar(root_folders))
-
-        root_folders = repmat( ...
-            {char(string(root_folders))}, ...
-            n_types, ...
-            1);
-
-    elseif isstring(root_folders)
-
-        root_folders = cellstr(root_folders(:));
-
-    elseif iscell(root_folders)
-
-        root_folders = root_folders(:);
-
-    else
-
-        error([ ...
-            'root_folders doit être un chemin texte ou une cellule ', ...
-            'de chemins texte.']);
-    end
-
-    if numel(root_folders) == 1 && n_types > 1
-        root_folders = repmat(root_folders, n_types, 1);
-    end
-
-    if numel(root_folders) ~= n_types
-        error([ ...
-            'Le nombre de root_folders (%d) doit correspondre au ', ...
-            'nombre de types dans selected_groups (%d).'], ...
-            numel(root_folders), ...
-            n_types);
-    end
-
-    for i = 1:n_types
-
-        current_root = root_folders{i};
-
-        if isempty(current_root)
-            current_root = pwd;
-        end
-
-        current_root = char(string(current_root));
-
-        if exist(current_root, 'dir') ~= 7
-            error( ...
-                'Dossier racine introuvable pour le type %d : %s', ...
-                i, ...
-                current_root);
-        end
-
-        root_folders{i} = current_root;
-    end
-end
-
-%==============================================================
-% NORMALISER AUTOMATIC_SELECTION
-%==============================================================
-function automatic_selection = normalize_automatic_selection_DF( ...
-        automatic_selection, n_types)
-
-    if iscell(automatic_selection)
-
-        normalized_values = false(numel(automatic_selection), 1);
-
-        for i = 1:numel(automatic_selection)
-            normalized_values(i) = parse_logical_scalar_DF( ...
-                automatic_selection{i}, false);
-        end
-
-        automatic_selection = normalized_values;
-
-    elseif isstring(automatic_selection)
-
-        normalized_values = false(numel(automatic_selection), 1);
-
-        for i = 1:numel(automatic_selection)
-            normalized_values(i) = parse_logical_scalar_DF( ...
-                automatic_selection(i), false);
-        end
-
-        automatic_selection = normalized_values;
-
-    elseif isnumeric(automatic_selection) || ...
-            islogical(automatic_selection)
-
-        automatic_selection = ...
-            logical(automatic_selection(:));
-
-    else
-
-        error([ ...
-            'automatic_selection doit être logique, numérique, ', ...
-            'texte ou une cellule.']);
-    end
-
-    if numel(automatic_selection) == 1 && n_types > 1
-        automatic_selection = repmat( ...
-            automatic_selection, ...
-            n_types, ...
-            1);
-    end
-
-    if numel(automatic_selection) ~= n_types
-        error([ ...
-            'Le nombre de valeurs automatic_selection (%d) doit ', ...
-            'correspondre au nombre de types (%d).'], ...
-            numel(automatic_selection), ...
-            n_types);
-    end
-end
-
-%==============================================================
 % CONVERTIR UNE VALEUR EN LOGIQUE SCALAIRE
 %==============================================================
 function flag = parse_logical_scalar_DF(value, default_value)
@@ -361,13 +243,44 @@ function records = collect_DF_records( ...
 
         animal_struct = current_animals(k);
 
+        %--------------------------------------------------------------
+        % Nom de l'animal courant
+        %--------------------------------------------------------------
         animal_name = sprintf('Animal_%d', k);
-
-        if isfield(animal_struct, 'animal_group') && ...
+        
+        if isfield(animal_struct, 'animal') && ...
+                ~isempty(animal_struct.animal)
+        
+            animal_name = char(string(animal_struct.animal));
+        
+        elseif isfield(animal_struct, 'animal_group') && ...
                 ~isempty(animal_struct.animal_group)
-
-            animal_name = char(string( ...
-                animal_struct.animal_group));
+        
+            animal_name = char(string(animal_struct.animal_group));
+        end
+        
+        %--------------------------------------------------------------
+        % Ligne de l'animal courant
+        % Exemple : mtor17_ani1
+        %--------------------------------------------------------------
+        line_name = '';
+        
+        if isfield(animal_struct, 'line') && ...
+                ~isempty(animal_struct.line)
+        
+            line_name = char(string(animal_struct.line));
+        end
+        
+        if ~isempty(line_name)
+        
+            animal_display_name = sprintf( ...
+                '%s_%s', ...
+                line_name, ...
+                animal_name);
+        
+        else
+        
+            animal_display_name = animal_name;
         end
 
         if ~isfield(animal_struct, 'data') || ...
@@ -424,7 +337,7 @@ function records = collect_DF_records( ...
             record_counter = record_counter + 1;
 
             records(record_counter).type = current_type;
-            records(record_counter).animal = animal_name;
+            records(record_counter).animal = animal_display_name;
             records(record_counter).animal_index = k;
             records(record_counter).date_index = m;
             records(record_counter).date_name = date_name;
@@ -463,7 +376,7 @@ function records = collect_DF_records( ...
 
     sorting_table = sortrows( ...
         sorting_table, ...
-        {'Animal', 'Age', 'Date'}, ...
+        {'Age', 'Date', 'Animal'}, ...
         {'ascend', 'ascend', 'ascend'});
 
     records = records(sorting_table.OriginalIndex);
@@ -737,6 +650,101 @@ function DF_concat = concat_DF_planes(DF_planes)
     DF_concat = cat(1, DF_planes{:});
 end
 
+%==============================================================
+% NORMALISER LES DOSSIERS DE SORTIE
+%==============================================================
+function output_folders = normalize_output_folders_DF( ...
+        output_folders, n_types)
+
+    %----------------------------------------------------------
+    % Convertir l'entrée en cellule colonne
+    %----------------------------------------------------------
+    if ischar(output_folders) || ...
+            (isstring(output_folders) && isscalar(output_folders))
+
+        output_folders = {char(string(output_folders))};
+
+    elseif isstring(output_folders)
+
+        output_folders = cellstr(output_folders(:));
+
+    elseif iscell(output_folders)
+
+        output_folders = output_folders(:);
+
+    else
+
+        error( ...
+            'build_all_selected_DF_raster_summary:InvalidOutputFolders', ...
+            ['output_folders doit être un chemin texte, un tableau ', ...
+             'de chaînes ou une cellule de chemins.']);
+    end
+
+    %----------------------------------------------------------
+    % Un même dossier peut être utilisé pour tous les types
+    %----------------------------------------------------------
+    if numel(output_folders) == 1 && n_types > 1
+        output_folders = repmat(output_folders, n_types, 1);
+    end
+
+    %----------------------------------------------------------
+    % Vérifier le nombre de dossiers
+    %----------------------------------------------------------
+    if numel(output_folders) ~= n_types
+
+        error( ...
+            'build_all_selected_DF_raster_summary:OutputFolderCountMismatch', ...
+            ['Le nombre de dossiers de sortie (%d) doit correspondre ', ...
+             'au nombre de types présents dans selected_groups (%d).'], ...
+            numel(output_folders), ...
+            n_types);
+    end
+
+    %----------------------------------------------------------
+    % Nettoyer et valider chaque chemin
+    %----------------------------------------------------------
+    for i = 1:n_types
+
+        current_folder = output_folders{i};
+
+        % Certaines anciennes fonctions peuvent renvoyer une cellule
+        % imbriquée : {{'D:\Imaging\...'}}
+        while iscell(current_folder) && numel(current_folder) == 1
+            current_folder = current_folder{1};
+        end
+
+        if isempty(current_folder)
+
+            error( ...
+                'build_all_selected_DF_raster_summary:EmptyOutputFolder', ...
+                'Le dossier de sortie du type %d est vide.', ...
+                i);
+        end
+
+        if ~(ischar(current_folder) || ...
+                (isstring(current_folder) && isscalar(current_folder)))
+
+            error( ...
+                'build_all_selected_DF_raster_summary:InvalidOutputFolder', ...
+                ['Le dossier de sortie du type %d doit être un chemin ', ...
+                 'texte. Type reçu : %s.'], ...
+                i, ...
+                class(current_folder));
+        end
+
+        current_folder = strtrim(char(string(current_folder)));
+
+        if isempty(current_folder)
+
+            error( ...
+                'build_all_selected_DF_raster_summary:EmptyOutputFolder', ...
+                'Le dossier de sortie du type %d est vide.', ...
+                i);
+        end
+
+        output_folders{i} = current_folder;
+    end
+end
 
 %==============================================================
 % HELPERS

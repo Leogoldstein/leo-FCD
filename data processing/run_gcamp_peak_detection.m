@@ -14,12 +14,16 @@ function data = run_gcamp_peak_detection( ...
 
     numFolders = numel(gcamp_output_folders);
 
-    if nargin < 9 || isempty(include_blue_cells)
+    if nargin < 12 || isempty(include_blue_cells)
         include_blue_cells = '1';
     end
-    
-    if nargin < 10 || isempty(peak_detection_mode)
-        peak_detection_mode = ask_initial_peak_detection_mode();
+
+    % Ne pas demander Viewer / Load only au démarrage.
+    % En l'absence de mode fourni, le traitement normal est utilisé.
+    % La question Viewer / Load only ne sera posée que lorsqu'une
+    % détection existante est réellement trouvée.
+    if nargin < 13 || isempty(peak_detection_mode)
+        peak_detection_mode = 'global';
     end
 
     include_blue_cells = char(string(include_blue_cells));
@@ -87,13 +91,22 @@ function data = run_gcamp_peak_detection( ...
 
     data = init_motion_group_if_needed(data, numFolders, fields_motion_group);
 
-    processing_mode = peak_detection_mode;
+    processing_mode = lower(strtrim(char(string(peak_detection_mode))));
+
+    % Action appliquée aux détections déjà existantes.
+    % Elle reste vide tant qu'aucune donnée existante n'est rencontrée.
+    global_existing_detection_action = '';
 
     switch processing_mode
         case 'viewer'
             global_existing_detection_action = 'viewer';
+
         case 'load_only'
             global_existing_detection_action = 'load_only';
+
+        otherwise
+            % Traitement normal. Aucune question n'est posée ici.
+            processing_mode = 'global';
     end
 
     global_choice_state = struct();
@@ -480,18 +493,27 @@ function data = run_gcamp_peak_detection( ...
 
             if has_detection_plane
 
+                % Ne demander Viewer / Load only qu'au premier plan pour
+                % lequel une détection existante est réellement disponible.
+                if isempty(global_existing_detection_action)
+                    global_existing_detection_action = ...
+                        ask_existing_detection_action_global(record_label_m);
+                end
+
                 switch global_existing_detection_action
                     case 'viewer'
                         viewer_mode_requested_plane = true;
                         skip_plane = false;
-            
+
                     case 'load_only'
                         viewer_mode_requested_plane = false;
                         skip_plane = true;
                 end
-            
+
                 if skip_plane
-                    fprintf('%s - plane %d: existing detection loaded only.\n', record_label_m, p);
+                    fprintf( ...
+                        '%s - plane %d: existing detection loaded only.\n', ...
+                        record_label_m, p);
                     continue;
                 end
             end

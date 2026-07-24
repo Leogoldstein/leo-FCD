@@ -1792,16 +1792,28 @@ function finalize_and_close(fig, synchronous_frames)
         end
 
     try
-        if isappdata(fig,'gcamp_output_folder')
-            outdir_preview = getappdata(fig,'gcamp_output_folder');
+        if isappdata(fig, 'gcamp_output_folder')
+            outdir_preview = getappdata(fig, 'gcamp_output_folder');
         else
             outdir_preview = '';
         end
     
-        if isappdata(fig,'output_folder')
-            output_folder_preview = getappdata(fig,'output_folder');
+        if isappdata(fig, 'output_folder')
+            output_folder_preview = getappdata(fig, 'output_folder');
         else
             output_folder_preview = '';
+        end
+    
+        if isappdata(fig, 'animal')
+            animal_preview = getappdata(fig, 'animal');
+        else
+            animal_preview = '';
+        end
+    
+        if isappdata(fig, 'date')
+            date_preview = getappdata(fig, 'date');
+        else
+            date_preview = '';
         end
     
         create_random_peak_preview( ...
@@ -1810,13 +1822,16 @@ function finalize_and_close(fig, synchronous_frames)
             Acttmp2, ...
             thresholds, ...
             outdir_preview, ...
-            output_folder_preview);
+            output_folder_preview, ...
+            animal_preview, ...
+            date_preview);
     
     catch ME
-        warning('Impossible de créer la figure preview des pics : %s', ...
+        warning( ...
+            'Impossible de créer la figure preview des pics : %s', ...
             ME.message);
     end
-
+    
     orig2new = nan(max([valid_cells(:); 1]),1);
     if ~isempty(valid_cells)
         orig2new(valid_cells) = 1:numel(valid_cells);
@@ -2626,30 +2641,32 @@ function create_random_peak_preview( ...
         Acttmp2, ...
         thresholds, ...
         gcamp_output_folder, ...
-        output_folder)
+        output_folder, ...
+        animal_name, ...
+        date_name)
 %CREATE_RANDOM_PEAK_PREVIEW
 %
 % Crée une figure avec jusqu'à 10 cellules tirées au hasard parmi
 % les cellules gardées et affiche leurs traces avec les pics détectés.
 %
-% Deux sauvegardes peuvent être produites :
+% Sauvegardes possibles :
 %
-%   1) Dans le dossier de traitement :
-%      gcamp_output_folder/random_peak_preview.png
+%   1) gcamp_output_folder/random_peak_preview.png
 %
-%   2) Dans le dossier général de sortie :
-%      output_folder/version_animal_date_random_peak_preview.png
+%   2) output_folder/version_animal_date_random_peak_preview.png
 %
-% La version est extraite automatiquement du dernier dossier de
-% gcamp_output_folder, par exemple :
+% Entrées facultatives :
 %
-%   ...\after processing\v1_26_07_22
-%
-% devient :
-%
-%   v1_26_07_22
+%   thresholds           : seuil de chaque cellule
+%   gcamp_output_folder  : dossier local de traitement
+%   output_folder        : dossier général des previews
+%   animal_name          : nom de l'animal
+%   date_name            : date de l'enregistrement
 
-    if nargin < 4
+    % =========================================================
+    % Arguments facultatifs
+    % =========================================================
+    if nargin < 4 || isempty(thresholds)
         thresholds = [];
     end
 
@@ -2660,6 +2677,26 @@ function create_random_peak_preview( ...
     if nargin < 6 || isempty(output_folder)
         output_folder = '';
     end
+
+    if nargin < 7 || isempty(animal_name)
+        animal_name = '';
+    end
+
+    if nargin < 8 || isempty(date_name)
+        date_name = '';
+    end
+
+    % =========================================================
+    % Normalisation des textes et chemins
+    % =========================================================
+    gcamp_output_folder = normalize_text_value(gcamp_output_folder);
+    output_folder       = normalize_text_value(output_folder);
+    animal_name         = normalize_text_value(animal_name);
+    date_name           = normalize_text_value(date_name);
+
+    % Évite les caractères invalides dans les noms de fichiers
+    animal_name = sanitize_filename_component(animal_name);
+    date_name   = sanitize_filename_component(date_name);
 
     % =========================================================
     % Vérification des données
@@ -2676,20 +2713,13 @@ function create_random_peak_preview( ...
         return;
     end
 
-    % =========================================================
-    % Normalisation des chemins
-    % =========================================================
-    if isstring(gcamp_output_folder)
-        gcamp_output_folder = char(gcamp_output_folder);
-    end
-
-    if isstring(output_folder)
-        output_folder = char(output_folder);
+    if size(DF, 2) == 0
+        warning('Les traces DF ne contiennent aucune frame.');
+        return;
     end
 
     % =========================================================
-    % Première destination :
-    % gcamp_output_folder/random_peak_preview.png
+    % Première destination
     % =========================================================
     local_png_path = '';
 
@@ -2705,7 +2735,7 @@ function create_random_peak_preview( ...
     end
 
     % =========================================================
-    % Extraction automatique de la version
+    % Extraction automatique du nom de version
     % =========================================================
     version_name = '';
 
@@ -2715,30 +2745,25 @@ function create_random_peak_preview( ...
             gcamp_output_folder);
 
         [~, version_name] = fileparts(cleaned_gcamp_folder);
+        version_name = sanitize_filename_component(version_name);
     end
 
-    animal_name = get_appdata_or_default( ...
-        fig, ...
-        'animal', ...
-        '');
-
-    date_name = get_appdata_or_default( ...
-        fig, ...
-        'date', ...
-        '');
-
     % =========================================================
-    % Nom de la figure
+    % Construction propre du nom de figure
     % =========================================================
-    figure_base_name = sprintf( ...
-        '%s_%s_%s_random_peak_preview', ...
-        version_name, ...
-        animal_name, ...
-        date_name);
+    name_parts = {version_name, animal_name, date_name};
+    name_parts = name_parts(~cellfun(@isempty, name_parts));
+
+    if isempty(name_parts)
+        figure_base_name = 'random_peak_preview';
+    else
+        figure_base_name = [ ...
+            strjoin(name_parts, '_'), ...
+            '_random_peak_preview'];
+    end
 
     % =========================================================
-    % Deuxième destination :
-    % output_folder/version_animal_date_random_peak_preview.png
+    % Deuxième destination
     % =========================================================
     summary_png_path = '';
 
@@ -2771,10 +2796,13 @@ function create_random_peak_preview( ...
         'Position', [150 80 1200 900], ...
         'Visible', 'on');
 
+    nColumns = 2;
+    nRows = ceil(nShow / nColumns);
+
     tiledlayout( ...
         figPrev, ...
-        5, ...
-        2, ...
+        nRows, ...
+        nColumns, ...
         'TileSpacing', 'compact', ...
         'Padding', 'compact');
 
@@ -2785,16 +2813,19 @@ function create_random_peak_preview( ...
 
         ii = idx_show(k);
 
-        if ii > numel(valid_cells)
-            cid_orig = ii;
-        else
+        if ii <= numel(valid_cells) && ...
+                isfinite(valid_cells(ii))
+
             cid_orig = valid_cells(ii);
+        else
+            cid_orig = ii;
         end
 
         x = DF(ii, :);
         t = 1:numel(x);
 
         ax = nexttile;
+
         hold(ax, 'on');
         box(ax, 'off');
 
@@ -2819,12 +2850,14 @@ function create_random_peak_preview( ...
                 ~isempty(Acttmp2{ii})
 
             pk = Acttmp2{ii};
-            pk = pk(:)';
+            pk = round(pk(:)');
 
             pk = pk( ...
                 isfinite(pk) & ...
                 pk >= 1 & ...
                 pk <= numel(x));
+
+            pk = unique(pk);
         end
 
         if ~isempty(pk)
@@ -2842,13 +2875,15 @@ function create_random_peak_preview( ...
         % -----------------------------------------------------
         % Seuil de détection
         % -----------------------------------------------------
-        if ~isempty(thresholds) && ...
-                numel(thresholds) >= ii && ...
-                isfinite(thresholds(ii))
+        current_threshold = get_cell_threshold( ...
+            thresholds, ...
+            ii);
+
+        if isfinite(current_threshold)
 
             yline( ...
                 ax, ...
-                thresholds(ii), ...
+                current_threshold, ...
                 '--', ...
                 'LineWidth', 1);
         end
@@ -2856,7 +2891,7 @@ function create_random_peak_preview( ...
         title( ...
             ax, ...
             sprintf( ...
-                'Cellule orig %d | final %d | n=%d pics', ...
+                'Cellule orig %g | final %d | n=%d pics', ...
                 cid_orig, ...
                 ii, ...
                 numel(pk)), ...
@@ -2881,18 +2916,23 @@ function create_random_peak_preview( ...
             local_png_path);
 
         fprintf( ...
-            'Preview PNG sauvegardée dans le dossier de traitement :\n%s\n', ...
+            ['Preview PNG sauvegardée dans le dossier ' ...
+             'de traitement :\n%s\n'], ...
             local_png_path);
     end
 
     % =========================================================
-    % Sauvegarde de la copie dans output_folder
+    % Sauvegarde dans output_folder
     % =========================================================
     if ~isempty(summary_png_path)
 
-        % Évite une deuxième exportation si les chemins sont identiques
-        if isempty(local_png_path) || ...
-                ~strcmpi(local_png_path, summary_png_path)
+        same_destination = ...
+            ~isempty(local_png_path) && ...
+            strcmpi( ...
+                char(local_png_path), ...
+                char(summary_png_path));
+
+        if ~same_destination
 
             save_preview_figure( ...
                 figPrev, ...
@@ -2900,7 +2940,8 @@ function create_random_peak_preview( ...
         end
 
         fprintf( ...
-            'Copie de la preview sauvegardée dans output_folder :\n%s\n', ...
+            ['Copie de la preview sauvegardée dans ' ...
+             'output_folder :\n%s\n'], ...
             summary_png_path);
     end
 
@@ -2912,8 +2953,45 @@ function create_random_peak_preview( ...
     end
 end
 
+
+function current_threshold = get_cell_threshold(thresholds, cell_index)
+%GET_CELL_THRESHOLD Extrait le seuil correspondant à une cellule.
+
+    current_threshold = NaN;
+
+    if isempty(thresholds)
+        return;
+    end
+
+    if iscell(thresholds)
+
+        if numel(thresholds) < cell_index || ...
+                isempty(thresholds{cell_index})
+            return;
+        end
+
+        value = thresholds{cell_index};
+
+    else
+
+        if numel(thresholds) < cell_index
+            return;
+        end
+
+        value = thresholds(cell_index);
+    end
+
+    if isnumeric(value) && ...
+            isscalar(value) && ...
+            isfinite(value)
+
+        current_threshold = double(value);
+    end
+end
+
+
 function save_preview_figure(fig_handle, file_path)
-% Sauvegarde robuste de la figure.
+%SAVE_PREVIEW_FIGURE Sauvegarde robuste de la figure.
 
     try
         exportgraphics( ...
@@ -2939,22 +3017,66 @@ function save_preview_figure(fig_handle, file_path)
     end
 end
 
+
 function path_value = remove_trailing_filesep(path_value)
-%REMOVE_TRAILING_FILESEP Retire les séparateurs de fin d'un chemin.
+%REMOVE_TRAILING_FILESEP Retire les séparateurs à la fin d'un chemin.
+
+    path_value = normalize_text_value(path_value);
 
     if isempty(path_value)
         return;
     end
 
-    if isstring(path_value)
-        path_value = char(path_value);
-    end
-
     while numel(path_value) > 3 && ...
-            (path_value(end) == filesep || ...
-             path_value(end) == '/' || ...
-             path_value(end) == '\')
+            any(path_value(end) == [filesep, '/', '\'])
 
         path_value(end) = [];
     end
+end
+
+
+function value = normalize_text_value(value)
+%NORMALIZE_TEXT_VALUE Convertit une valeur textuelle en char.
+
+    if isempty(value)
+        value = '';
+        return;
+    end
+
+    if isstring(value)
+        value = char(value(1));
+
+    elseif iscell(value)
+        value = value{1};
+
+        if isstring(value)
+            value = char(value);
+        end
+    end
+
+    if isnumeric(value)
+        value = num2str(value);
+    end
+
+    if ~ischar(value)
+        value = char(string(value));
+    end
+
+    value = strtrim(value);
+end
+
+
+function value = sanitize_filename_component(value)
+%SANITIZE_FILENAME_COMPONENT Retire les caractères interdits.
+
+    value = normalize_text_value(value);
+
+    if isempty(value)
+        return;
+    end
+
+    value = regexprep(value, '[<>:"/\\|?*]', '-');
+    value = regexprep(value, '\s+', '_');
+    value = regexprep(value, '_+', '_');
+    value = regexprep(value, '^[_\-.]+|[_\-.]+$', '');
 end

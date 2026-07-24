@@ -743,11 +743,24 @@ function sce_metrics = load_or_process_sce_for_session( ...
     Raster_global_for_duration = concat_planes_local_nested( ...
     data, 'gcamp_plane', m, 'Raster_gcamp_by_plane', 'logical');
 
-    if isempty(Raster_global_for_duration) || sampling_rate <= 0
+    if isempty(Raster_global_for_duration) || ...
+       ~isfinite(sampling_rate) || ...
+       sampling_rate <= 0
+    
         sce_metrics.recording_duration_min = NaN;
+    
     else
+    
+        nFrames = size(Raster_global_for_duration, 2);
+    
+        bad_frame_mask = get_bad_frame_mask( ...
+            data, m, nFrames);
+    
+        nBadFrames = nnz(bad_frame_mask);
+        nValidFrames = nFrames - nBadFrames;
+    
         sce_metrics.recording_duration_min = ...
-            size(Raster_global_for_duration, 2) / sampling_rate / 60;
+            nValidFrames / sampling_rate / 60;
     end
 
     if exist(filePath, 'file') == 2
@@ -995,14 +1008,18 @@ function metrics = compute_branch_metrics_by_plane( ...
         'valid', false, ...
         'nCells_by_plane', {{}}, ...
         'nFrames_by_plane', {{}}, ...
+        'nValidFrames_by_plane', {{}}, ...
+        'nBadFrames_by_plane', {{}}, ...
+        'duration_min_by_plane', {{}}, ...
         'freq_by_plane', {{}}, ...
         'intervals_ms_by_plane', {{}}, ...
         'burst_rate_by_plane', {{}}, ...
         'burst_fraction_by_plane', {{}}, ...
         'burst_size_by_plane', {{}});
 
-    has_data = has_nonempty_plane_field_nested(data, branchName, dfField, m) && ...
-               has_nonempty_plane_field_nested(data, branchName, rasterField, m);
+    has_data = ...
+        has_nonempty_plane_field_nested(data, branchName, dfField, m) && ...
+        has_nonempty_plane_field_nested(data, branchName, rasterField, m);
 
     if ~has_data
         return;
@@ -1015,6 +1032,9 @@ function metrics = compute_branch_metrics_by_plane( ...
 
     metrics.nCells_by_plane = cell(1, nPlanes);
     metrics.nFrames_by_plane = cell(1, nPlanes);
+    metrics.nValidFrames_by_plane = cell(1, nPlanes);
+    metrics.nBadFrames_by_plane = cell(1, nPlanes);
+    metrics.duration_min_by_plane = cell(1, nPlanes);
     metrics.freq_by_plane = cell(1, nPlanes);
     metrics.intervals_ms_by_plane = cell(1, nPlanes);
     metrics.burst_rate_by_plane = cell(1, nPlanes);
@@ -1046,23 +1066,42 @@ function metrics = compute_branch_metrics_by_plane( ...
 
         metrics.valid = true;
 
+        nFrames = size(Raster, 2);
+
+        bad_frame_mask = get_bad_frame_mask(data, m, nFrames);
+        nBadFrames = nnz(bad_frame_mask);
+        nValidFrames = nFrames - nBadFrames;
+
+        if isfinite(sampling_rate) && sampling_rate > 0
+            duration_min = nValidFrames / sampling_rate / 60;
+        else
+            duration_min = NaN;
+        end
+
         metrics.nCells_by_plane{p} = size(Raster, 1);
-        metrics.nFrames_by_plane{p} = size(Raster, 2);
+        metrics.nFrames_by_plane{p} = nFrames;
+        metrics.nBadFrames_by_plane{p} = nBadFrames;
+        metrics.nValidFrames_by_plane{p} = nValidFrames;
+        metrics.duration_min_by_plane{p} = duration_min;
 
         metrics.freq_by_plane{p} = ...
-            compute_frequency_from_raster(Raster, sampling_rate);
+            compute_frequency_from_raster( ...
+                Raster, sampling_rate, bad_frame_mask);
 
         metrics.intervals_ms_by_plane{p} = ...
-            compute_inter_event_intervals_from_raster(Raster, sampling_rate);
+            compute_inter_event_intervals_from_raster( ...
+                Raster, sampling_rate);
 
         [burst_rate, burst_fraction, burst_size] = ...
-            compute_burst_metrics_from_raster(Raster, sampling_rate);
+            compute_burst_metrics_from_raster( ...
+                Raster, sampling_rate, bad_frame_mask);
 
         metrics.burst_rate_by_plane{p} = burst_rate;
         metrics.burst_fraction_by_plane{p} = burst_fraction;
         metrics.burst_size_by_plane{p} = burst_size;
     end
 end
+
 
 function tf = has_nonempty_plane_field_nested(data, branchName, fieldName, m)
 
@@ -1153,17 +1192,35 @@ function [DF, Raster] = align_data(DF, Raster)
     Raster = Raster(1:min_cells, 1:min_frames);
 end
 
-function freq_per_cell_per_min = compute_frequency_from_raster(Raster, sampling_rate)
+function freq_per_cell_per_min = compute_frequency_from_raster( ...
+    Raster, sampling_rate, bad_frame_mask)
 
-    if isempty(Raster) || sampling_rate <= 0
+    if isempty(Raster) || ...
+       ~isfinite(sampling_rate) || ...
+       sampling_rate <= 0
+
         freq_per_cell_per_min = [];
         return;
     end
 
     Raster = Raster ~= 0;
+
     [nCells, nFrames] = size(Raster);
 
-    duration_min = (nFrames / sampling_rate) / 60;
+    if nargin < 3 || isempty(bad_frame_mask)
+        bad_frame_mask = false(1, nFrames);
+    else
+        bad_frame_mask = logical(bad_frame_mask(:).');
+
+        if numel(bad_frame_mask) < nFrames
+            bad_frame_mask(end + 1:nFrames) = false;
+        elseif numel(bad_frame_mask) > nFrames
+            bad_frame_mask = bad_frame_mask(1:nFrames);
+        end
+    end
+
+    nValidFrames = nFrames - nnz(bad_frame_mask);
+    duration_min = nValidFrames / sampling_rate / 60;
 
     if duration_min <= 0
         freq_per_cell_per_min = nan(nCells, 1);
@@ -1171,6 +1228,7 @@ function freq_per_cell_per_min = compute_frequency_from_raster(Raster, sampling_
     end
 
     nEvents = sum(Raster, 2);
+
     freq_per_cell_per_min = nEvents ./ duration_min;
 end
 
@@ -1200,14 +1258,19 @@ function intervals_ms = compute_inter_event_intervals_from_raster(Raster, sampli
     intervals_ms = intervals_ms(isfinite(intervals_ms));
 end
 
-function [burst_rate_per_cell_per_min, burst_fraction_per_cell, burst_size_all] = ...
-    compute_burst_metrics_from_raster(Raster, sampling_rate)
+function [burst_rate_per_cell_per_min, ...
+          burst_fraction_per_cell, ...
+          burst_size_all] = ...
+    compute_burst_metrics_from_raster( ...
+        Raster, sampling_rate, bad_frame_mask)
 
     burst_rate_per_cell_per_min = [];
     burst_fraction_per_cell = [];
     burst_size_all = [];
 
-    if isempty(Raster) || sampling_rate <= 0
+    if isempty(Raster) || ...
+       ~isfinite(sampling_rate) || ...
+       sampling_rate <= 0
         return;
     end
 
@@ -1216,11 +1279,26 @@ function [burst_rate_per_cell_per_min, burst_fraction_per_cell, burst_size_all] 
     max_iei_ms = 1000;
     min_events_per_burst = 3;
 
-    max_iei_frames = round((max_iei_ms / 1000) * sampling_rate);
+    max_iei_frames = round( ...
+        (max_iei_ms / 1000) * sampling_rate);
 
     [nCells, nFrames] = size(Raster);
-    duration_min = (nFrames / sampling_rate) / 60;
 
+    if nargin < 3 || isempty(bad_frame_mask)
+        bad_frame_mask = false(1, nFrames);
+    else
+        bad_frame_mask = logical(bad_frame_mask(:).');
+
+        if numel(bad_frame_mask) < nFrames
+            bad_frame_mask(end + 1:nFrames) = false;
+        elseif numel(bad_frame_mask) > nFrames
+            bad_frame_mask = bad_frame_mask(1:nFrames);
+        end
+    end
+
+    nValidFrames = nFrames - nnz(bad_frame_mask);
+    duration_min = nValidFrames / sampling_rate / 60;
+    
     burst_rate_per_cell_per_min = nan(nCells, 1);
     burst_fraction_per_cell = nan(nCells, 1);
 
@@ -1246,7 +1324,7 @@ function [burst_rate_per_cell_per_min, burst_fraction_per_cell, burst_size_all] 
                 current_size = current_size + 1;
             else
                 if current_size >= min_events_per_burst
-                    burst_sizes(end+1, 1) = current_size; 
+                    burst_sizes(end + 1, 1) = current_size; %#ok<AGROW>
                 end
 
                 current_size = 1;
@@ -1254,23 +1332,28 @@ function [burst_rate_per_cell_per_min, burst_fraction_per_cell, burst_size_all] 
         end
 
         if current_size >= min_events_per_burst
-            burst_sizes(end+1, 1) = current_size; 
+            burst_sizes(end + 1, 1) = current_size; %#ok<AGROW>
         end
 
         nBursts = numel(burst_sizes);
 
-        burst_rate_per_cell_per_min(c) = nBursts / duration_min;
+        burst_rate_per_cell_per_min(c) = ...
+            nBursts / duration_min;
 
         if nEvents > 0
-            burst_fraction_per_cell(c) = sum(burst_sizes) / nEvents;
+            burst_fraction_per_cell(c) = ...
+                sum(burst_sizes) / nEvents;
         else
             burst_fraction_per_cell(c) = NaN;
         end
 
-        burst_size_all = [burst_size_all; burst_sizes(:)]; 
+        burst_size_all = [ ...
+            burst_size_all; ...
+            burst_sizes(:)]; %#ok<AGROW>
     end
 
-    burst_size_all = burst_size_all(isfinite(burst_size_all));
+    burst_size_all = ...
+        burst_size_all(isfinite(burst_size_all));
 end
 
 function out = concat_planes_local_nested(data, branchName, m, fieldName, mode)
@@ -1411,4 +1494,105 @@ function metrics = empty_branch_metrics()
         'burst_rate_by_plane', {{}}, ...
         'burst_fraction_by_plane', {{}}, ...
         'burst_size_by_plane', {{}});
+end
+
+function bad_frame_mask = get_bad_frame_mask(data, m, nFrames)
+%GET_BAD_FRAME_MASK
+% Retourne un masque logique 1 x nFrames.
+%
+% Formats acceptés dans data.motion.bad_frames_group{m} :
+%   - masque logique ;
+%   - vecteur numérique de 0 et 1 ;
+%   - liste d'indices de frames ;
+%   - cellule contenant un ou plusieurs de ces formats.
+
+    bad_frame_mask = false(1, nFrames);
+
+    if nargin < 3 || isempty(nFrames) || nFrames <= 0
+        return;
+    end
+
+    if ~isstruct(data) || ...
+       ~isfield(data, 'motion') || ...
+       ~isstruct(data.motion) || ...
+       ~isfield(data.motion, 'bad_frames_group') || ...
+       isempty(data.motion.bad_frames_group) || ...
+       numel(data.motion.bad_frames_group) < m
+
+        return;
+    end
+
+    bad_frames = data.motion.bad_frames_group{m};
+
+    if isempty(bad_frames)
+        return;
+    end
+
+    bad_frame_mask = convert_bad_frames_to_mask( ...
+        bad_frames, nFrames);
+end
+
+function bad_frame_mask = convert_bad_frames_to_mask( ...
+    bad_frames, nFrames)
+
+    bad_frame_mask = false(1, nFrames);
+
+    if isempty(bad_frames)
+        return;
+    end
+
+    if iscell(bad_frames)
+
+        for i = 1:numel(bad_frames)
+            current_mask = convert_bad_frames_to_mask( ...
+                bad_frames{i}, nFrames);
+
+            bad_frame_mask = ...
+                bad_frame_mask | current_mask;
+        end
+
+        return;
+    end
+
+    if islogical(bad_frames)
+
+        bad_frames = bad_frames(:).';
+
+        nCopy = min(numel(bad_frames), nFrames);
+
+        bad_frame_mask(1:nCopy) = ...
+            bad_frames(1:nCopy);
+
+        return;
+    end
+
+    if ~isnumeric(bad_frames)
+        return;
+    end
+
+    bad_frames = double(bad_frames(:).');
+    bad_frames = bad_frames(isfinite(bad_frames));
+
+    if isempty(bad_frames)
+        return;
+    end
+
+    % Un vecteur de même longueur constitué uniquement de 0 et 1
+    % est interprété comme un masque.
+    is_binary_mask = ...
+        numel(bad_frames) == nFrames && ...
+        all(bad_frames == 0 | bad_frames == 1);
+
+    if is_binary_mask
+        bad_frame_mask = logical(bad_frames);
+        return;
+    end
+
+    % Sinon, les valeurs sont interprétées comme des indices MATLAB.
+    bad_indices = unique(round(bad_frames));
+    bad_indices = bad_indices( ...
+        bad_indices >= 1 & ...
+        bad_indices <= nFrames);
+
+    bad_frame_mask(bad_indices) = true;
 end
