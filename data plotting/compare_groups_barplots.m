@@ -1019,13 +1019,77 @@ function [x_positions, plot_top] = plot_measure_panel( ...
          group_width/2 - group_width/(2*num_groups), ...
          num_groups);
 
-    x_positions = nan(num_groups, num_pools);
+        x_positions = nan(num_groups, num_pools);
 
-    for g = 1:num_groups
-        x_positions(g,:) = (1:num_pools) + offsets(g);
-    end
-
-    if measure_name == "SCEFrequency"
+        for g = 1:num_groups
+            x_positions(g,:) = (1:num_pools) + offsets(g);
+        end
+    
+    
+        % ============================================================
+        % Relier les points appartenant au même animal entre les âges
+        % ============================================================
+        all_animals = unique(string(T.Animal), 'stable');
+    
+        for a = 1:numel(all_animals)
+    
+            current_animal = all_animals(a);
+    
+            animal_rows = string(T.Animal) == current_animal;
+    
+            if nnz(animal_rows) < 2
+                continue;
+            end
+    
+            current_type = string(T.Type(find(animal_rows, 1, 'first')));
+    
+            g = find(animal_types == current_type, 1);
+    
+            if isempty(g)
+                continue;
+            end
+    
+            line_x = [];
+            line_y = [];
+    
+            for p = 1:num_pools
+    
+                mask = ...
+                    animal_rows & ...
+                    string(T.AgeGroup) == string(age_labels{p});
+    
+                values = T.Value(mask);
+                values = values(isfinite(values));
+    
+                if isempty(values)
+                    continue;
+                end
+    
+                line_x(end+1) = x_positions(g,p); %#ok<AGROW>
+                line_y(end+1) = mean(values, 'omitnan'); %#ok<AGROW>
+            end
+    
+            if numel(line_x) < 2
+                continue;
+            end
+    
+            [line_x, sort_idx] = sort(line_x);
+            line_y = line_y(sort_idx);
+    
+            animal_color = get_animal_color_from_legend( ...
+                legend_table, current_type, current_animal);
+    
+            plot(ax, ...
+                line_x, ...
+                line_y, ...
+                '-', ...
+                'Color', animal_color, ...
+                'LineWidth', 0.6, ...
+                'HandleVisibility', 'off');
+        end
+    
+    
+        if measure_name == "SCEFrequency"
 
         % Tracé manuel des barres groupées. Cette méthode reste stable
         % même lorsqu'il n'existe qu'un seul groupe d'âge : dans ce cas,

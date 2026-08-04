@@ -5,7 +5,7 @@ function [root_folders, dataFolders_by_group, ...
     %==============================================================%
     % Chemins racines
     %==============================================================%
-    jm_folder   = '\\10.51.106.233\jm';
+    jm_folder   = 'D:\Imaging\jm';
     fcd_folder  = 'D:\Imaging\FCD';
     ctrl_folder = 'D:\Imaging\WT';
     sham_folder = 'D:\Imaging\SHAM';

@@ -458,6 +458,53 @@ function data = run_gcamp_peak_detection( ...
 
         for p = 1:nPlanes
 
+            %--------------------------------------------------------------
+            % Dossier de sortie du plan courant
+            %--------------------------------------------------------------
+            gcamp_output_folder_p = '';
+        
+            if m <= numel(gcamp_output_folders)
+        
+                current_recording_outputs = ...
+                    gcamp_output_folders{m};
+        
+                if ischar(current_recording_outputs) || ...
+                        isstring(current_recording_outputs)
+        
+                    current_recording_outputs = ...
+                        cellstr(current_recording_outputs);
+                end
+        
+                if iscell(current_recording_outputs) && ...
+                        p <= numel(current_recording_outputs) && ...
+                        ~isempty(current_recording_outputs{p})
+        
+                    gcamp_output_folder_p = ...
+                        current_recording_outputs{p};
+                end
+            end
+        
+            if isstring(gcamp_output_folder_p)
+                gcamp_output_folder_p = char(gcamp_output_folder_p);
+            end
+        
+            if isempty(gcamp_output_folder_p) || ...
+                    ~ischar(gcamp_output_folder_p) || ...
+                    isempty(strtrim(gcamp_output_folder_p))
+        
+                fprintf( ...
+                    '%s - plane %d: gcamp output folder empty, plane skipped.\n', ...
+                    record_label_m, ...
+                    p);
+        
+                continue;
+            end
+        
+            if exist(gcamp_output_folder_p, 'dir') ~= 7
+                mkdir(gcamp_output_folder_p);
+            end
+
+
             Fg = get_branch_plane_or_empty( ...
                 data, 'gcamp_plane', 'F_gcamp_by_plane', m, p);
 
@@ -480,7 +527,7 @@ function data = run_gcamp_peak_detection( ...
             has_gcamp = ~isempty(Fg);
 
             viewer_mode_requested_plane = false;
-            skip_plane = false;
+            load_only_plane = false;
 
             has_detection_plane = has_existing_detection_new( ...
                 data, 'gcamp_plane', 'DF_gcamp_by_plane', m, p);
@@ -493,28 +540,25 @@ function data = run_gcamp_peak_detection( ...
 
             if has_detection_plane
 
-                % Ne demander Viewer / Load only qu'au premier plan pour
-                % lequel une détection existante est réellement disponible.
                 if isempty(global_existing_detection_action)
+            
                     global_existing_detection_action = ...
-                        ask_existing_detection_action_global(record_label_m);
+                        ask_existing_detection_action_global( ...
+                            record_label_m);
                 end
-
+            
                 switch global_existing_detection_action
+            
                     case 'viewer'
+            
                         viewer_mode_requested_plane = true;
-                        skip_plane = false;
-
+                        load_only_plane = false;
+            
                     case 'load_only'
+            
                         viewer_mode_requested_plane = false;
-                        skip_plane = true;
-                end
-
-                if skip_plane
-                    fprintf( ...
-                        '%s - plane %d: existing detection loaded only.\n', ...
-                        record_label_m, p);
-                    continue;
+                        load_only_plane = true;
+            
                 end
             end
 
@@ -636,7 +680,7 @@ function data = run_gcamp_peak_detection( ...
             focus_segs    = focus_segs_group;
             motion_energy = motion_energy_group;
 
-            if viewer_mode
+            if viewer_mode || load_only_plane
 
                 switch family
 
@@ -673,6 +717,55 @@ function data = run_gcamp_peak_detection( ...
                         F0_saved          = get_branch_plane_or_empty(data, 'combined_plane', 'F0_combined_by_plane', m, p);
                         noise_est_saved   = get_branch_plane_or_empty(data, 'combined_plane', 'noise_est_combined_by_plane', m, p);
                 end
+
+                    %==============================================================
+                    % PREVIEW DES RÉSULTATS EXISTANTS
+                    %
+                    % Viewer ou Load only :
+                    % créer la preview si elle n'existe pas déjà.
+                    % create_random_peak_preview gère elle-même le skip
+                    % lorsque les deux destinations existent.
+                    %==============================================================
+                    try
+                
+                        create_random_peak_preview( ...
+                            valid_cells_saved, ...
+                            DF_sg_saved, ...
+                            Acttmp2_saved, ...
+                            thresholds_saved, ...
+                            gcamp_output_folder_p, ...
+                            current_output_folder, ...
+                            current_line, ...
+                            animal, ...
+                            date_m, ...
+                            age_m, ...
+                            p-1);
+                
+                    catch ME
+                
+                        warning( ...
+                            ['%s - plane %d: impossible de créer la ' ...
+                             'preview des pics existants : %s'], ...
+                            record_label_m, ...
+                            p, ...
+                            ME.message);
+                
+                    end
+                
+                    %==============================================================
+                    % LOAD ONLY :
+                    % la preview est faite, ne rien recalculer
+                    %==============================================================
+                    if load_only_plane
+                
+                        fprintf( ...
+                            ['%s - plane %d: existing detection loaded only; ' ...
+                             'preview checked/created.\n'], ...
+                            record_label_m, ...
+                            p);
+                
+                        continue;
+                    end
 
                 valid_viewer_data = ...
                     ~isempty(valid_cells_saved) && ...
@@ -790,52 +883,6 @@ function data = run_gcamp_peak_detection( ...
                 continue;
             end
             
-            %--------------------------------------------------------------
-            % Dossier de sortie du plan courant
-            %--------------------------------------------------------------
-            gcamp_output_folder_p = '';
-            
-            if m <= numel(gcamp_output_folders)
-            
-                current_recording_outputs = ...
-                    gcamp_output_folders{m};
-            
-                if ischar(current_recording_outputs) || ...
-                        isstring(current_recording_outputs)
-            
-                    current_recording_outputs = ...
-                        cellstr(current_recording_outputs);
-                end
-            
-                if iscell(current_recording_outputs) && ...
-                        p <= numel(current_recording_outputs) && ...
-                        ~isempty(current_recording_outputs{p})
-            
-                    gcamp_output_folder_p = ...
-                        current_recording_outputs{p};
-                end
-            end
-            
-            if isstring(gcamp_output_folder_p)
-                gcamp_output_folder_p = char(gcamp_output_folder_p);
-            end
-            
-            if isempty(gcamp_output_folder_p) || ...
-                    ~ischar(gcamp_output_folder_p) || ...
-                    isempty(strtrim(gcamp_output_folder_p))
-            
-                fprintf( ...
-                    '%s - plane %d: gcamp output folder empty, plane skipped.\n', ...
-                    record_label_m, ...
-                    p);
-            
-                continue;
-            end
-            
-            if exist(gcamp_output_folder_p, 'dir') ~= 7
-                mkdir(gcamp_output_folder_p);
-            end
-            
             [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
              Acttmp2, MAct, thresholds, bad_segs_det, opts_det, ...
              has_new, request_reprocess] = ...
@@ -901,15 +948,19 @@ function data = run_gcamp_peak_detection( ...
             if viewer_mode
                 continue;
             end
-
+            
             if ~has_new
-                fprintf('%s - plane %d: no new outputs for %s.\n', record_label_m, p, family);
+                fprintf('%s - plane %d: no new outputs for %s.\n', ...
+                    record_label_m, p, family);
                 continue;
             end
-
+           
+            %==============================================================
+            % SORTING
+            %==============================================================
             [isort1_plane, isort2_plane, Sm_plane] = ...
                 compute_sort_outputs_from_df(DF_sg, ops_in);
-
+            
             switch family
 
                 case 'gcamp'

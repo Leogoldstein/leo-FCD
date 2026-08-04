@@ -175,9 +175,13 @@ function folder_names = get_folder_list(type, lastFolderName)
             folder_names = {
                 'an1\2024-04-03';
                 'an2\2024-04-29';
-                'an2\2024-05-06';
-                'an2\2024-05-07';
                 'an2\2024-04-30';
+                %'an2\2024-05-02'; %artefactuel, P17
+                %'an2\2024-05-06'; %artefactuel, P21
+                %'an2\2024-05-07'; % P22
+                'an3\2024-05-15';
+                'an3\2024-05-16';
+                'an3\2024-05-17';
                 'an4\2024-06-07';
                 'an5\2024-06-12';
                 'an5\2024-06-13';
@@ -186,6 +190,7 @@ function folder_names = get_folder_list(type, lastFolderName)
                 'an7\2024-09-25';
                 'an7\2024-09-26';
                 'an7\2024-09-27';
+                'an8\2024-09-26';
             };
 
         case "SHAM"

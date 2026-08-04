@@ -155,22 +155,40 @@ function [figs, day_table, animal_table, legend_table] = ...
     % Create one overview and one layer figure per type
     %==============================================================%
     for t = 1:numel(plotted_types)
-        
-        output_folder = output_folders{t};
-
-        if exist(output_folder,'dir') ~= 7
-            mkdir(output_folder);
-        end
 
         current_type = plotted_types(t);
         current_field = matlab.lang.makeValidName(char(current_type));
 
+        %----------------------------------------------------------%
+        % Trouver le bon output folder correspondant au type
+        %----------------------------------------------------------%
+        type_index = find( ...
+            strcmpi(string(type_names), current_type), ...
+            1, ...
+            'first');
+
+        if isempty(type_index) || type_index > numel(output_folders)
+            output_folder = output_folders{1};
+        else
+            output_folder = output_folders{type_index};
+        end
+
+        if exist(output_folder, 'dir') ~= 7
+            mkdir(output_folder);
+        end
+
+        %----------------------------------------------------------%
+        % Tables limitées au type courant
+        %----------------------------------------------------------%
         current_day_table = day_table( ...
             strcmpi(string(day_table.Type), current_type), :);
 
         current_animal_table = animal_table( ...
             strcmpi(string(animal_table.Type), current_type), :);
 
+        %----------------------------------------------------------%
+        % File names
+        %----------------------------------------------------------%
         overview_filename = sprintf( ...
             '%s_overview.png', ...
             char(current_type));
@@ -187,9 +205,9 @@ function [figs, day_table, animal_table, legend_table] = ...
             output_folder, ...
             layers_filename);
 
-        %----------------------------------------------------------%
+        %==========================================================%
         % Overview figure for current type
-        %----------------------------------------------------------%
+        %==========================================================%
         if exist(overview_figure_path, 'file') == 2
 
             fprintf([ ...
@@ -215,9 +233,9 @@ function [figs, day_table, animal_table, legend_table] = ...
                 true);
         end
 
-        %----------------------------------------------------------%
-        % Cortical-layer figure for current type
-        %----------------------------------------------------------%
+        %==========================================================%
+        % Layers figure for current type
+        %==========================================================%
         if exist(layers_figure_path, 'file') == 2
 
             fprintf([ ...
@@ -245,6 +263,7 @@ function [figs, day_table, animal_table, legend_table] = ...
     %==============================================================%
     % Create one shared animal legend for every selected type
     %==============================================================%
+
     legend_filename = sprintf( ...
         '%s_legend.png', ...
         shared_prefix);
@@ -253,14 +272,26 @@ function [figs, day_table, animal_table, legend_table] = ...
         '%s_legend_table.csv', ...
         shared_prefix);
 
+    %--------------------------------------------------------------%
+    % Shared legend is saved in the first output folder
+    %--------------------------------------------------------------%
+    shared_output_folder = output_folders{1};
+
+    if exist(shared_output_folder, 'dir') ~= 7
+        mkdir(shared_output_folder);
+    end
+
     legend_figure_path = fullfile( ...
-        output_folder, ...
+        shared_output_folder, ...
         legend_filename);
 
     legend_table_path = fullfile( ...
-        output_folder, ...
+        shared_output_folder, ...
         legend_table_filename);
 
+    %==============================================================%
+    % Shared legend figure
+    %==============================================================%
     if exist(legend_figure_path, 'file') == 2
 
         fprintf([ ...
@@ -277,7 +308,7 @@ function [figs, day_table, animal_table, legend_table] = ...
 
         save_overview_figure( ...
             figs.legend, ...
-            output_folder, ...
+            shared_output_folder, ...
             legend_filename, ...
             false);
     end

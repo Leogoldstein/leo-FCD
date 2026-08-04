@@ -1,7 +1,6 @@
 function [selected_groups, animal_date_list] = folder_selection( ...
     choices, group_order, dataFolders_by_group, selected_groups)
 
-    destinationFolder = 'D:/Imaging/jm/';
     root_path = 'D:\Imaging';
 
     if nargin < 4
@@ -28,38 +27,31 @@ function [selected_groups, animal_date_list] = folder_selection( ...
 
         switch choice
 
-            case 1
+            case {1}
                 disp('Processing JM data...');
 
-                [true_xml_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, ...
-                 iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+                % [true_xml_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, ...
+                %  iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
+                % 
+                % valid_jm = ~cellfun('isempty', TSeriesPaths_jm);
+                % 
+                % TSeriesPaths_jm   = TSeriesPaths_jm(valid_jm);
+                % true_xml_paths_jm = true_xml_paths_jm(valid_jm);
 
-                valid_jm = ~cellfun('isempty', TSeriesPaths_jm);
-
-                TSeriesPaths_jm   = TSeriesPaths_jm(valid_jm);
-                true_xml_paths_jm = true_xml_paths_jm(valid_jm);
-
-                [~, ~, ~, ~, ~, gcampdataFolders] = preprocess_npy_files( ...
-                    FPaths, statPaths, iscellPaths, opsPaths, spksPaths, destinationFolder);
-
-                nJM = numel(TSeriesPaths_jm);
-
-                TSeriesPaths_4col    = cell(nJM,4);
-                suite2p_folders_4col = cell(nJM,4);
-                Fallmat_paths_4col   = cell(nJM,4);
-
+                [~, ~, ~, ~, ~, gcampdataFolders] = ...
+                    preprocess_npy_files(dataFolders);
+            
+                nJM = numel(gcampdataFolders);
+            
+                dataFolders_4col   = cell(nJM, 4);
+            
                 for j = 1:nJM
-                    TSeriesPaths_4col{j,1} = TSeriesPaths_jm{j};
-
-                    if j <= numel(gcampdataFolders)
-                        suite2p_folders_4col{j,1} = gcampdataFolders{j};
-                    end
+                    dataFolders_4col{j,1} = gcampdataFolders{j};
                 end
-
-                TSeriesPaths    = concat_cell_matrices_4col(TSeriesPaths, TSeriesPaths_4col);
-                true_xml_paths  = [true_xml_paths; true_xml_paths_jm(:)];
-                suite2p_folders = concat_cell_matrices_4col(suite2p_folders, suite2p_folders_4col);
-                Fallmat_paths   = concat_cell_matrices_4col(Fallmat_paths, Fallmat_paths_4col);
+            
+                Fallmat_paths = concat_cell_matrices_4col( ...
+                    Fallmat_paths, ...
+                    dataFolders_4col);
 
             case {2,3,4}
                 group_name = group_order{choice};
