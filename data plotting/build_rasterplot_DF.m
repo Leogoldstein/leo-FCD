@@ -177,17 +177,59 @@ function build_rasterplot_DF( ...
         
                 %--------------------------------------------------
                 % Construire le chemin de copie automatic_selection
+                %
+                % Age <= 15  -> output_folder\Development\
+                % Age >  15  -> output_folder\Adult\
                 %--------------------------------------------------
                 fig_save_output = '';
-        
+                
                 if automatic_selection && ~isempty(output_folder)
-        
-                    if exist(output_folder, 'dir') ~= 7
-                        mkdir(output_folder);
+                
+                    %--------------------------------------------------
+                    % Récupérer l'âge numérique
+                    %--------------------------------------------------
+                    current_age_value = NaN;
+                
+                    if numel(current_ages) >= m && ...
+                            ~isempty(current_ages{m})
+                
+                        current_age_value = ...
+                            str2double( ...
+                                regexprep( ...
+                                    char(string(current_ages{m})), ...
+                                    '[^\d\.]', ...
+                                    ''));
                     end
-        
+                
+                    %--------------------------------------------------
+                    % Choisir development ou adult
+                    %--------------------------------------------------
+                    if isfinite(current_age_value) && ...
+                            current_age_value <= 15
+                
+                        current_output_folder = fullfile( ...
+                            output_folder, ...
+                            'Development');
+                
+                    else
+                
+                        current_output_folder = fullfile( ...
+                            output_folder, ...
+                            'Adult');
+                    end
+                
+                    %--------------------------------------------------
+                    % Créer le dossier si nécessaire
+                    %--------------------------------------------------
+                    if exist(current_output_folder, 'dir') ~= 7
+                        mkdir(current_output_folder);
+                    end
+                
+                    %--------------------------------------------------
+                    % Construire le chemin de sauvegarde
+                    %--------------------------------------------------
                     fig_save_output = fullfile( ...
-                        output_folder, ...
+                        current_output_folder, ...
                         sprintf( ...
                             '%s%s_%s_%s_plane%d_rastermap.png', ...
                             line_prefix, ...
@@ -196,7 +238,7 @@ function build_rasterplot_DF( ...
                             age_file_name, ...
                             p-1));
                 end
-        
+
                 %--------------------------------------------------
                 % Vérifier indépendamment les deux destinations
                 %--------------------------------------------------

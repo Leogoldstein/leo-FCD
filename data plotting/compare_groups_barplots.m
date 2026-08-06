@@ -461,43 +461,116 @@ end
 % ========================================================================
 % SÉLECTION DES MÉTRIQUES DANS results_table
 % ========================================================================
-function T = select_metric_rows(results_table, branch_name, measure_name)
+function T = select_metric_rows( ...
+        results_table, ...
+        branch_name, ...
+        measure_name)
 
-    branch = string(results_table.Branch);
-    metric = string(results_table.Metric);
+    branch = ...
+        string(results_table.Branch);
+
+    metric = ...
+        string(results_table.Metric);
+
 
     switch measure_name
 
+        %==========================================================%
+        % Activity frequency
+        %==========================================================%
         case "ActivityFreq"
-            mask = branch == branch_name & ...
-                   metric == "FrequencyPerCell";
 
-        case "SCEFrequency"
-            mask = branch == "SCEs" & ...
-                   metric == "Frequency";
-
-        case "PairwiseCorr"
             if branch_name == "gcamp_plane"
-                target_metric = "PairwiseCorrelation_GCaMP_GCaMP";
+
+                target_branch = ...
+                    "gcamp_plane.activity";
+
             elseif branch_name == "blue_plane"
-                target_metric = "PairwiseCorrelation_mTOR_mTOR";
+
+                target_branch = ...
+                    "blue_plane.activity";
+
             else
-                error('Unsupported branch_name for PairwiseCorr: %s', ...
+
+                error( ...
+                    'Unsupported branch_name: %s', ...
                     branch_name);
             end
 
-            mask = branch == branch_name & ...
-                   metric == target_metric;
 
+            mask = ...
+                branch == target_branch & ...
+                metric == "FrequencyPerCell";
+
+
+        %==========================================================%
+        % SCE frequency
+        %
+        % Les SCEs sont toujours dans gcamp_plane
+        %==========================================================%
+        case "SCEFrequency"
+
+            mask = ...
+                branch == "gcamp_plane.SCEs" & ...
+                metric == "Frequency";
+
+
+        %==========================================================%
+        % Pairwise correlation
+        %==========================================================%
+        case "PairwiseCorr"
+
+            if branch_name == "gcamp_plane"
+
+                target_branch = ...
+                    "gcamp_plane.correlations";
+
+                target_metric = ...
+                    "PairwiseCorrelation_GCaMP_GCaMP";
+
+
+            elseif branch_name == "blue_plane"
+
+                target_branch = ...
+                    "blue_plane.correlations";
+
+                target_metric = ...
+                    "PairwiseCorrelation_mTOR_mTOR";
+
+
+            else
+
+                error( ...
+                    'Unsupported branch_name for PairwiseCorr: %s', ...
+                    branch_name);
+            end
+
+
+            mask = ...
+                branch == target_branch & ...
+                metric == target_metric;
+
+
+        %==========================================================%
+        % SCE participation
+        %==========================================================%
         case "propSCEs"
-            mask = branch == "SCEs" & ...
-                   metric == "CellParticipation";
+
+            mask = ...
+                branch == "gcamp_plane.SCEs" & ...
+                metric == "CellParticipation";
+
 
         otherwise
-            error('Unknown measure: %s', measure_name);
+
+            error( ...
+                'Unknown measure: %s', ...
+                measure_name);
     end
 
-    T = results_table(mask, :);
+
+    T = ...
+        results_table(mask, :);
 end
 
 

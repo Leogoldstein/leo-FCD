@@ -4,6 +4,7 @@ function create_random_peak_preview( ...
         Acttmp2, ...
         thresholds, ...
         gcamp_output_folder, ...
+        automatic_selection, ...
         output_folder, ...
         line_name, ...
         animal_name, ...
@@ -43,27 +44,31 @@ function create_random_peak_preview( ...
         gcamp_output_folder = '';
     end
 
-    if nargin < 6 || isempty(output_folder)
+    if nargin < 6 || isempty(automatic_selection)
+        automatic_selection = 0;
+    end
+
+    if nargin < 7 || isempty(output_folder)
         output_folder = '';
     end
 
-    if nargin < 7 || isempty(line_name)
+    if nargin < 8 || isempty(line_name)
         line_name = '';
     end
 
-    if nargin < 8 || isempty(animal_name)
+    if nargin < 9 || isempty(animal_name)
         animal_name = '';
     end
 
-    if nargin < 9 || isempty(date_name)
+    if nargin < 10 || isempty(date_name)
         date_name = '';
     end
 
-    if nargin < 10 || isempty(age_name)
+    if nargin < 11 || isempty(age_name)
         age_name = '';
     end
 
-    if nargin < 11 || isempty(plane_number)
+    if nargin < 12 || isempty(plane_number)
         plane_number = [];
     end
 
@@ -190,32 +195,68 @@ function create_random_peak_preview( ...
     % gcamp_output_folder
     % =========================================================
     local_png_path = '';
-
+    
     if ~isempty(gcamp_output_folder)
-
+    
         if exist(gcamp_output_folder, 'dir') ~= 7
             mkdir(gcamp_output_folder);
         end
-
+    
         local_png_path = fullfile( ...
             gcamp_output_folder, ...
             [figure_base_name '.png']);
     end
-
+    
     % =========================================================
     % Deuxième destination :
-    % output_folder
+    % output_folder\Development ou output_folder\Adult
     % =========================================================
     summary_png_path = '';
-
+    
     if ~isempty(output_folder)
-
-        if exist(output_folder, 'dir') ~= 7
-            mkdir(output_folder);
+    
+        % -----------------------------------------------------
+        % Récupérer l'âge numérique depuis age_name
+        % Exemples :
+        %   'P10' -> 10
+        %   'P15' -> 15
+        %   'P30' -> 30
+        % -----------------------------------------------------
+        current_age_value = str2double( ...
+            regexprep( ...
+                char(string(age_name)), ...
+                '[^\d\.]', ...
+                ''));
+    
+        % -----------------------------------------------------
+        % Choisir le dossier selon l'âge
+        % -----------------------------------------------------
+        if isfinite(current_age_value) && ...
+                current_age_value <= 15
+    
+            current_summary_folder = fullfile( ...
+                output_folder, ...
+                'Development');
+    
+        else
+    
+            current_summary_folder = fullfile( ...
+                output_folder, ...
+                'Adult');
         end
-
+    
+        % -----------------------------------------------------
+        % Créer le dossier si nécessaire
+        % -----------------------------------------------------
+        if exist(current_summary_folder, 'dir') ~= 7
+            mkdir(current_summary_folder);
+        end
+    
+        % -----------------------------------------------------
+        % Chemin de sauvegarde
+        % -----------------------------------------------------
         summary_png_path = fullfile( ...
-            output_folder, ...
+            current_summary_folder, ...
             [figure_base_name '.png']);
     end
 
@@ -408,7 +449,8 @@ function create_random_peak_preview( ...
     % uniquement si nécessaire
     % =========================================================
     if ~isempty(summary_png_path) && ...
-            ~summary_exists
+            ~summary_exists && ...
+            automatic_selection
 
         same_destination = ...
             ~isempty(local_png_path) && ...

@@ -398,6 +398,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'animal', animal);
     setappdata(fig, 'date', date);
     setappdata(fig, 'age', age);
+    setappdata(fig, 'plane', plane);
 
     setappdata(fig, 'bad_frames', bad_frames);
     setappdata(fig, 'total_frame_count', size(F, 2));
@@ -2593,4 +2594,9 @@ function update_param(fig, field, value)
 
     refresh_data(fig);
     drawnow;
+end
+
+function request_reprocess_from_viewer(fig)
+    setappdata(fig,'request_reprocess',true);
+    uiresume(fig);
 end

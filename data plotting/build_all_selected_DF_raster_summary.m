@@ -1,52 +1,17 @@
 function build_all_selected_DF_raster_summary( ...
         selected_groups, ...
+        automatic_selection, ...
         output_folders, ...
         include_blue_cells)
-
-%BUILD_ALL_SELECTED_DF_RASTER_SUMMARY
-%
-% Crée une figure DF séparée pour chaque type d'animal.
-%
-% Entrées :
-%   selected_groups
-%       Structure contenant les animaux sélectionnés, organisés par type.
-%
-%   output_folders
-%       Cellule contenant un dossier de sortie pour chaque type.
-%       L'ordre doit correspondre à :
-%
-%           fieldnames(selected_groups)
-%
-%       Ces dossiers peuvent être générés avec :
-%
-%           output_folders = build_output_folders( ...
-%               selected_groups, ...
-%               root_folders, ...
-%               automatic_selection, ...
-%               include_blue_cells);
-%
-%   include_blue_cells
-%       Indique si les cellules électroporées doivent être incluses.
-%
-% Exemple :
-%
-%   output_folders = build_output_folders( ...
-%       selected_groups, ...
-%       root_folders, ...
-%       automatic_selection, ...
-%       include_blue_cells);
-%
-%   build_all_selected_DF_raster_summary( ...
-%       selected_groups, ...
-%       output_folders, ...
-%       include_blue_cells);
 
     %==============================================================%
     % Vérification de selected_groups
     %==============================================================%
     if nargin < 1 || isempty(selected_groups)
 
-        fprintf('Global DF summary: selected_groups vide.\n');
+        fprintf( ...
+            'Global DF summary: selected_groups vide.\n');
+
         return;
     end
 
@@ -57,19 +22,56 @@ function build_all_selected_DF_raster_summary( ...
             'selected_groups doit être une structure.');
     end
 
-    type_names = fieldnames(selected_groups);
-    n_types = numel(type_names);
+
+    %==============================================================%
+    % Vérification de automatic_selection
+    %==============================================================%
+    if nargin < 2 || isempty(automatic_selection)
+
+        automatic_selection = false;
+    end
+
+    automatic_selection = ...
+        parse_logical_scalar_DF( ...
+            automatic_selection, ...
+            false);
+
+
+    %==============================================================%
+    % Seulement en sélection automatique
+    %==============================================================%
+    if ~automatic_selection
+
+        fprintf( ...
+            ['Global DF raster summary: manual selection, ' ...
+             'generation skipped.\n']);
+
+        return;
+    end
+
+
+    %==============================================================%
+    % Types
+    %==============================================================%
+    type_names = ...
+        fieldnames(selected_groups);
+
+    n_types = ...
+        numel(type_names);
 
     if n_types == 0
 
-        fprintf('Global DF summary: aucun type trouvé.\n');
+        fprintf( ...
+            'Global DF summary: aucun type trouvé.\n');
+
         return;
     end
+
 
     %==============================================================%
     % Vérification de output_folders
     %==============================================================%
-    if nargin < 2 || isempty(output_folders)
+    if nargin < 3 || isempty(output_folders)
 
         error( ...
             'build_all_selected_DF_raster_summary:MissingOutputFolders', ...
@@ -77,26 +79,30 @@ function build_all_selected_DF_raster_summary( ...
              'build_output_folders avant cette fonction.']);
     end
 
-    output_folders = normalize_output_folders_DF( ...
-        output_folders, ...
-        n_types);
+    output_folders = ...
+        normalize_output_folders_DF( ...
+            output_folders, ...
+            n_types);
+
 
     %==============================================================%
     % Vérification de include_blue_cells
     %==============================================================%
-    if nargin < 3 || isempty(include_blue_cells)
+    if nargin < 4 || isempty(include_blue_cells)
+
         include_blue_cells = false;
     end
 
-    include_blue_cells = parse_logical_scalar_DF( ...
-        include_blue_cells, ...
-        false);
+    include_blue_cells = ...
+        parse_logical_scalar_DF( ...
+            include_blue_cells, ...
+            false);
+
 
     %==============================================================%
     % Une figure par type
     %==============================================================%
     for t = 1:n_types
-
         current_type = type_names{t};
         current_animals = selected_groups.(current_type);
         current_output_folder = output_folders{t};

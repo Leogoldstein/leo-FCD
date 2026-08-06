@@ -1,5 +1,5 @@
 function [selected_groups, results_table] = ...
-    compute_DF(selected_groups, include_blue_cells)
+    compute_DF(selected_groups, include_electroporated)
 
     % ============================================================
     % Vérification des entrées
@@ -10,11 +10,11 @@ function [selected_groups, results_table] = ...
         return;
     end
 
-    if nargin < 2 || isempty(include_blue_cells)
-        include_blue_cells = '1';
+    if nargin < 2 || isempty(include_electroporated)
+        include_electroporated = '1';
     end
 
-    include_blue_cells = char(string(include_blue_cells));
+    include_electroporated = char(string(include_electroporated));
 
     type_names = fieldnames(selected_groups);
 
@@ -188,7 +188,7 @@ function [selected_groups, results_table] = ...
                         synchronous_frames_group, ...
                         data, ...
                         metadata, ...
-                        include_blue_cells);
+                        include_electroporated);
 
             catch ME
 

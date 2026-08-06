@@ -127,62 +127,93 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
             else
                 gcamp_num = '';
             end
-
+            
             % ======================================================
             % Matcher les autres canaux
+            % Colonnes :
+            %   1 = GCaMP
+            %   2 = Red
+            %   3 = Blue
+            %   4 = Green
             % ======================================================
             for k = 2:numel(labels)
-
+            
                 matched_path = '';
-
+            
                 for i = 1:numel(all_paths)
-
+            
                     this_path = all_paths{i};
-
+            
                     [~, this_name] = fileparts(this_path);
-
+            
                     this_name_lower = lower(this_name);
-
+            
                     % ----------------------------------------------
                     % Vérifier le label
                     % ----------------------------------------------
-                    if strcmpi(labels{k}, 'blue')
-
-                        label_match = ...
-                            ~isempty(regexp(this_name_lower, 'blue-\d+$', 'once')) && ...
-                            ~contains(this_name_lower, 'blue-transfert') && ...
-                            ~contains(this_name_lower, 'blue_transfert');
-                    else
-
-                        label_match = contains( ...
-                            this_name_lower, ...
-                            lower(labels{k}));
+                    switch lower(labels{k})
+            
+                        case 'red'
+                            % Tout TSeries contenant "red" dans son titre
+                            label_match = contains( ...
+                                this_name_lower, ...
+                                'red');
+            
+                        case 'blue'
+                            % Blue uniquement, sans blue-transfert
+                            label_match = ...
+                                ~isempty(regexp( ...
+                                    this_name_lower, ...
+                                    'blue-\d+$', ...
+                                    'once')) && ...
+                                ~contains(this_name_lower, 'blue-transfert') && ...
+                                ~contains(this_name_lower, 'blue_transfert');
+            
+                        case 'green'
+                            label_match = contains( ...
+                                this_name_lower, ...
+                                'green');
+            
+                        otherwise
+                            label_match = false;
                     end
-
+            
                     if ~label_match
                         continue;
                     end
-
+            
                     % ----------------------------------------------
                     % Vérifier le suffixe recording
+                    % Exemple :
+                    %   TSeries-...-gcamp-001
+                    %   TSeries-...-red-001
                     % ----------------------------------------------
                     this_num = regexp( ...
                         this_name, ...
                         '-(\d+)$', ...
                         'tokens', ...
                         'once');
-
+            
                     if isempty(this_num)
                         continue;
                     end
-
+            
+                    % ----------------------------------------------
+                    % Même numéro que le GCaMP
+                    % ----------------------------------------------
                     if strcmp(this_num{1}, gcamp_num)
-
+            
                         matched_path = this_path;
+            
+                        fprintf( ...
+                            '%s matched: %s\n', ...
+                            labels{k}, ...
+                            this_name);
+            
                         break;
                     end
                 end
-
+            
                 TSeriesPaths{output_idx,k} = matched_path;
             end
 
