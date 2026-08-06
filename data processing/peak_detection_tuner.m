@@ -1,6 +1,6 @@
 function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
           Acttmp2, MAct, thresholds, focus_segs, opts, ...
-          has_new_outputs, request_reprocess] = ...
+          has_new_outputs, request_reprocess, selected_signal] = ...
     peak_detection_tuner( ...
         type, ...
         line, ...
@@ -25,7 +25,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         iscell_idx, ...
         stat, ...
         masks, ...
-        blue_indices, ...
+        electroporated_indices, ...
         meanImg, ...
         gcamp_TSeries_path, ...
         deviation, ...
@@ -38,7 +38,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         output_folder)
 
     %==============================================================
-    % Options de détection : valeurs initiales
+    % Options
     %==============================================================
 
     opts = struct( ...
@@ -51,348 +51,345 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'min_mask_um2',           50, ...
         'min_mask_connectivity', 0.80);
 
-    opts = convert_opts_ms_to_frames(opts, fs);
+    opts = ...
+        convert_opts_ms_to_frames( ...
+            opts, ...
+            fs);
 
     request_reprocess = false;
-    
-    % ---- Prétraitement ----
-    window_size = opts.window_size;
-    
+
+    %==============================================================
+    % PREPROCESSING
+    %==============================================================
+
+    window_size = ...
+        opts.window_size;
+
     if viewer_mode
-    
-        if ~isempty(DF_sg) && size(DF_sg,1) == size(F,1)
-    
-            if isempty(F0) || size(F0,1) ~= size(F,1)
-                F0 = nan(size(F));
+
+        if ~isempty(DF_sg) && ...
+                size(DF_sg,1) == size(F,1)
+
+            if isempty(F0) || ...
+                    size(F0,1) ~= size(F,1)
+
+                F0 = ...
+                    nan(size(F));
             end
-    
-            if ~isempty(noise_est) && numel(noise_est) == size(F,1)
-                noise_est = noise_est(:);
+
+            if ~isempty(noise_est) && ...
+                    numel(noise_est) == size(F,1)
+
+                noise_est = ...
+                    noise_est(:);
+
             else
-                noise_est = estimate_noise(DF_sg);
+
+                noise_est = ...
+                    estimate_noise(DF_sg);
             end
-    
-            if isempty(DF_raw) || size(DF_raw,1) ~= size(F,1)
+
+            if isempty(DF_raw) || ...
+                    size(DF_raw,1) ~= size(F,1)
+
                 DF_raw = [];
             end
-    
-            [~, SNR, score, cells_sorted_by_quality, ~, ~, ~] = ...
-                compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
-    
+
+            [ ...
+                ~, ...
+                SNR, ...
+                score, ...
+                cells_sorted_by_quality, ...
+                ~, ...
+                ~, ...
+                ~ ...
+            ] = ...
+                compute_snr_quality( ...
+                    DF_sg, ...
+                    noise_est, ...
+                    opts, ...
+                    bad_frames);
+
         else
-            warning('viewer_mode demandé mais DF_sg sauvegardé absent/incompatible. Recalcul normal.');
+
+            warning( ...
+                ['viewer_mode demandé mais DF_sg sauvegardé ' ...
+                 'absent/incompatible. Recalcul normal.']);
+
             viewer_mode = false;
         end
     end
-    
+
     if ~viewer_mode
 
-        %results = optimize_F0_window_from_F(F, bad_frames, fs);
-    
-        [DF_raw, F0] = F_processing(F, bad_frames, fs, window_size);
+        [DF_raw, F0] = ...
+            F_processing( ...
+                F, ...
+                bad_frames, ...
+                fs, ...
+                window_size);
 
-        DF_sg = savgol_transform(DF_raw, opts);
-        noise_est = estimate_noise(DF_raw);
-    
-        [~, SNR, score, cells_sorted_by_quality, ~, ~, ~] = ...
-            compute_snr_quality(DF_sg, noise_est, opts, bad_frames);
+        DF_sg = ...
+            savgol_transform( ...
+                DF_raw, ...
+                opts);
+
+        noise_est = ...
+            estimate_noise( ...
+                DF_raw);
+
+        [ ...
+            ~, ...
+            SNR, ...
+            score, ...
+            cells_sorted_by_quality, ...
+            ~, ...
+            ~, ...
+            ~ ...
+        ] = ...
+            compute_snr_quality( ...
+                DF_sg, ...
+                noise_est, ...
+                opts, ...
+                bad_frames);
     end
 
-    % ---- Titre fenêtre ----
-    nCells = size(F,1);
+    %==============================================================
+    % POPULATIONS
+    %
+    % F est normalement F_combined.
+    %
+    % Combined       = toutes les cellules
+    % Electroporated = electroporated_indices
+    % GCaMP          = complément
+    %
+    % Aucun recalcul de DF/F0 lors d'un changement de population.
+    %==============================================================
+
+    nCells = ...
+        size(F,1);
+
+    electroporated_indices = ...
+        normalize_electroporated_indices( ...
+            electroporated_indices, ...
+            nCells);
+
+    if strcmpi(cell_type, 'combined')
+
+        selected_signal = ...
+            'combined';
+
+    elseif strcmpi(cell_type, 'electroporated')
+
+        selected_signal = ...
+            'electroporated';
+
+    else
+
+        selected_signal = ...
+            'gcamp';
+    end
+
+    %==============================================================
+    % TITRE
+    %==============================================================
+
     title_parts = {};
 
     if viewer_mode
         title_parts{end+1} = '[VIEWER MODE]';
     end
 
-    if ~isempty(cell_type)
-        title_parts{end+1} = cell_type;
+    title_parts{end+1} = ...
+        upper(selected_signal);
+
+    if ~isempty(gcamp_output_folder)
+
+        title_parts{end+1} = ...
+            char(string(gcamp_output_folder));
+
+    elseif ~isempty(gcamp_TSeries_path)
+
+        title_parts{end+1} = ...
+            char( ...
+                string( ...
+                    fileparts(gcamp_TSeries_path)));
     end
 
-    % priorité au dossier de sortie en combined
-    if strcmpi(cell_type, 'combined')
-        if ~isempty(gcamp_output_folder)
-            title_parts{end+1} = char(string(gcamp_output_folder));
-        elseif ~isempty(gcamp_TSeries_path)
-            title_parts{end+1} = char(string(fileparts(gcamp_TSeries_path)));
-        end
-    else
-        if ~isempty(gcamp_TSeries_path)
-            title_parts{end+1} = char(string(fileparts(gcamp_TSeries_path)));
-        elseif ~isempty(gcamp_output_folder)
-            title_parts{end+1} = char(string(gcamp_output_folder));
-        end
+    title_parts{end+1} = ...
+        sprintf( ...
+            'nCells=%d', ...
+            nCells);
+
+    winTitle = ...
+        strjoin( ...
+            title_parts, ...
+            ' | ');
+
+    %==============================================================
+    % GUI
+    %==============================================================
+
+    fig = ...
+        figure( ...
+            'Name', winTitle, ...
+            'NumberTitle', 'off', ...
+            'Position', [100 100 1300 820], ...
+            'Color', [.97 .97 .98]);
+
+    set( ...
+        fig, ...
+        'KeyPressFcn', ...
+        @(~,evnt) navigate_cells(fig, evnt));
+
+    set( ...
+        fig, ...
+        'CloseRequestFcn', ...
+        @(src,~) uiresume(src));
+
+    ctrl_panel = ...
+        uipanel( ...
+            'Parent', fig, ...
+            'Units', 'normalized', ...
+            'Position', [0.01 0.05 0.22 0.92], ...
+            'Title', 'Contrôles', ...
+            'FontSize', 10, ...
+            'Tag', 'ctrl_panel');
+
+    %==============================================================
+    % APPDATA GLOBAL
+    %==============================================================
+
+    setappdata(fig, 'fs', fs);
+
+    setappdata(fig, 'F_raw', F);
+
+    setappdata(fig, 'DF_sg', DF_sg);
+    setappdata(fig, 'DF_raw', DF_raw);
+    setappdata(fig, 'F0', F0);
+
+    setappdata(fig, 'noise_est', noise_est);
+
+    setappdata(fig, 'SNR', SNR);
+    setappdata(fig, 'score_quality', score);
+
+    setappdata(fig, 'opts', opts);
+
+    setappdata(fig, 'selected_signal', selected_signal);
+
+    setappdata( ...
+        fig, ...
+        'electroporated_indices', ...
+        electroporated_indices);
+
+    setappdata(fig, 'viewer_mode', viewer_mode);
+
+    %==============================================================
+    % Sélection GLOBAL COMBINED
+    %
+    % manual_status :
+    %   0  = aucune décision
+    %   +1 = keep manuel
+    %   -1 = exclude manuel
+    %
+    % cutoff_status :
+    %   0  = cutoff non évalué
+    %   +1 = passe cutoff
+    %   -1 = échoue cutoff
+    %
+    % Les deux utilisent TOUJOURS les indices Combined.
+    %==============================================================
+
+    setappdata( ...
+        fig, ...
+        'manual_status', ...
+        zeros(nCells,1));
+
+    setappdata( ...
+        fig, ...
+        'cutoff_status', ...
+        zeros(nCells,1));
+
+    setappdata( ...
+        fig, ...
+        'cutoff_validated', ...
+        false);
+
+    setappdata( ...
+        fig, ...
+        'cutoff_locked', ...
+        false);
+
+    %==============================================================
+    % QUALITY PERCENTILE
+    %==============================================================
+
+    score_quality_percentile = ...
+        nan(size(score));
+
+    valid_score = ...
+        isfinite(score);
+
+    [~, order_score] = ...
+        sort( ...
+            score(valid_score), ...
+            'ascend');
+
+    tmp = ...
+        nan( ...
+            sum(valid_score), ...
+            1);
+
+    if ~isempty(tmp)
+
+        tmp(order_score) = ...
+            linspace( ...
+                0, ...
+                100, ...
+                sum(valid_score));
     end
 
-    title_parts{end+1} = sprintf('nCells=%d', nCells);
+    score_quality_percentile(valid_score) = ...
+        tmp;
 
-    winTitle = strjoin(title_parts, ' | ');
-    
-    % ===================== GUI =====================
-    fig = figure('Name', winTitle, ...
-        'NumberTitle','off', ...
-        'Position',[100 100 1300 820], ...
-        'Color',[.97 .97 .98]);
+    setappdata( ...
+        fig, ...
+        'score_quality_percentile', ...
+        score_quality_percentile);
 
-    set(fig,'KeyPressFcn', @(~,evnt) navigate_cells(fig, evnt));
-    set(fig,'CloseRequestFcn',@(src,~) uiresume(src));
+    %==============================================================
+    % AUTRES APPDATA
+    %==============================================================
 
-    ctrl_panel = uipanel('Parent',fig, ...
-        'Units','normalized', ...
-        'Position',[0.01 0.05 0.22 0.92], ...
-        'Title','Contrôles', ...
-        'FontSize',10, ...
-        'Tag','ctrl_panel');
+    setappdata(fig, 'motion_energy', motion_energy);
 
-    % ---- Callbacks selon mode ----
-    if viewer_mode
-        validate_cb = @(~,~) [];
-        keep_cb     = @(~,~) [];
-        exclude_cb  = @(~,~) [];
-    else
-        validate_cb = @(~,~) validate_selection_filter(fig);
-        keep_cb     = @(~,~) keep_cell(fig);
-        exclude_cb  = @(~,~) exclude_cell(fig);
-    end
-    
-    finalize_cb = @(~,~) finalize_and_close(fig, synchronous_frames);
-    
-    % ---- Navigation ----
-    uicontrol('Parent',ctrl_panel,'Style','text', ...
-        'String', sprintf('Navigation cellule (1 / %d)', size(F,1)), ...
-        'Units','normalized', ...
-        'Position',[0.05 0.935 0.90 0.03], ...
-        'Tag','lbl_nav_cell', ...
-        'HorizontalAlignment','left', ...
-        'BackgroundColor',[.97 .97 .98], ...
-        'FontWeight','bold');
-    
-    if size(F,1) > 1
-        step_small = 1 / (size(F,1) - 1);
-        step_big   = min(1, 10 / (size(F,1) - 1));
-    else
-        step_small = 1;
-        step_big   = 1;
-    end
-    
-    uicontrol('Parent',ctrl_panel,'Style','slider', ...
-        'Min', 1, ...
-        'Max', max(1, size(F,1)), ...
-        'Value', 1, ...
-        'SliderStep', [step_small step_big], ...
-        'Units','normalized', ...
-        'Position',[0.05 0.865 0.90 0.055], ...
-        'Tag','sldr_nav_cell', ...
-        'Callback', @(src,~) update_current_cell(fig, round(get(src,'Value'))));
-    
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Appliquer cutoff', ...
-        'Units','normalized', ...
-        'Position',[0.05 0.17 0.90 0.055], ...
-        'BackgroundColor',[0.20 0.45 0.90], ...
-        'ForegroundColor','w', ...
-        'FontWeight','bold', ...
-        'FontSize',12, ...
-        'Callback', validate_cb);
-    
-    % ---- Manuel ----
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Garder cellule', ...
-        'Units','normalized', ...
-        'Position',[0.05 0.095 0.42 0.055], ...
-        'BackgroundColor',[0.10 0.60 0.10], ...
-        'ForegroundColor','w', ...
-        'FontWeight','bold', ...
-        'FontSize',11, ...
-        'Callback', keep_cb);
-    
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Exclure cellule', ...
-        'Units','normalized', ...
-        'Position',[0.53 0.095 0.42 0.055], ...
-        'BackgroundColor',[0.80 0.15 0.15], ...
-        'ForegroundColor','w', ...
-        'FontWeight','bold', ...
-        'FontSize',11, ...
-        'Callback', exclude_cb);
-    
-    % ---- Final ----
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Confirmer sélection', ...
-        'Units','normalized', ...
-        'Position',[0.05 0.02 0.90 0.06], ...
-        'BackgroundColor',[0.1 0.6 0.35], ...
-        'ForegroundColor','w', ...
-        'FontWeight','bold', ...
-        'FontSize',12, ...
-        'Callback', finalize_cb);
+    setappdata(fig, 'deviation', deviation);
+    setappdata(fig, 'bad_frames', bad_frames);
+    setappdata(fig, 'focus_segs', focus_segs);
 
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Reprocess', ...
-        'Units','normalized', ...
-        'Position',[0.05 0.235 0.90 0.055], ...
-        'Tag','btn_reprocess', ...
-        'Callback', @(~,~) request_reprocess_from_viewer(fig));
-    
-    if viewer_mode
-        set(findobj(ctrl_panel,'String','Appliquer cutoff'),   'Enable','off');
-        set(findobj(ctrl_panel,'String','Garder cellule'),     'Enable','off');
-        set(findobj(ctrl_panel,'String','Exclure cellule'),    'Enable','off');
-        set(findobj(ctrl_panel,'String','Confirmer sélection'),'Enable','off');
-        set(findobj(ctrl_panel,'String','Reprocess'),          'Enable','on');
-    else
-        set(findobj(ctrl_panel,'String','Reprocess'),          'Enable','off');
-    end
+    setappdata(fig, 'stim_frames', stim_frames);
 
-    % ---- Contrôles détection ----
-    make_slider(ctrl_panel,fig,'Window size (sec)','window_size_s',1,300,opts.window_size_s,[0.05 0.76 0.90 0.06]);
-    make_slider(ctrl_panel,fig, ...
-    'Prominence', ...
-    'prominence_factor', ...
-    0,1,1, ...
-    [0.05 0.60 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'Réfractaire (ms)','refrac_ms',0,5000,opts.refrac_ms,[0.05 0.52 0.90 0.06]);
-    make_slider(ctrl_panel,fig,'SavGol window (ms)','savgol_win_ms',100,500,opts.savgol_win_ms,[0.05 0.44 0.90 0.06]);
-    
-    % ---- Axe principal ----
-    ax1 = axes('Parent',fig,'Position',[0.28 0.63 0.70 0.30]);
-    box(ax1,'on');
-    xlabel(ax1,'Frames');
-    ylabel(ax1,'\DeltaF/F (SavGol)');
-    plot(ax1,NaN,NaN,'k-');
-    hold(ax1,'on');
-    
-    % ---- Axe F0 ----
-    axF0 = axes('Parent',fig,'Position',[0.28 0.55 0.70 0.06]);
-    box(axF0,'on');
-    ylabel(axF0,'F0');
-    set(axF0,'XTickLabel',[]);
-    cla(axF0);
-    hold(axF0,'on');
-    
-    % ---- Axe déviation ----
-    axDev = axes('Parent',fig,'Position',[0.28 0.47 0.70 0.06]);
-    box(axDev,'on');
-    ylabel(axDev,'Dev');
-    set(axDev,'XTickLabel',[]);
-    cla(axDev);
-    hold(axDev,'on');
+    setappdata( ...
+        fig, ...
+        'cells_sorted_by_quality', ...
+        cells_sorted_by_quality);
 
-    % ---- Axe motion energy ----
-    axMotion = axes('Parent',fig,'Position',[0.28 0.41 0.70 0.045]);
-    box(axMotion,'on');
-    ylabel(axMotion,'Motion');
-    set(axMotion,'XTickLabel',[]);
-    cla(axMotion);
-    hold(axMotion,'on');
+    setappdata(fig, 'stat', stat);
+    setappdata(fig, 'meanImg', meanImg);
+    setappdata(fig, 'metadata', metadata);
 
-    % ---- ROI ----
-    axROI = axes('Parent',fig,'Position',[0.28 0.06 0.30 0.30]);
-    box(axROI,'on');
-    title(axROI,'ROI (zoom)');
-    axis(axROI,'image');
-
-    % ---- Histogramme ----
-    axH   = axes('Parent',fig,'Position',[0.62 0.06 0.35 0.30]);
-    box(axH,'on');
-    title(axH,'# pics / cellule');
-    xlabel(axH,'Nombre de pics');
-    ylabel(axH,'Nombre de cellules');
-
-   % ---- Appdata ----
-    setappdata(fig,'fs',fs);   
-    setappdata(fig,'F_raw',F);
-    setappdata(fig,'DF_sg', DF_sg);
-    setappdata(fig,'DF_raw', DF_raw);
-    setappdata(fig,'F0',F0);
-    setappdata(fig,'noise_est',noise_est);
-    setappdata(fig,'SNR',SNR);
-    setappdata(fig,'score_quality', score);
-
-    score_quality_percentile = nan(size(score));
-
-    valid_score = isfinite(score);
-    [~, order_score] = sort(score(valid_score), 'ascend');
-    
-    tmp = nan(sum(valid_score),1);
-    tmp(order_score) = linspace(0,100,sum(valid_score));
-    
-    score_quality_percentile(valid_score) = tmp;
-    
-    setappdata(fig,'score_quality_percentile', score_quality_percentile);
-
-    setappdata(fig,'opts',opts);
-    setappdata(fig,'motion_energy',motion_energy);
-    
-    
-    setappdata(fig,'ax1',ax1);
-    setappdata(fig,'axF0',axF0);
-    setappdata(fig,'axDev',axDev);
-    setappdata(fig,'axMotion',axMotion);
-    setappdata(fig,'axROI',axROI);
-    setappdata(fig,'axH',axH);
-    
-    setappdata(fig,'deviation', deviation);
-    setappdata(fig,'bad_frames', bad_frames);
-    setappdata(fig,'focus_segs', focus_segs);
-
-    setappdata(fig,'stim_frames', stim_frames);
-    
-    setappdata(fig,'cells_sorted_by_quality', cells_sorted_by_quality);
-
-    % ---- iscell_idx affichable, aligné sur les lignes de F ----
-    iscell_idx_display = nan(size(F,1),1);
-    
-    if ~isempty(iscell_idx)
-    
-        iscell_idx = iscell_idx(:);
-    
-        if strcmpi(cell_type,'combined') && ~isempty(blue_indices)
-    
-            blue_indices = round(blue_indices(:));
-            blue_indices = blue_indices(isfinite(blue_indices));
-            blue_indices = blue_indices(blue_indices >= 1 & blue_indices <= size(F,1));
-    
-            is_blue = false(size(F,1),1);
-            is_blue(blue_indices) = true;
-    
-            gcamp_rows = find(~is_blue);
-    
-            n = min(numel(gcamp_rows), numel(iscell_idx));
-            iscell_idx_display(gcamp_rows(1:n)) = iscell_idx(1:n);
-    
-        else
-    
-            n = min(size(F,1), numel(iscell_idx));
-            iscell_idx_display(1:n) = iscell_idx(1:n);
-        end
-    end
-
-    setappdata(fig,'iscell_idx_display', iscell_idx_display);
-
-    setappdata(fig,'stat', stat);
-    setappdata(fig,'meanImg', meanImg);
-    setappdata(fig,'metadata', metadata);
-    setappdata(fig,'viewer_mode', viewer_mode);
-    setappdata(fig,'blue_indices', blue_indices);
-    
-    % ---- Données de détection sauvegardées pour viewer mode ----
-    setappdata(fig,'Raster_saved', Raster);
-    setappdata(fig,'Acttmp2_saved', Acttmp2);
-    setappdata(fig,'thresholds_saved', thresholds);
-    setappdata(fig,'valid_cells_saved', valid_cells);
-    
-    % cell_status: 0 undecided, +1 keep, -1 exclude
-    setappdata(fig,'cell_status', zeros(size(F,1),1));
-
-    setappdata(fig,'gcamp_output_folder', gcamp_output_folder);
-    
+    setappdata(fig, 'gcamp_output_folder', gcamp_output_folder);
     setappdata(fig, 'output_folder', output_folder);
+
     setappdata(fig, 'cell_type', cell_type);
-    setappdata(fig, 'initial_cell_count', size(F, 1));
+
+    setappdata( ...
+        fig, ...
+        'initial_cell_count', ...
+        nCells);
+
     setappdata(fig, 'gcamp_TSeries_path', gcamp_TSeries_path);
-    
+
     setappdata(fig, 'type', type);
     setappdata(fig, 'line', line);
     setappdata(fig, 'animal', animal);
@@ -400,240 +397,814 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'age', age);
     setappdata(fig, 'plane', plane);
 
-    setappdata(fig, 'bad_frames', bad_frames);
-    setappdata(fig, 'total_frame_count', size(F, 2));
+    setappdata( ...
+        fig, ...
+        'total_frame_count', ...
+        size(F,2));
 
-    setappdata(fig,'masks', masks);
-    
-    pixel_size_um = NaN;
-    mask_sizes = [];
-    mask_connectivity_ratio = [];
-    
-    if ~isempty(masks) && (isnumeric(masks) || islogical(masks)) && ndims(masks) >= 3
-    
-        pixel_size_um = NaN;
-    
-        if isappdata(fig,'metadata')
-            metadata = getappdata(fig,'metadata');
-    
-            try
-                if isstruct(metadata) && isfield(metadata, 'PixelSize_um') && ~isempty(metadata.PixelSize_um)
-                    px = metadata.PixelSize_um;
-    
-                    if isnumeric(px)
-                        pixel_size_um = double(px(1));
-                    elseif iscell(px) && ~isempty(px)
-                        pixel_size_um = double(px{1});
-                    else
-                        pixel_size_um = NaN;
-                    end
-                end
-            catch
-                pixel_size_um = NaN;
-            end
+    setappdata(fig, 'masks', masks);
+
+    %==============================================================
+    % VIEWER SAVED DATA
+    %==============================================================
+
+    setappdata(fig, 'Raster_saved', Raster);
+    setappdata(fig, 'Acttmp2_saved', Acttmp2);
+    setappdata(fig, 'thresholds_saved', thresholds);
+    setappdata(fig, 'valid_cells_saved', valid_cells);
+
+    %==============================================================
+    % ISCELL DISPLAY
+    %==============================================================
+
+    iscell_idx_display = ...
+        nan(nCells,1);
+
+    if ~isempty(iscell_idx)
+
+        iscell_idx = ...
+            iscell_idx(:);
+
+        if strcmpi(cell_type,'combined') && ...
+                ~isempty(electroporated_indices)
+
+            is_electroporated = ...
+                false(nCells,1);
+
+            is_electroporated( ...
+                electroporated_indices) = true;
+
+            gcamp_rows = ...
+                find( ...
+                    ~is_electroporated);
+
+            n = ...
+                min( ...
+                    numel(gcamp_rows), ...
+                    numel(iscell_idx));
+
+            iscell_idx_display( ...
+                gcamp_rows(1:n)) = ...
+                iscell_idx(1:n);
+
+        else
+
+            n = ...
+                min( ...
+                    nCells, ...
+                    numel(iscell_idx));
+
+            iscell_idx_display(1:n) = ...
+                iscell_idx(1:n);
         end
-    
-        nCells_masks = size(masks,1);
-        mask_sizes = nan(nCells_masks,1);
-        mask_connectivity_ratio = nan(nCells_masks,1);
-    
+    end
+
+    setappdata( ...
+        fig, ...
+        'iscell_idx_display', ...
+        iscell_idx_display);
+
+    %==============================================================
+    % MASK METRICS
+    %==============================================================
+
+    pixel_size_um = NaN;
+
+    mask_sizes = ...
+        nan(nCells,1);
+
+    mask_connectivity_ratio = ...
+        nan(nCells,1);
+
+    if ~isempty(masks) && ...
+            (isnumeric(masks) || islogical(masks)) && ...
+            ndims(masks) >= 3
+
+        try
+
+            if isstruct(metadata) && ...
+                    isfield(metadata,'PixelSize_um') && ...
+                    ~isempty(metadata.PixelSize_um)
+
+                px = ...
+                    metadata.PixelSize_um;
+
+                if isnumeric(px)
+
+                    pixel_size_um = ...
+                        double(px(1));
+
+                elseif iscell(px) && ...
+                        ~isempty(px)
+
+                    pixel_size_um = ...
+                        double(px{1});
+                end
+            end
+
+        catch
+
+            pixel_size_um = NaN;
+        end
+
+        nCells_masks = ...
+            min( ...
+                size(masks,1), ...
+                nCells);
+
         for i = 1:nCells_masks
-    
-            m = squeeze(masks(i,:,:)) > 0;
-    
-            if isempty(m) || ~any(m(:))
+
+            current_mask = ...
+                squeeze(masks(i,:,:)) > 0;
+
+            if isempty(current_mask) || ...
+                    ~any(current_mask(:))
+
                 continue;
             end
-    
-            npix = sum(m(:));
-    
-            if isfinite(pixel_size_um) && pixel_size_um > 0
-                mask_sizes(i) = npix * (pixel_size_um^2);
-            else
-                mask_sizes(i) = NaN;
+
+            npix = ...
+                sum(current_mask(:));
+
+            if isfinite(pixel_size_um) && ...
+                    pixel_size_um > 0
+
+                mask_sizes(i) = ...
+                    npix * ...
+                    pixel_size_um^2;
             end
-    
-            CC = bwconncomp(m, 8);
-    
+
+            CC = ...
+                bwconncomp( ...
+                    current_mask, ...
+                    8);
+
             if CC.NumObjects > 0
-                comp_sizes = cellfun(@numel, CC.PixelIdxList);
-                mask_connectivity_ratio(i) = max(comp_sizes) / sum(comp_sizes);
+
+                comp_sizes = ...
+                    cellfun( ...
+                        @numel, ...
+                        CC.PixelIdxList);
+
+                mask_connectivity_ratio(i) = ...
+                    max(comp_sizes) / ...
+                    sum(comp_sizes);
             end
         end
     end
-    
-    setappdata(fig,'pixel_size_um', pixel_size_um);
-    setappdata(fig,'mask_sizes', mask_sizes);
-    setappdata(fig,'mask_connectivity_ratio', mask_connectivity_ratio);
+
+    setappdata(fig, 'pixel_size_um', pixel_size_um);
+    setappdata(fig, 'mask_sizes', mask_sizes);
+
+    setappdata( ...
+        fig, ...
+        'mask_connectivity_ratio', ...
+        mask_connectivity_ratio);
+
+    %==============================================================
+    % CALLBACKS
+    %==============================================================
 
     if viewer_mode
-        % en mode viewer : toutes les cellules sont visibles directement
-        order_cells_all = (1:size(F,1)).';
-        order_cells     = order_cells_all;
-    
-        setappdata(fig,'order_cells_all', order_cells_all);
-        setappdata(fig,'order_cells',     order_cells);
-    
-        setappdata(fig,'current_rank', 1);
-        setappdata(fig,'nav_rank', 1);
-        setappdata(fig,'cutoff_rank', 1);
-    
-        if ~isempty(order_cells)
-            setappdata(fig,'cell_id', order_cells(1));
-        else
-            setappdata(fig,'cell_id', 1);
-        end
-    
-        % cutoff inactif en viewer mode
-        setappdata(fig,'cutoff_locked', true);
-        setappdata(fig,'cutoff_validated', false);
-    
+
+        validate_cb = @(~,~) [];
+        keep_cb = @(~,~) [];
+        exclude_cb = @(~,~) [];
+
     else
-        % mode normal : navigation selon qualité
-        setappdata(fig,'order_cells_all', cells_sorted_by_quality);
-        setappdata(fig,'order_cells',     cells_sorted_by_quality);
-    
-        setappdata(fig,'current_rank', 1);
-        setappdata(fig,'nav_rank', 1);
-        setappdata(fig,'cutoff_rank', 1);
-    
-        if ~isempty(cells_sorted_by_quality)
-            setappdata(fig,'cell_id', cells_sorted_by_quality(1));
-        else
-            setappdata(fig,'cell_id', 1);
-        end
-    
-        setappdata(fig,'cutoff_locked', false);
-        setappdata(fig,'cutoff_validated', false);
+
+        validate_cb = ...
+            @(~,~) validate_selection_filter(fig);
+
+        keep_cb = ...
+            @(~,~) keep_cell(fig);
+
+        exclude_cb = ...
+            @(~,~) exclude_cell(fig);
     end
 
-    % ---- Déviation ----
-    dev = getappdata(fig,'deviation');
-    dev = dev(:).';
-    tDev = 1:numel(dev);
+    finalize_cb = ...
+        @(~,~) finalize_and_close( ...
+            fig, ...
+            synchronous_frames);
+
+    %==============================================================
+    % NAVIGATION
+    %==============================================================
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'text', ...
+        'String', sprintf('Navigation cellule (1 / %d)', nCells), ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.935 0.90 0.03], ...
+        'Tag', 'lbl_nav_cell', ...
+        'HorizontalAlignment', 'left', ...
+        'BackgroundColor', [.97 .97 .98], ...
+        'FontWeight', 'bold');
+
+    if nCells > 1
+
+        step_small = ...
+            1 / (nCells - 1);
+
+        step_big = ...
+            min( ...
+                1, ...
+                10 / (nCells - 1));
+
+    else
+
+        step_small = 1;
+        step_big = 1;
+    end
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'slider', ...
+        'Min', 1, ...
+        'Max', max(1,nCells), ...
+        'Value', 1, ...
+        'SliderStep', [step_small step_big], ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.865 0.90 0.055], ...
+        'Tag', 'sldr_nav_cell', ...
+        'Callback', ...
+        @(src,~) update_current_cell( ...
+            fig, ...
+            round(get(src,'Value'))));
+
+    %==============================================================
+    % POPULATION CHECKBOXES
+    %==============================================================
+
+    signal_panel = ...
+        uipanel( ...
+            'Parent', ctrl_panel, ...
+            'Units', 'normalized', ...
+            'Position', [0.05 0.775 0.90 0.075], ...
+            'Title', 'Population', ...
+            'FontSize', 9);
+
+    has_electroporated_population = ...
+        ~isempty(electroporated_indices);
+
+    has_gcamp_population = ...
+        numel(electroporated_indices) < nCells;
+
+    if strcmpi(cell_type,'combined')
+
+        enable_gcamp = ...
+            on_off(has_gcamp_population);
+
+        enable_electroporated = ...
+            on_off(has_electroporated_population);
+
+        enable_combined = ...
+            'on';
+
+    elseif strcmpi(cell_type,'electroporated')
+
+        enable_gcamp = 'off';
+        enable_electroporated = 'on';
+        enable_combined = 'off';
+
+    else
+
+        enable_gcamp = 'on';
+        enable_electroporated = 'off';
+        enable_combined = 'off';
+    end
+
+    uicontrol( ...
+        'Parent', signal_panel, ...
+        'Style', 'checkbox', ...
+        'String', 'GCaMP', ...
+        'Units', 'normalized', ...
+        'Position', [0.02 0.08 0.27 0.78], ...
+        'Value', strcmp(selected_signal,'gcamp'), ...
+        'Enable', enable_gcamp, ...
+        'Tag', 'cb_population_gcamp', ...
+        'Callback', ...
+        @(src,~) select_population_checkbox( ...
+            fig, ...
+            src, ...
+            'gcamp'));
+
+    uicontrol( ...
+        'Parent', signal_panel, ...
+        'Style', 'checkbox', ...
+        'String', 'Electroporated', ...
+        'Units', 'normalized', ...
+        'Position', [0.30 0.08 0.40 0.78], ...
+        'Value', strcmp(selected_signal,'electroporated'), ...
+        'Enable', enable_electroporated, ...
+        'Tag', 'cb_population_electroporated', ...
+        'Callback', ...
+        @(src,~) select_population_checkbox( ...
+            fig, ...
+            src, ...
+            'electroporated'));
+
+    uicontrol( ...
+        'Parent', signal_panel, ...
+        'Style', 'checkbox', ...
+        'String', 'Combined', ...
+        'Units', 'normalized', ...
+        'Position', [0.70 0.08 0.28 0.78], ...
+        'Value', strcmp(selected_signal,'combined'), ...
+        'Enable', enable_combined, ...
+        'Tag', 'cb_population_combined', ...
+        'Callback', ...
+        @(src,~) select_population_checkbox( ...
+            fig, ...
+            src, ...
+            'combined'));
+
+    %==============================================================
+    % SLIDERS
+    %==============================================================
+
+    make_slider( ...
+        ctrl_panel, ...
+        fig, ...
+        'Window size (sec)', ...
+        'window_size_s', ...
+        1, ...
+        300, ...
+        opts.window_size_s, ...
+        [0.05 0.68 0.90 0.06]);
+
+    make_slider( ...
+        ctrl_panel, ...
+        fig, ...
+        'Prominence', ...
+        'prominence_factor', ...
+        0, ...
+        1, ...
+        1, ...
+        [0.05 0.57 0.90 0.06]);
+
+    make_slider( ...
+        ctrl_panel, ...
+        fig, ...
+        'Réfractaire (ms)', ...
+        'refrac_ms', ...
+        0, ...
+        5000, ...
+        opts.refrac_ms, ...
+        [0.05 0.49 0.90 0.06]);
+
+    make_slider( ...
+        ctrl_panel, ...
+        fig, ...
+        'SavGol window (ms)', ...
+        'savgol_win_ms', ...
+        100, ...
+        500, ...
+        opts.savgol_win_ms, ...
+        [0.05 0.41 0.90 0.06]);
+
+    %==============================================================
+    % BOUTONS
+    %==============================================================
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'pushbutton', ...
+        'String', 'Reprocess', ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.235 0.90 0.055], ...
+        'Tag', 'btn_reprocess', ...
+        'Callback', ...
+        @(~,~) request_reprocess_from_viewer(fig));
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'pushbutton', ...
+        'String', 'Appliquer cutoff', ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.17 0.90 0.055], ...
+        'BackgroundColor', [0.20 0.45 0.90], ...
+        'ForegroundColor', 'w', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Tag', 'btn_apply_cutoff', ...
+        'Callback', validate_cb);
+    
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'pushbutton', ...
+        'String', 'Confirmer sélection', ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.02 0.90 0.06], ...
+        'BackgroundColor', [0.1 0.6 0.35], ...
+        'ForegroundColor', 'w', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 12, ...
+        'Tag', 'btn_confirm_selection', ...
+        'Callback', finalize_cb);
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'pushbutton', ...
+        'String', 'Garder cellule', ...
+        'Units', 'normalized', ...
+        'Position', [0.05 0.095 0.42 0.055], ...
+        'BackgroundColor', [0.10 0.60 0.10], ...
+        'ForegroundColor', 'w', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 11, ...
+        'Callback', keep_cb);
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'pushbutton', ...
+        'String', 'Exclure cellule', ...
+        'Units', 'normalized', ...
+        'Position', [0.53 0.095 0.42 0.055], ...
+        'BackgroundColor', [0.80 0.15 0.15], ...
+        'ForegroundColor', 'w', ...
+        'FontWeight', 'bold', ...
+        'FontSize', 11, ...
+        'Callback', exclude_cb);
+
+    if viewer_mode
+
+        set( ...
+            findobj(ctrl_panel,'String','Appliquer cutoff'), ...
+            'Enable','off');
+
+        set( ...
+            findobj(ctrl_panel,'String','Garder cellule'), ...
+            'Enable','off');
+
+        set( ...
+            findobj(ctrl_panel,'String','Exclure cellule'), ...
+            'Enable','off');
+
+        set( ...
+            findobj(ctrl_panel,'String','Confirmer sélection'), ...
+            'Enable','off');
+
+        set( ...
+            findobj(ctrl_panel,'String','Reprocess'), ...
+            'Enable','on');
+
+    else
+
+        set( ...
+            findobj(ctrl_panel,'String','Reprocess'), ...
+            'Enable','off');
+    end
+    
+    update_population_action_buttons(fig);
+    
+    %==============================================================
+    % AXES
+    %==============================================================
+
+    ax1 = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.28 0.63 0.70 0.30]);
+
+    box(ax1,'on');
+
+    xlabel(ax1,'Frames');
+    ylabel(ax1,'\DeltaF/F (SavGol)');
+
+    plot(ax1,NaN,NaN,'k-');
+    hold(ax1,'on');
+
+    axF0 = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.28 0.55 0.70 0.06]);
+
+    box(axF0,'on');
+    ylabel(axF0,'F0');
+    set(axF0,'XTickLabel',[]);
+    hold(axF0,'on');
+
+    axDev = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.28 0.47 0.70 0.06]);
+
+    box(axDev,'on');
+    ylabel(axDev,'Dev');
+    set(axDev,'XTickLabel',[]);
+    hold(axDev,'on');
+
+    axMotion = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.28 0.41 0.70 0.045]);
+
+    box(axMotion,'on');
+    ylabel(axMotion,'Motion');
+    set(axMotion,'XTickLabel',[]);
+    hold(axMotion,'on');
+
+    axROI = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.28 0.06 0.30 0.30]);
+
+    box(axROI,'on');
+    title(axROI,'ROI (zoom)');
+    axis(axROI,'image');
+
+    axH = ...
+        axes( ...
+            'Parent', fig, ...
+            'Position', [0.62 0.06 0.35 0.30]);
+
+    box(axH,'on');
+    title(axH,'# pics / cellule');
+    xlabel(axH,'Nombre de pics');
+    ylabel(axH,'Nombre de cellules');
+
+    setappdata(fig,'ax1',ax1);
+    setappdata(fig,'axF0',axF0);
+    setappdata(fig,'axDev',axDev);
+    setappdata(fig,'axMotion',axMotion);
+    setappdata(fig,'axROI',axROI);
+    setappdata(fig,'axH',axH);
+
+    %==============================================================
+    % MOTION DISPLAY
+    %==============================================================
+
+    dev = ...
+        deviation(:).';
 
     if ~isempty(dev)
-        hDev = plot(axDev, tDev, dev, 'k-','HitTest','off');
-        setappdata(fig,'hDev', hDev);
-    else
-        text(axDev,0.5,0.5,'deviation vide','Units','normalized','HorizontalAlignment','center');
-    end
 
-    dv = dev(isfinite(dev));
-    if ~isempty(dv)
-        lo = prctile(dv, 2);
-        hi = prctile(dv, 98);
-        if isfinite(lo) && isfinite(hi) && hi > lo
-            pad = 0.1*(hi-lo);
-            ylim(axDev, [lo-pad, hi+pad]);
+        plot( ...
+            axDev, ...
+            1:numel(dev), ...
+            dev, ...
+            'k-', ...
+            'HitTest','off');
+
+        dv = ...
+            dev(isfinite(dev));
+
+        if ~isempty(dv)
+
+            lo = prctile(dv,2);
+            hi = prctile(dv,98);
+
+            if isfinite(lo) && ...
+                    isfinite(hi) && ...
+                    hi > lo
+
+                pad = ...
+                    0.1 * ...
+                    (hi - lo);
+
+                ylim( ...
+                    axDev, ...
+                    [lo-pad hi+pad]);
+            end
         end
-    end
 
-    % Motion energy
-    motion_energy = getappdata(fig,'motion_energy');
-
-    if ~isempty(motion_energy)
-    
-        motion_energy = motion_energy(:).';
-    
-        plot(axMotion, ...
-             1:numel(motion_energy), ...
-             motion_energy, ...
-             'k-', ...
-             'HitTest','off');
-    
     else
-    
-        text(axMotion,0.5,0.5,'motion energy vide', ...
+
+        text( ...
+            axDev, ...
+            0.5, ...
+            0.5, ...
+            'deviation vide', ...
             'Units','normalized', ...
             'HorizontalAlignment','center');
-    
     end
-    
-   if ~isempty(focus_segs)
-        hBad1 = create_badframe_patch(ax1, focus_segs);
-        setappdata(fig,'hBadPatch_ax1', hBad1);
-    
-        hBadF0 = create_badframe_patch(axF0, focus_segs);
-        setappdata(fig,'hBadPatch_axF0', hBadF0);
-    
-        hBadDev = create_badframe_patch(axDev, focus_segs);
-        setappdata(fig,'hBadPatch_axDev', hBadDev);
-   end
 
-    hBadMotion = create_badframe_patch(axMotion, focus_segs);
-    setappdata(fig,'hBadPatch_axMotion', hBadMotion);
+    if ~isempty(motion_energy)
 
-    linkaxes([ax1 axF0 axDev axMotion],'x');
+        motion_energy = ...
+            motion_energy(:).';
 
-    % ---- Pics / sélection ----
+        plot( ...
+            axMotion, ...
+            1:numel(motion_energy), ...
+            motion_energy, ...
+            'k-', ...
+            'HitTest','off');
+
+    else
+
+        text( ...
+            axMotion, ...
+            0.5, ...
+            0.5, ...
+            'motion energy vide', ...
+            'Units','normalized', ...
+            'HorizontalAlignment','center');
+    end
+
+    if ~isempty(focus_segs)
+
+        hBad1 = ...
+            create_badframe_patch( ...
+                ax1, ...
+                focus_segs);
+
+        setappdata(fig,'hBadPatch_ax1',hBad1);
+
+        hBadF0 = ...
+            create_badframe_patch( ...
+                axF0, ...
+                focus_segs);
+
+        setappdata(fig,'hBadPatch_axF0',hBadF0);
+
+        hBadDev = ...
+            create_badframe_patch( ...
+                axDev, ...
+                focus_segs);
+
+        setappdata(fig,'hBadPatch_axDev',hBadDev);
+
+        hBadMotion = ...
+            create_badframe_patch( ...
+                axMotion, ...
+                focus_segs);
+
+        setappdata(fig,'hBadPatch_axMotion',hBadMotion);
+    end
+
+    linkaxes( ...
+        [ax1 axF0 axDev axMotion], ...
+        'x');
+
+    %==============================================================
+    % PEAK COUNTS
+    %==============================================================
+
     if viewer_mode
 
-        % En viewer mode : NE PAS redétecter.
-        % On utilise uniquement les pics sauvegardés.
-        nCells = size(F,1);
-        n_peaks_all = zeros(nCells,1);
+        n_peaks_all = ...
+            zeros(nCells,1);
 
         if ~isempty(Acttmp2)
-            for cid = 1:min(nCells, numel(Acttmp2))
+
+            for cid = 1:min(nCells,numel(Acttmp2))
+
                 if iscell(Acttmp2)
-                    n_peaks_all(cid) = numel(Acttmp2{cid});
-                else
-                    n_peaks_all(cid) = 0;
+
+                    n_peaks_all(cid) = ...
+                        numel(Acttmp2{cid});
                 end
             end
+
         elseif ~isempty(Raster)
-            n_peaks_all = sum(logical(Raster), 2);
-            n_peaks_all = n_peaks_all(:);
+
+            n_peaks_all = ...
+                sum( ...
+                    logical(Raster), ...
+                    2);
+
+            n_peaks_all = ...
+                n_peaks_all(:);
         end
 
-        setappdata(fig,'n_peaks_all', n_peaks_all);
+        setappdata(fig,'n_peaks_all',n_peaks_all);
+
+        % Viewer : aucun cutoff
+        setappdata(fig,'cutoff_validated',false);
+        setappdata(fig,'cutoff_locked',true);
 
     else
 
-        % Mode normal : détection active
         recompute_n_peaks_all(fig);
-        apply_auto_cutoff(fig);
 
-        n_peaks_all = getappdata(fig,'n_peaks_all');
-        cell_status = getappdata(fig,'cell_status');
-        zero_peak_cells = (n_peaks_all == 0);
-        cell_status(zero_peak_cells) = -1;
-        setappdata(fig,'cell_status', cell_status);
+        % IMPORTANT :
+        % on ne déclenche PAS automatiquement apply_auto_cutoff ici.
+        %
+        % Le bouton "Appliquer cutoff" doit réellement appliquer
+        % les critères.
     end
+
+    %==============================================================
+    % INITIALISER NAVIGATION
+    %==============================================================
 
     refresh_selection_order(fig);
-    update_current_cell(fig, 1);
-    drawnow;
 
-    uiwait(fig);
-    has_new_outputs = false;
-    if ishghandle(fig) && isappdata(fig,'request_reprocess')
-        request_reprocess = logical(getappdata(fig,'request_reprocess'));
+    if isappdata(fig,'order_cells')
+
+        order_cells = ...
+            getappdata(fig,'order_cells');
+
+        if ~isempty(order_cells)
+
+            update_current_cell(fig,1);
+        end
     end
 
-    % ---- Sorties ----
-    if ishghandle(fig) && isappdata(fig,'last_save_outputs')
-        out = getappdata(fig,'last_save_outputs');
+    update_population_window_title(fig);
+
+    drawnow;
+
+    %==============================================================
+    % WAIT
+    %==============================================================
+
+    uiwait(fig);
+
+    %==============================================================
+    % SELECTED SIGNAL
+    %==============================================================
+
+    if ishghandle(fig) && ...
+            isappdata(fig,'selected_signal')
+
+        selected_signal = ...
+            char( ...
+                string( ...
+                    getappdata(fig,'selected_signal')));
+    end
+
+    %==============================================================
+    % REPROCESS
+    %==============================================================
+
+    has_new_outputs = false;
+
+    if ishghandle(fig) && ...
+            isappdata(fig,'request_reprocess')
+
+        request_reprocess = ...
+            logical( ...
+                getappdata( ...
+                    fig, ...
+                    'request_reprocess'));
+    end
+
+    %==============================================================
+    % OUTPUTS
+    %==============================================================
+
+    if ishghandle(fig) && ...
+            isappdata(fig,'last_save_outputs')
+
+        out = ...
+            getappdata(fig,'last_save_outputs');
 
         has_new_outputs = true;
-        valid_cells = out.valid_cells;
-        DF_raw      = out.DF_raw;
-        DF_sg       = out.DF_sg;
-        F0          = out.F0;
-        Raster      = out.Raster;
-        Acttmp2     = out.Acttmp2;
-        MAct        = out.MAct;
-        thresholds  = out.thresholds;
+
+        valid_cells = ...
+            out.valid_cells;
+
+        DF_raw = ...
+            out.DF_raw;
+
+        DF_sg = ...
+            out.DF_sg;
+
+        F0 = ...
+            out.F0;
+
+        noise_est = ...
+            out.noise_est;
+
+        Raster = ...
+            out.Raster;
+
+        Acttmp2 = ...
+            out.Acttmp2;
+
+        MAct = ...
+            out.MAct;
+
+        thresholds = ...
+            out.thresholds;
+
     else
-        Raster     = false(size(F));
-        Acttmp2    = repmat({[]}, size(F,1),1);
-        MAct       = [];
-        thresholds = nan(size(F,1),1);
+
+        Raster = ...
+            false(size(F));
+
+        Acttmp2 = ...
+            repmat( ...
+                {[]}, ...
+                nCells, ...
+                1);
+
+        MAct = [];
+
+        thresholds = ...
+            nan(nCells,1);
+
         valid_cells = [];
+
         DF_sg = [];
         DF_raw = [];
         F0 = [];
+        noise_est = [];
     end
 
     if ishghandle(fig)
@@ -641,7 +1212,335 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     end
 end
 
-%% ===================== PIPELINE CORE =====================
+%% ===================== POPULATION =====================
+
+function indices = ...
+        normalize_electroporated_indices( ...
+            indices, ...
+            nCells)
+
+    if nargin < 2 || ...
+            isempty(nCells) || ...
+            ~isfinite(nCells)
+
+        nCells = 0;
+    end
+
+    if isempty(indices)
+
+        indices = ...
+            zeros(0,1);
+
+        return;
+    end
+
+    indices = ...
+        round( ...
+            double(indices(:)));
+
+    indices = ...
+        indices( ...
+            isfinite(indices) & ...
+            indices >= 1 & ...
+            indices <= nCells);
+
+    indices = ...
+        unique( ...
+            indices, ...
+            'stable');
+end
+
+
+function indices = ...
+        get_active_population_indices( ...
+            fig, ...
+            nCells)
+
+    all_indices = ...
+        (1:nCells).';
+
+    selected_signal = ...
+        'combined';
+
+    if isappdata(fig,'selected_signal')
+
+        selected_signal = ...
+            lower( ...
+                char( ...
+                    string( ...
+                        getappdata( ...
+                            fig, ...
+                            'selected_signal'))));
+    end
+
+    electroporated_indices = [];
+
+    if isappdata(fig,'electroporated_indices')
+
+        electroporated_indices = ...
+            getappdata( ...
+                fig, ...
+                'electroporated_indices');
+    end
+
+    electroporated_indices = ...
+        normalize_electroporated_indices( ...
+            electroporated_indices, ...
+            nCells);
+
+    switch selected_signal
+
+        case 'combined'
+
+            indices = ...
+                all_indices;
+
+        case 'electroporated'
+
+            indices = ...
+                electroporated_indices;
+
+        case 'gcamp'
+
+            indices = ...
+                setdiff( ...
+                    all_indices, ...
+                    electroporated_indices, ...
+                    'stable');
+
+        otherwise
+
+            indices = ...
+                all_indices;
+    end
+end
+
+
+function select_population_checkbox( ...
+        fig, ...
+        src, ...
+        selected_signal)
+
+    if ~ishghandle(fig)
+        return;
+    end
+
+    % Impossible d'avoir zéro case cochée.
+    if get(src,'Value') == 0
+
+        set(src,'Value',1);
+        return;
+    end
+
+    tags = { ...
+        'cb_population_gcamp', ...
+        'cb_population_electroporated', ...
+        'cb_population_combined'};
+
+    for k = 1:numel(tags)
+
+        h = ...
+            findobj( ...
+                fig, ...
+                'Tag', ...
+                tags{k});
+
+        if isempty(h)
+            continue;
+        end
+
+        if h ~= src
+
+            set( ...
+                h, ...
+                'Value', ...
+                0);
+        end
+    end
+
+    %==========================================================
+    % SEULEMENT changement d'affichage.
+    %
+    % manual_status et cutoff_status NE SONT PAS touchés.
+    %
+    % C'est ce qui assure la propagation :
+    %
+    % combined <-> GCaMP <-> Electroporated
+    %==========================================================
+
+    setappdata( ...
+        fig, ...
+        'selected_signal', ...
+        selected_signal);
+    
+    update_population_action_buttons(fig);
+
+    update_population_window_title(fig);
+
+    refresh_selection_order(fig);
+
+    if isappdata(fig,'order_cells')
+
+        order_cells = ...
+            getappdata(fig,'order_cells');
+
+        if ~isempty(order_cells)
+
+            update_current_cell( ...
+                fig, ...
+                1);
+
+        else
+
+            update_peak_histogram(fig);
+        end
+    end
+
+    drawnow;
+end
+
+
+function update_population_window_title(fig)
+
+    selected_signal = ...
+        'combined';
+
+    if isappdata(fig,'selected_signal')
+
+        selected_signal = ...
+            char( ...
+                string( ...
+                    getappdata( ...
+                        fig, ...
+                        'selected_signal')));
+    end
+
+    title_parts = {};
+
+    if isappdata(fig,'viewer_mode') && ...
+            getappdata(fig,'viewer_mode')
+
+        title_parts{end+1} = ...
+            '[VIEWER MODE]';
+    end
+
+    title_parts{end+1} = ...
+        upper(selected_signal);
+
+    if isappdata(fig,'gcamp_output_folder')
+
+        folder = ...
+            getappdata( ...
+                fig, ...
+                'gcamp_output_folder');
+
+        if ~isempty(folder)
+
+            title_parts{end+1} = ...
+                char(string(folder));
+        end
+    end
+
+    if isappdata(fig,'F_raw')
+
+        F = ...
+            getappdata( ...
+                fig, ...
+                'F_raw');
+
+        active_indices = ...
+            get_active_population_indices( ...
+                fig, ...
+                size(F,1));
+
+        title_parts{end+1} = ...
+            sprintf( ...
+                'nCells=%d', ...
+                numel(active_indices));
+    end
+
+    set( ...
+        fig, ...
+        'Name', ...
+        strjoin( ...
+            title_parts, ...
+            ' | '));
+end
+
+
+function value = on_off(tf)
+
+    if tf
+
+        value = 'on';
+
+    else
+
+        value = 'off';
+    end
+end
+
+function effective_status = ...
+        get_effective_cell_status(fig)
+
+    manual_status = [];
+
+    cutoff_status = [];
+
+    if isappdata(fig,'manual_status')
+
+        manual_status = ...
+            getappdata( ...
+                fig, ...
+                'manual_status');
+    end
+
+    if isappdata(fig,'cutoff_status')
+
+        cutoff_status = ...
+            getappdata( ...
+                fig, ...
+                'cutoff_status');
+    end
+
+    nCells = ...
+        max( ...
+            numel(manual_status), ...
+            numel(cutoff_status));
+
+    if nCells == 0
+
+        effective_status = ...
+            zeros(0,1);
+
+        return;
+    end
+
+    if numel(manual_status) ~= nCells
+
+        manual_status = ...
+            zeros(nCells,1);
+    end
+
+    if numel(cutoff_status) ~= nCells
+
+        cutoff_status = ...
+            zeros(nCells,1);
+    end
+
+    % Cutoff par défaut
+    effective_status = ...
+        cutoff_status(:);
+
+    % Décision manuelle PRIORITAIRE
+    manual_defined = ...
+        manual_status ~= 0;
+
+    effective_status(manual_defined) = ...
+        manual_status(manual_defined);
+end
+
+%% ===================== DETECTION PIPELINE =====================
 
 function opts = convert_opts_ms_to_frames(opts, fs)
 
@@ -940,7 +1839,7 @@ function bad_mask = make_bad_mask(bad_frames, Nx)
     end
 end
 
-%% ===================== DETECTION / SAVE =====================
+%% ===================== PEAK DETECTION AND SAVE =====================
 function auto_detect_and_add(fig)
 
     if ~isappdata(fig,'DF_sg') || ~isappdata(fig,'cell_id')
@@ -1067,201 +1966,355 @@ function recompute_n_peaks_all(fig)
     setappdata(fig,'n_peaks_all', n_peaks_all);
 end
 
-function [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
+function [invalid_cells, valid_cells, DF, F0, noise_est, ...
+          Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
     save_peak_matrix(fig, synchronous_frames)
 
-    DF     = getappdata(fig,'DF_sg');
-    opts      = getappdata(fig,'opts');
-    noise_est = getappdata(fig,'noise_est');
-    F0        = getappdata(fig,'F0');
+    DF = ...
+        getappdata(fig,'DF_sg');
+
+    F0 = ...
+        getappdata(fig,'F0');
+
+    opts = ...
+        getappdata(fig,'opts');
+
+    noise_est = ...
+        getappdata(fig,'noise_est');
 
     if isappdata(fig,'bad_frames')
-        bad_frames = getappdata(fig,'bad_frames');
+
+        bad_frames = ...
+            getappdata(fig,'bad_frames');
+
     else
+
         bad_frames = [];
     end
 
-    nCells = size(DF,1);
-    Nz     = size(DF,2);
+    nCells = ...
+        size(DF,1);
 
-    if isappdata(fig,'cell_status')
-        cell_status = getappdata(fig,'cell_status');
-    else
-        cell_status = zeros(nCells,1);
-    end
+    Nz = ...
+        size(DF,2);
 
-    if isappdata(fig,'n_peaks_all')
-        n_peaks_all = getappdata(fig,'n_peaks_all');
-    else
-        n_peaks_all = zeros(nCells,1);
-    end
+    %==============================================================
+    % Population active = indices Combined
+    %==============================================================
 
-    Raster     = false(nCells, Nz);
-    Acttmp2    = cell(nCells,1);
-    thresholds = nan(nCells,1);
-    keep_mask = false(nCells,1);
+    active_indices = ...
+        get_active_population_indices( ...
+            fig, ...
+            nCells);
 
-    cutoff_validated = isappdata(fig,'cutoff_validated') && getappdata(fig,'cutoff_validated');
+    %==============================================================
+    % État global
+    %==============================================================
 
-    if isappdata(fig,'n_peaks_all') && isappdata(fig,'opts')
+    manual_status = ...
+        getappdata( ...
+            fig, ...
+            'manual_status');
 
-        n_peaks_all = getappdata(fig,'n_peaks_all');
-        opts = getappdata(fig,'opts');
+    cutoff_status = ...
+        getappdata( ...
+            fig, ...
+            'cutoff_status');
+
+    effective_status = ...
+        get_effective_cell_status(fig);
+
+    cutoff_validated = ...
+        isappdata(fig,'cutoff_validated') && ...
+        getappdata(fig,'cutoff_validated');
+
+    % ==============================================================
+    % Population autorisée par les décisions globales
+    %
+    % -1 = rejetée
+    %  0 = pas encore soumise au cutoff
+    % +1 = retenue
+    % ==============================================================
     
-        mask_sizes = [];
-        if isappdata(fig,'mask_sizes')
-            mask_sizes = getappdata(fig,'mask_sizes');
-        end
+    candidate_keep = ...
+        effective_status ~= -1;
     
-        good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
+    % ==============================================================
+    % Exclusion automatique des cellules sans pic
+    %
+    % Exception :
+    % une cellule explicitement gardée manuellement reste autorisée.
+    % ==============================================================
     
-        if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-            good_by_mask = mask_sizes >= opts.min_mask_um2;
-        else
-            good_by_mask = true(size(n_peaks_all));
-        end
-
-        mask_connectivity_ratio = [];
-        if isappdata(fig,'mask_connectivity_ratio')
-            mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
-        end
-        
-        if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
-            good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
-        else
-            good_by_connectivity = true(size(n_peaks_all));
-        end
-        
-        selected_cells_from_cutoff = find( ...
-            good_by_peaks & ...
-            good_by_mask & ...
-            good_by_connectivity);
+    n_peaks_all = ...
+        getappdata(fig,'n_peaks_all');
     
-    else
-        selected_cells_from_cutoff = [];
-    end
+    has_peaks = ...
+        n_peaks_all > 0;
+    
+    manual_keep = ...
+        manual_status == +1;
+    
+    candidate_keep = ...
+        candidate_keep & ...
+        (has_peaks | manual_keep);
+   
+    %==============================================================
+    % Matrices globales Combined
+    %==============================================================
 
-    n_kept = 0;
+    Raster_all = ...
+        false(nCells,Nz);
 
-    for cid = 1:nCells
+    Acttmp2_all = ...
+        cell(nCells,1);
 
-        if cell_status(cid) == -1
-            Acttmp2{cid} = [];
-            thresholds(cid) = NaN;
-            Raster(cid,:) = false;
+    thresholds_all = ...
+        nan(nCells,1);
+
+    keep_mask = ...
+        false(nCells,1);
+
+    %==============================================================
+    % Détection uniquement cellules de population active retenues
+    %==============================================================
+
+    candidate_indices = ...
+        find(candidate_keep);
+
+    for cid = ...
+            candidate_indices(:).'
+
+        x = ...
+            DF(cid,:).';
+
+        if isempty(x) || ...
+                all(~isfinite(x))
+
             continue;
         end
 
-        force_keep = (cell_status(cid) == +1);
+        sigma = ...
+            noise_est(cid);
 
-        if ~force_keep && ~ismember(cid, selected_cells_from_cutoff)
-            Acttmp2{cid} = [];
-            thresholds(cid) = NaN;
-            Raster(cid,:) = false;
-            continue;
+        if ~isfinite(sigma) || ...
+                sigma <= 0
+
+            sigma = ...
+                std(x,'omitnan');
         end
 
-        x = DF(cid,:).';
+        if ~isfinite(sigma) || ...
+                sigma <= 0
 
-        if isempty(x) || all(~isfinite(x))
-            Acttmp2{cid} = [];
-            thresholds(cid) = NaN;
-            Raster(cid,:) = false;
-            continue;
-        end
-
-        sigma = noise_est(cid);
-        if ~isfinite(sigma) || sigma <= 0
-            sigma = std(x,'omitnan');
-        end
-        if ~isfinite(sigma) || sigma <= 0
             sigma = eps;
         end
 
-        out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
+        out = ...
+            detect_peaks_cell_core( ...
+                x, ...
+                sigma, ...
+                opts, ...
+                bad_frames);
 
-        Acttmp2{cid}    = out.locs_raw;
-        thresholds(cid) = out.threshold;
+        Acttmp2_all{cid} = ...
+            out.locs_raw;
+
+        thresholds_all(cid) = ...
+            out.threshold;
 
         if ~isempty(out.locs_raw)
-            Raster(cid, out.locs_raw) = true;
-        end
 
-        keep_mask(cid) = true;
-        n_kept = n_kept + 1;
+            Raster_all( ...
+                cid, ...
+                out.locs_raw) = true;
+        
+            keep_mask(cid) = true;
+        
+        elseif manual_status(cid) == +1
+        
+            % Autoriser explicitement une cellule sans pic
+            % si l'utilisateur a demandé de la conserver.
+            keep_mask(cid) = true;
+        end
     end
 
-    fprintf('\n=> %d cellules conservées sur %d (%.1f%%)\n', ...
-        n_kept, nCells, 100 * n_kept / max(1,nCells));
+    %==============================================================
+    % Indices retenus en référentiel Combined
+    %==============================================================
+
+    valid_combined_cells = ...
+        find(keep_mask);
+
+    %==============================================================
+    % Conversion vers indices LOCAUX de la population sélectionnée
+    %
+    % Ex :
+    % electroporated Combined 101:120
+    %
+    % Combined 103 -> electroporated local 3
+    %==============================================================
+
+    valid_cells = ...
+    valid_combined_cells(:);
+
+    invalid_cells = ...
+        ~keep_mask;
+
+    valid_cells = ...
+        valid_cells(:);
+
+    %==============================================================
+    % OUTPUT MATRICES
+    %==============================================================
+
+    DF = ...
+        DF(valid_combined_cells,:);
+
+    F0 = ...
+        F0(valid_combined_cells,:);
+
+    noise_est = ...
+        noise_est(valid_combined_cells);
+
+    Raster = ...
+        Raster_all(valid_combined_cells,:);
+
+    Acttmp2 = ...
+        Acttmp2_all(valid_combined_cells);
+
+    thresholds = ...
+        thresholds_all(valid_combined_cells);
+
+    %==============================================================
+    % MAct
+    %==============================================================
 
     if Nz > synchronous_frames
-        MAct = zeros(1, Nz - synchronous_frames);
+
+        MAct = ...
+            zeros( ...
+                1, ...
+                Nz - synchronous_frames);
+
         for i = 1:(Nz - synchronous_frames)
-            MAct(i) = sum(max(Raster(:, i:i+synchronous_frames), [], 2));
+
+            MAct(i) = ...
+                sum( ...
+                    max( ...
+                        Raster(:, ...
+                            i:i+synchronous_frames), ...
+                        [], ...
+                        2));
         end
+
     else
-        MAct = zeros(1,0);
+
+        MAct = ...
+            zeros(1,0);
     end
 
-    invalid_cells = ~keep_mask;
-    valid_cells   = find(keep_mask);
+    %==============================================================
+    % SUMMARY
+    %==============================================================
 
-    % -------------------------------------------------
-    % Résumé final, incluant cellules électroporées
-    % -------------------------------------------------
-    blue_indices = [];
-    if isappdata(fig,'blue_indices')
-        blue_indices = getappdata(fig,'blue_indices');
-    end
+    electroporated_indices = ...
+        getappdata( ...
+            fig, ...
+            'electroporated_indices');
 
-    if isempty(blue_indices)
-        blue_indices = [];
-    else
-        blue_indices = round(blue_indices(:));
-        blue_indices = blue_indices(isfinite(blue_indices) & blue_indices >= 1 & blue_indices <= nCells);
-        blue_indices = unique(blue_indices);
-    end
+    electroporated_indices = ...
+        normalize_electroporated_indices( ...
+            electroporated_indices, ...
+            nCells);
 
-    if cutoff_validated
-        blue_pass_cutoff = intersect(blue_indices, selected_cells_from_cutoff);
-    else
-        blue_pass_cutoff = [];
-    end
+    gcamp_indices = ...
+        setdiff( ...
+            (1:nCells).', ...
+            electroporated_indices, ...
+            'stable');
 
-    blue_kept_final = intersect(blue_indices, valid_cells);
+    selected_signal = ...
+        char( ...
+            string( ...
+                getappdata(fig,'selected_signal')));
 
     summary = struct();
-    summary.n_total          = nCells;
-    summary.n_zero_peaks     = sum(n_peaks_all == 0);
-    summary.n_manual_keep    = sum(cell_status == +1);
-    summary.n_manual_excl    = sum(cell_status == -1);
-    summary.n_undecided      = sum(cell_status == 0);
 
-    if cutoff_validated
-        summary.n_kept_by_cutoff = sum( ...
-            (cell_status == 0) & ismember((1:nCells)', selected_cells_from_cutoff) ...
-        );
-    else
-        summary.n_kept_by_cutoff = 0;
-    end
+    summary.selected_signal = ...
+        selected_signal;
 
-    summary.n_blue_total         = numel(blue_indices);
-    summary.n_blue_pass_cutoff   = numel(blue_pass_cutoff);
-    summary.blue_pass_cutoff_ids = blue_pass_cutoff;
+    summary.active_combined_indices = ...
+        active_indices(:);
 
-    summary.n_blue_kept_final    = numel(blue_kept_final);
-    summary.blue_kept_final_ids  = blue_kept_final;
+    summary.valid_combined_cells = ...
+        valid_combined_cells(:);
 
-    summary.n_kept_final = numel(valid_cells);
+    summary.valid_local_cells = ...
+        valid_cells(:);
 
-    DF      = DF(valid_cells, :);
-    F0         = F0(valid_cells, :);
-    thresholds = thresholds(valid_cells, :);
-    Acttmp2    = Acttmp2(valid_cells);
-    Raster     = Raster(valid_cells, :);
+    summary.gcamp_combined_indices = ...
+        gcamp_indices(:);
+
+    summary.electroporated_combined_indices = ...
+        electroporated_indices(:);
+
+    summary.manual_status = ...
+        manual_status(:);
+
+    summary.cutoff_status = ...
+        cutoff_status(:);
+
+    summary.effective_status = ...
+        effective_status(:);
+
+    valid_active_cells = ...
+    intersect( ...
+        valid_combined_cells, ...
+        active_indices, ...
+        'stable');
+
+    summary.n_total = ...
+        numel(active_indices);
+    
+    summary.n_kept_final = ...
+        numel(valid_active_cells);
+    
+    summary.n_kept_combined_final = ...
+        numel(valid_combined_cells);
+
+    summary.n_manual_keep = ...
+        sum( ...
+            manual_status(active_indices) == +1);
+
+    summary.n_manual_excl = ...
+        sum( ...
+            manual_status(active_indices) == -1);
+
+    summary.n_cutoff_keep = ...
+        sum( ...
+            cutoff_status(active_indices) == +1);
+
+    summary.n_cutoff_excl = ...
+        sum( ...
+            cutoff_status(active_indices) == -1);
+
+    % fprintf('\n');
+    % fprintf( ...
+    %     '=> %s : %d cellules conservées sur %d (%.1f%%)\n', ...
+    %     upper(selected_signal), ...
+    %     numel(valid_active_cells), ...
+    %     numel(active_indices), ...
+    %     100 * numel(valid_active_cells) / ...
+    %     max(1,numel(active_indices)));
+    % 
+    % fprintf( ...
+    %     '=> COMBINED final : %d / %d cellules conservées\n', ...
+    %     numel(valid_combined_cells), ...
+    %     nCells);
 end
 
-%% ===================== NAVIGATION / CUTOFF =====================
+%% ===================== NAVIGATION AND CUTOFF =====================
 
 function update_current_cell(fig, idx_slider)
 
@@ -1384,275 +2437,461 @@ function goto_navigationdex(fig, hEdit)
     update_current_cell(fig, idx);
 end
 
+%% ===================== CUTOFF =====================
+
 function apply_auto_cutoff(fig)
 
     if ~ishghandle(fig)
         return;
     end
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+    if isappdata(fig,'viewer_mode') && ...
+            getappdata(fig,'viewer_mode')
+
         return;
     end
 
-    if ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
+    if ~isappdata(fig,'n_peaks_all') || ...
+            ~isappdata(fig,'opts')
+
         return;
     end
 
-    n_peaks_all = getappdata(fig,'n_peaks_all');
-    opts = getappdata(fig,'opts');
+    n_peaks_all = ...
+        getappdata( ...
+            fig, ...
+            'n_peaks_all');
+
+    opts = ...
+        getappdata( ...
+            fig, ...
+            'opts');
 
     if isempty(n_peaks_all)
         return;
     end
 
+    nCells = ...
+        numel(n_peaks_all);
+
+    active_indices = ...
+        get_active_population_indices( ...
+            fig, ...
+            nCells);
+
+    if isempty(active_indices)
+        return;
+    end
+
+    %==========================================================
+    % Peaks
+    %==========================================================
+
+    good_by_peaks = ...
+        n_peaks_all >= ...
+        opts.min_n_peaks_cutoff;
+
+    %==========================================================
+    % Mask size
+    %==========================================================
+
     mask_sizes = [];
+
     if isappdata(fig,'mask_sizes')
-        mask_sizes = getappdata(fig,'mask_sizes');
+
+        mask_sizes = ...
+            getappdata( ...
+                fig, ...
+                'mask_sizes');
     end
 
-    good_by_peaks = n_peaks_all >= opts.min_n_peaks_cutoff;
+    if ~isempty(mask_sizes) && ...
+            numel(mask_sizes) == nCells
 
-    if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-        good_by_mask = mask_sizes >= opts.min_mask_um2;
+        good_by_mask = ...
+            mask_sizes >= ...
+            opts.min_mask_um2;
+
     else
-        good_by_mask = true(size(n_peaks_all));
+
+        good_by_mask = ...
+            true(nCells,1);
     end
+
+    %==========================================================
+    % Connectivity
+    %==========================================================
 
     mask_connectivity_ratio = [];
+
     if isappdata(fig,'mask_connectivity_ratio')
-        mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
-    end
-    
-    if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
-        good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
-    else
-        good_by_connectivity = true(size(n_peaks_all));
+
+        mask_connectivity_ratio = ...
+            getappdata( ...
+                fig, ...
+                'mask_connectivity_ratio');
     end
 
-    selected_cells_from_cutoff = find( ...
+    if ~isempty(mask_connectivity_ratio) && ...
+            numel(mask_connectivity_ratio) == nCells
+
+        good_by_connectivity = ...
+            mask_connectivity_ratio >= ...
+            opts.min_mask_connectivity;
+
+    else
+
+        good_by_connectivity = ...
+            true(nCells,1);
+    end
+
+    cutoff_good = ...
         good_by_peaks & ...
         good_by_mask & ...
-        good_by_connectivity);
+        good_by_connectivity;
 
-    setappdata(fig,'selected_cells_from_cutoff', selected_cells_from_cutoff);
-    setappdata(fig,'cutoff_validated', true);
-    setappdata(fig,'cutoff_locked', true);
+    %==========================================================
+    % cutoff_status GLOBAL
+    %
+    % On modifie UNIQUEMENT la population actuellement affichée.
+    %
+    % Mais puisque les indices sont Combined, le résultat est
+    % immédiatement visible dans les autres vues.
+    %==========================================================
 
-    fprintf(['Cutoff auto : >= %d pics ET masque >= %.1f um^2 ' ...
-        'ET connectivité >= %.2f.\n'], ...
-        opts.min_n_peaks_cutoff, ...
-        opts.min_mask_um2, ...
+    cutoff_status = ...
+        getappdata( ...
+            fig, ...
+            'cutoff_status');
+
+    if isempty(cutoff_status) || ...
+            numel(cutoff_status) ~= nCells
+
+        cutoff_status = ...
+            zeros(nCells,1);
+    end
+
+    cutoff_status(active_indices) = -1;
+
+    cutoff_status( ...
+        active_indices( ...
+            cutoff_good(active_indices))) = +1;
+
+    setappdata( ...
+        fig, ...
+        'cutoff_status', ...
+        cutoff_status);
+
+    setappdata( ...
+        fig, ...
+        'cutoff_validated', ...
+        true);
+
+    setappdata( ...
+        fig, ...
+        'cutoff_locked', ...
+        true);
+
+    selected_cells_from_cutoff = ...
+        active_indices( ...
+            cutoff_status(active_indices) == +1);
+
+    setappdata( ...
+        fig, ...
+        'selected_cells_from_cutoff', ...
+        selected_cells_from_cutoff(:));
+
+    selected_signal = ...
+        char( ...
+            string( ...
+                getappdata( ...
+                    fig, ...
+                    'selected_signal')));
+
+    fprintf('\n');
+    fprintf( ...
+        'Cutoff appliqué à %s\n', ...
+        upper(selected_signal));
+
+    fprintf( ...
+        '  Total        : %d\n', ...
+        numel(active_indices));
+
+    fprintf( ...
+        '  Conservées   : %d\n', ...
+        sum( ...
+            cutoff_status(active_indices) == +1));
+
+    fprintf( ...
+        '  Exclues      : %d\n', ...
+        sum( ...
+            cutoff_status(active_indices) == -1));
+
+    fprintf( ...
+        '  Peaks        : >= %d\n', ...
+        opts.min_n_peaks_cutoff);
+
+    fprintf( ...
+        '  Mask         : >= %.1f um²\n', ...
+        opts.min_mask_um2);
+
+    fprintf( ...
+        '  Connectivity : >= %.2f\n', ...
         opts.min_mask_connectivity);
+
+    refresh_selection_order(fig);
 end
+
 
 function validate_selection_filter(fig)
 
-    if ~ishandle(fig)
+    if ~ishghandle(fig)
         return;
     end
 
-    if ~isappdata(fig,'cells_sorted_by_quality') || ~isappdata(fig,'n_peaks_all') || ~isappdata(fig,'opts')
+    if isappdata(fig,'viewer_mode') && ...
+            getappdata(fig,'viewer_mode')
+
         return;
     end
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
-        return;
+    apply_auto_cutoff(fig);
+
+    if isappdata(fig,'order_cells')
+
+        order_cells = ...
+            getappdata( ...
+                fig, ...
+                'order_cells');
+
+        fprintf( ...
+            'Population affichée après cutoff : %d cellules\n', ...
+            numel(order_cells));
     end
-
-    order_cells_all = getappdata(fig,'cells_sorted_by_quality');
-    n_peaks_all = getappdata(fig,'n_peaks_all');
-    opts = getappdata(fig,'opts');
-
-    if isempty(order_cells_all) || isempty(n_peaks_all)
-        return;
-    end
-
-    order_cells_all = order_cells_all(n_peaks_all(order_cells_all) > 0);
-    setappdata(fig,'order_cells_all', order_cells_all);
-
-    if isempty(order_cells_all)
-        return;
-    end
-
-    if isappdata(fig,'cell_status')
-        st = getappdata(fig,'cell_status');
-    else
-        st = zeros(max(order_cells_all),1);
-    end
-
-    min_n_peaks = opts.min_n_peaks_cutoff;
-    min_mask_um2 = opts.min_mask_um2;
-
-    mask_sizes = [];
-    if isappdata(fig,'mask_sizes')
-        mask_sizes = getappdata(fig,'mask_sizes');
-    end
-    
-    good_by_peaks = n_peaks_all >= min_n_peaks;
-
-    if ~isempty(mask_sizes) && numel(mask_sizes) == numel(n_peaks_all)
-        good_by_mask = mask_sizes >= min_mask_um2;
-    else
-        good_by_mask = true(size(n_peaks_all));
-    end
-
-    mask_connectivity_ratio = [];
-    if isappdata(fig,'mask_connectivity_ratio')
-        mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
-    end
-    
-    if ~isempty(mask_connectivity_ratio) && numel(mask_connectivity_ratio) == numel(n_peaks_all)
-        good_by_connectivity = mask_connectivity_ratio >= opts.min_mask_connectivity;
-    else
-        good_by_connectivity = true(size(n_peaks_all));
-    end
-
-    auto_keep = find( ...
-        good_by_peaks & ...
-        good_by_mask & ...
-        good_by_connectivity);
-
-    manual_keep = find(st == +1);
-    manual_excl = find(st == -1);
-
-    kept_cells = unique([auto_keep(:); manual_keep(:)], 'stable');
-    kept_cells = setdiff(kept_cells, manual_excl, 'stable');
-
-    keep_mask = ismember(order_cells_all, kept_cells);
-    order_cells = order_cells_all(keep_mask);
-
-    if isempty(order_cells)
-        warning('Aucune cellule retenue après validation.');
-        return;
-    end
-
-    setappdata(fig,'order_cells', order_cells);
-    setappdata(fig,'cutoff_validated', true);
-    setappdata(fig,'cutoff_locked', true);
-    setappdata(fig,'selected_cells_from_cutoff', auto_keep);
-
-    setappdata(fig,'current_rank', 1);
-    setappdata(fig,'nav_rank', 1);
-    setappdata(fig,'cell_id', order_cells(1));
-
-    sldr = findobj(fig,'Tag','sldr_nav_cell');
-    if ~isempty(sldr) && isgraphics(sldr)
-        n = numel(order_cells);
-        set(sldr,'Min',1,'Max',max(1,n),'Value',1);
-        step = 1/max(1,n-1);
-        set(sldr,'SliderStep',[step min(1,10*step)]);
-    end
-
-    lbl = findobj(fig,'Tag','lbl_nav_cell');
-    if ~isempty(lbl)
-        lbl.String = sprintf('Navigation cellule (%d / %d)', 1, numel(order_cells));
-    end
-
-    setappdata(fig,'autotervals', []);
-    setappdata(fig,'auto_peaks', []);
-
-    if isappdata(fig,'seuil_detection_last')
-        rmappdata(fig,'seuil_detection_last');
-    end
-
-    update_current_cell(fig, 1);
-    
-    fprintf(['Validation appliquée : %d cellules affichées ' ...
-        '(%d pics min, masque >= %.1f um^2, connectivité >= %.2f).\n'], ...
-        numel(order_cells), ...
-        opts.min_n_peaks_cutoff, ...
-        opts.min_mask_um2, ...
-        opts.min_mask_connectivity);
 end
 
 function refresh_selection_order(fig)
 
-    if isappdata(fig,'cells_sorted_by_quality')
-        order_cells_all = getappdata(fig,'cells_sorted_by_quality');
+    if ~isappdata(fig,'cells_sorted_by_quality')
 
-        if isappdata(fig,'n_peaks_all')
-            n_peaks_all = getappdata(fig,'n_peaks_all');
-            order_cells_all = order_cells_all(n_peaks_all(order_cells_all) > 0);
-        end
-    else
-        order_cells_all = [];
-    end
-
-    setappdata(fig,'order_cells_all', order_cells_all);
-
-    if isempty(order_cells_all)
-        setappdata(fig,'order_cells', []);
-
-        sldr = findobj(fig,'Tag','sldr_nav_cell');
-        if ~isempty(sldr) && isgraphics(sldr)
-            set(sldr,'Min',1,'Max',1,'Value',1,'SliderStep',[1 1]);
-        end
-
-        hEdit = findobj(fig,'Tag','edit_nav_rank');
-        if ~isempty(hEdit) && isgraphics(hEdit(1))
-            set(hEdit(1),'String','1');
-        end
-
-        lbl = findobj(fig,'Tag','lbl_nav_cell');
-        if ~isempty(lbl)
-            lbl.String = 'Navigation cellule (0 / 0)';
-        end
+        update_empty_navigation(fig);
         return;
     end
 
-    order_cells = order_cells_all;
-    setappdata(fig,'order_cells', order_cells);
+    cells_sorted_by_quality = ...
+        getappdata( ...
+            fig, ...
+            'cells_sorted_by_quality');
+
+    if isempty(cells_sorted_by_quality)
+
+        update_empty_navigation(fig);
+        return;
+    end
+
+    nCells = ...
+        numel(cells_sorted_by_quality);
+
+    %==========================================================
+    % Population active
+    %==========================================================
+
+    active_indices = ...
+        get_active_population_indices( ...
+            fig, ...
+            nCells);
+
+    order_cells_all = ...
+        cells_sorted_by_quality( ...
+            ismember( ...
+                cells_sorted_by_quality, ...
+                active_indices));
+
+    %==========================================================
+    % Retirer les cellules à 0 pics
+    %==========================================================
+
+    if isappdata(fig,'n_peaks_all')
+
+        n_peaks_all = ...
+            getappdata( ...
+                fig, ...
+                'n_peaks_all');
+
+        valid_idx = ...
+            order_cells_all >= 1 & ...
+            order_cells_all <= numel(n_peaks_all);
+
+        order_cells_all = ...
+            order_cells_all(valid_idx);
+
+        order_cells_all = ...
+            order_cells_all( ...
+                n_peaks_all(order_cells_all) > 0);
+    end
+
+    setappdata( ...
+        fig, ...
+        'order_cells_all', ...
+        order_cells_all);
+
+    if isempty(order_cells_all)
+
+        update_empty_navigation(fig);
+        return;
+    end
+
+    %==========================================================
+    % État GLOBAL Combined
+    %==========================================================
+
+    effective_status = ...
+        get_effective_cell_status(fig);
+
+    % ==========================================================
+    % -1 = exclue
+    %  0 = pas encore évaluée -> reste visible
+    % +1 = conservée
+    %
+    % manual_status est déjà prioritaire via
+    % get_effective_cell_status().
+    % ==========================================================
+    order_cells = ...
+        order_cells_all( ...
+            effective_status(order_cells_all) ~= -1);
+    
+        setappdata( ...
+            fig, ...
+            'order_cells', ...
+            order_cells);
+    
+        if isempty(order_cells)
+    
+            update_empty_navigation(fig);
+            return;
+        end
+
+    %==========================================================
+    % Conserver cellule courante si possible
+    %==========================================================
 
     old_cid = [];
+
     if isappdata(fig,'cell_id')
-        old_cid = getappdata(fig,'cell_id');
+
+        old_cid = ...
+            getappdata( ...
+                fig, ...
+                'cell_id');
     end
 
     idx = 1;
+
     if ~isempty(old_cid)
-        k = find(order_cells == old_cid, 1);
+
+        k = ...
+            find( ...
+                order_cells == old_cid, ...
+                1);
+
         if ~isempty(k)
             idx = k;
         end
     end
-    idx = max(1, min(numel(order_cells), idx));
 
-    setappdata(fig,'current_rank', idx);
-    setappdata(fig,'nav_rank', idx);
-    setappdata(fig,'cell_id', order_cells(idx));
+    idx = ...
+        max( ...
+            1, ...
+            min( ...
+                numel(order_cells), ...
+                idx));
 
-    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
-    locked = isappdata(fig,'cutoff_locked') && getappdata(fig,'cutoff_locked');
+    setappdata(fig,'current_rank',idx);
+    setappdata(fig,'nav_rank',idx);
+    setappdata(fig,'cell_id',order_cells(idx));
 
-    % Tant que le cutoff n'est pas verrouillé, il suit la navigation
-    if ~viewer_mode && ~locked
-        setappdata(fig,'cutoff_rank', idx);
+    %==========================================================
+    % Slider
+    %==========================================================
+
+    sldr = ...
+        findobj( ...
+            fig, ...
+            'Tag', ...
+            'sldr_nav_cell');
+
+    if ~isempty(sldr) && ...
+            isgraphics(sldr)
+
+        n = ...
+            numel(order_cells);
+
+        step = ...
+            1 / ...
+            max(1,n-1);
+
+        set( ...
+            sldr, ...
+            'Min',1, ...
+            'Max',max(1,n), ...
+            'Value',idx, ...
+            'SliderStep', ...
+            [step min(1,10*step)]);
     end
 
-    sldr = findobj(fig,'Tag','sldr_nav_cell');
-    if ~isempty(sldr) && isgraphics(sldr)
-        n = numel(order_cells);
-        set(sldr,'Min',1,'Max',n,'Value',idx);
-        step = 1/max(1,n-1);
-        set(sldr,'SliderStep',[step min(1,10*step)]);
-    end
+    lbl = ...
+        findobj( ...
+            fig, ...
+            'Tag', ...
+            'lbl_nav_cell');
 
-    hEdit = findobj(fig,'Tag','edit_nav_rank');
-    if ~isempty(hEdit) && isgraphics(hEdit(1))
-        if ~viewer_mode && ~locked
-            set(hEdit(1), 'String', num2str(idx));
-        else
-            cutoff_rank = getappdata(fig,'cutoff_rank');
-            set(hEdit(1), 'String', num2str(cutoff_rank));
-        end
-    end
-
-    lbl = findobj(fig,'Tag','lbl_nav_cell');
     if ~isempty(lbl)
-        lbl.String = sprintf('Navigation cellule (%d / %d)', idx, numel(order_cells));
+
+        lbl.String = ...
+            sprintf( ...
+                'Navigation cellule (%d / %d)', ...
+                idx, ...
+                numel(order_cells));
     end
 
     auto_detect_and_add(fig);
+end
+
+
+function update_empty_navigation(fig)
+
+    setappdata(fig,'order_cells',[]);
+
+    sldr = ...
+        findobj( ...
+            fig, ...
+            'Tag', ...
+            'sldr_nav_cell');
+
+    if ~isempty(sldr) && ...
+            isgraphics(sldr)
+
+        set( ...
+            sldr, ...
+            'Min',1, ...
+            'Max',1, ...
+            'Value',1, ...
+            'SliderStep',[1 1]);
+    end
+
+    lbl = ...
+        findobj( ...
+            fig, ...
+            'Tag', ...
+            'lbl_nav_cell');
+
+    if ~isempty(lbl)
+
+        lbl.String = ...
+            'Navigation cellule (0 / 0)';
+    end
+
+    update_peak_histogram(fig);
 end
 
 function navigate_cells(fig, evnt)
@@ -1678,90 +2917,231 @@ function navigate_cells(fig, evnt)
     end
 end
 
-%% ===================== USER SELECTION =====================
+%% ===================== MANUAL CELL SELECTION =====================
+
+%% ===================== MANUAL SELECTION =====================
 
 function keep_cell(fig)
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+    if isappdata(fig,'viewer_mode') && ...
+            getappdata(fig,'viewer_mode')
+
         return;
     end
 
-    if ~isappdata(fig,'cell_id') || ~isappdata(fig,'cell_status')
+    if ~isappdata(fig,'cell_id') || ...
+            ~isappdata(fig,'manual_status')
+
         return;
     end
 
-    cid = getappdata(fig,'cell_id');
-    st  = getappdata(fig,'cell_status');
+    cid = ...
+        round( ...
+            getappdata( ...
+                fig, ...
+                'cell_id'));
 
-    if isempty(cid) || cid < 1 || cid > numel(st)
+    manual_status = ...
+        getappdata( ...
+            fig, ...
+            'manual_status');
+
+    if isempty(cid) || ...
+            cid < 1 || ...
+            cid > numel(manual_status)
+
         return;
     end
 
-    st(cid) = +1;
-    setappdata(fig,'cell_status', st);
+    %==========================================================
+    % cid est TOUJOURS l'indice Combined.
+    %==========================================================
 
-    auto_detect_and_add(fig);
+    manual_status(cid) = +1;
+
+    setappdata( ...
+        fig, ...
+        'manual_status', ...
+        manual_status);
+
+    refresh_selection_order(fig);
+
     drawnow;
-    pause(0.01);
 end
+
 
 function exclude_cell(fig)
 
-    if isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode')
+    if isappdata(fig,'viewer_mode') && ...
+            getappdata(fig,'viewer_mode')
+
         return;
     end
 
-    if ~isappdata(fig,'cell_id') || ~isappdata(fig,'cell_status')
+    if ~isappdata(fig,'cell_id') || ...
+            ~isappdata(fig,'manual_status')
+
         return;
     end
 
-    cid = getappdata(fig,'cell_id');
-    st  = getappdata(fig,'cell_status');
+    cid = ...
+        round( ...
+            getappdata( ...
+                fig, ...
+                'cell_id'));
 
-    if isempty(cid) || cid < 1 || cid > numel(st)
+    manual_status = ...
+        getappdata( ...
+            fig, ...
+            'manual_status');
+
+    if isempty(cid) || ...
+            cid < 1 || ...
+            cid > numel(manual_status)
+
         return;
     end
 
-    st(cid) = -1;
-    setappdata(fig,'cell_status', st);
+    %==========================================================
+    % cid est TOUJOURS l'indice Combined.
+    %==========================================================
 
-    auto_detect_and_add(fig);
+    manual_status(cid) = -1;
+
+    setappdata( ...
+        fig, ...
+        'manual_status', ...
+        manual_status);
+
+    refresh_selection_order(fig);
+
     drawnow;
-    pause(0.01);
 end
 
-function finalize_and_close(fig, synchronous_frames)
+function update_population_action_buttons(fig)
 
-    viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
+    if ~ishghandle(fig)
+        return;
+    end
 
+    viewer_mode = ...
+        isappdata(fig,'viewer_mode') && ...
+        getappdata(fig,'viewer_mode');
+
+    selected_signal = '';
+
+    if isappdata(fig,'selected_signal')
+        selected_signal = ...
+            lower(char(string( ...
+                getappdata(fig,'selected_signal'))));
+    end
+
+    btn_cutoff = ...
+        findobj(fig,'Tag','btn_apply_cutoff');
+
+    btn_confirm = ...
+        findobj(fig,'Tag','btn_confirm_selection');
+
+    % ==========================================================
+    % VIEWER :
+    % les deux restent toujours bloqués.
+    % ==========================================================
     if viewer_mode
-        
-        DF_raw = getappdata(fig,'DF_raw');
-        DF_sg = getappdata(fig,'DF_sg');
-        F0 = getappdata(fig,'F0');
 
-        Raster = getappdata(fig,'Raster_saved');
-        Acttmp2 = getappdata(fig,'Acttmp2_saved');
-        thresholds = getappdata(fig,'thresholds_saved');
-        valid_cells = getappdata(fig,'valid_cells_saved');
-
-        if isempty(valid_cells)
-            valid_cells = (1:size(DF_sg,1)).';
+        if ~isempty(btn_cutoff)
+            set(btn_cutoff,'Enable','off');
         end
 
-        setappdata(fig,'last_save_outputs', struct( ...
-            'invalid_cells', [], ...
-            'valid_cells', valid_cells, ...
-            'orig2new', [], ...
-            'DF_raw', DF_raw, ...
-            'DF_sg', DF_sg, ...
-            'F0', F0, ...
-            'Raster', Raster, ...
-            'Acttmp2', {Acttmp2}, ...
-            'MAct', [], ...
-            'thresholds', thresholds, ...
-            'opts', [], ...
-            'summary', []));
+        if ~isempty(btn_confirm)
+            set(btn_confirm,'Enable','off');
+        end
+
+        return;
+    end
+
+    % ==========================================================
+    % MODE NORMAL :
+    % Cutoff + confirmation uniquement depuis COMBINED.
+    % ==========================================================
+    if strcmp(selected_signal,'combined')
+        state = 'on';
+    else
+        state = 'off';
+    end
+
+    if ~isempty(btn_cutoff)
+        set(btn_cutoff,'Enable',state);
+    end
+
+    if ~isempty(btn_confirm)
+        set(btn_confirm,'Enable',state);
+    end
+end
+
+function finalize_and_close( ...
+        fig, ...
+        synchronous_frames)
+
+    viewer_mode = ...
+        isappdata(fig,'viewer_mode') && ...
+        getappdata(fig,'viewer_mode');
+
+    %==============================================================
+    % VIEWER
+    %==============================================================
+    if viewer_mode
+
+        DF_raw = ...
+            getappdata(fig,'DF_raw');
+
+        DF_sg = ...
+            getappdata(fig,'DF_sg');
+
+        F0 = ...
+            getappdata(fig,'F0');
+
+        noise_est = ...
+            getappdata(fig,'noise_est');
+
+        Raster = ...
+            getappdata(fig,'Raster_saved');
+
+        Acttmp2 = ...
+            getappdata(fig,'Acttmp2_saved');
+
+        thresholds = ...
+            getappdata(fig,'thresholds_saved');
+
+        valid_cells = ...
+            getappdata(fig,'valid_cells_saved');
+
+        if isempty(valid_cells)
+
+            valid_cells = ...
+                (1:size(DF_sg,1)).';
+        end
+
+        % ----------------------------------------------------------
+        % En Viewer on ne recalcule rien.
+        % On retourne simplement les données déjà chargées.
+        % ----------------------------------------------------------
+        setappdata( ...
+            fig, ...
+            'last_save_outputs', ...
+            struct( ...
+                'invalid_cells', [], ...
+                'valid_cells', valid_cells, ...
+                'orig2new', [], ...
+                'DF_sg', DF_sg, ...
+                'DF_raw', DF_raw, ...
+                'F0', F0, ...
+                'noise_est', noise_est, ...
+                'Raster', Raster, ...
+                'Acttmp2', {Acttmp2}, ...
+                'MAct', [], ...
+                'thresholds', thresholds, ...
+                'opts', [], ...
+                'summary', []));
 
         if ishghandle(fig)
             uiresume(fig);
@@ -1770,57 +3150,119 @@ function finalize_and_close(fig, synchronous_frames)
         return;
     end
 
-    if isappdata(fig,'order_cells_all') && isappdata(fig,'order_cells')
-        order_cells_all = getappdata(fig,'order_cells_all');
-        order_cells     = getappdata(fig,'order_cells');
-    
-        if numel(order_cells) == numel(order_cells_all)
-            validate_selection_filter(fig);
-        end
-    end
+    %==============================================================
+    % NORMAL MODE
+    %==============================================================
 
-    [invalid_cells, valid_cells, DF, F0, Raster, Acttmp2, MAct, thresholds, opts, summary] = ...
-        save_peak_matrix(fig, synchronous_frames);
-    
+    [ ...
+        invalid_cells, ...
+        valid_cells, ...
+        DF, ...
+        F0, ...
+        noise_est, ...
+        Raster, ...
+        Acttmp2, ...
+        MAct, ...
+        thresholds, ...
+        opts, ...
+        summary ...
+    ] = ...
+        save_peak_matrix( ...
+            fig, ...
+            synchronous_frames);
+
+    %==============================================================
+    % Table selection
+    %==============================================================
     try
+
         update_cell_selection_summary( ...
             fig, ...
             valid_cells, ...
             invalid_cells);
+
     catch ME
+
         warning( ...
-            'Impossible de mettre à jour le tableau de sélection : %s', ...
+            ['Impossible de mettre à jour le tableau ' ...
+             'de sélection : %s'], ...
             ME.message);
     end
 
-    orig2new = nan(max([valid_cells(:); 1]),1);
+    %==============================================================
+    % DF RAW sélectionné
+    %==============================================================
+    DF_raw_all = ...
+        getappdata(fig,'DF_raw');
+
+    if isfield(summary,'valid_combined_cells') && ...
+            ~isempty(summary.valid_combined_cells) && ...
+            ~isempty(DF_raw_all)
+
+        DF_raw_selected = ...
+            DF_raw_all( ...
+                summary.valid_combined_cells, ...
+                :);
+
+    else
+
+        DF_raw_selected = [];
+    end
+
+    %==============================================================
+    % orig2new
+    %
+    % valid_cells = indices Combined originaux
+    %==============================================================
+    orig2new = ...
+        nan( ...
+            max( ...
+                [valid_cells(:); 1]), ...
+            1);
+
     if ~isempty(valid_cells)
-        orig2new(valid_cells) = 1:numel(valid_cells);
+
+        orig2new(valid_cells) = ...
+            1:numel(valid_cells);
     end
 
-    if iscell(Acttmp2) && size(Acttmp2,2) > 1
-        Acttmp2 = reshape(Acttmp2, [], 1);
+    if iscell(Acttmp2) && ...
+            size(Acttmp2,2) > 1
+
+        Acttmp2 = ...
+            reshape( ...
+                Acttmp2, ...
+                [], ...
+                1);
     end
 
-    setappdata(fig,'last_save_outputs', struct( ...
-        'invalid_cells', invalid_cells, ...
-        'valid_cells', valid_cells, ...
-        'orig2new', orig2new, ...
-        'DF_sg', DF, ...
-        'DF_raw', getappdata(fig,'DF_raw'), ...
-        'F0', F0, ...
-        'Raster', Raster, ...
-        'Acttmp2', {Acttmp2}, ...
-        'MAct', MAct, ...
-        'thresholds', thresholds, ...
-        'opts', opts, ...
-        'summary', summary));
+    %==============================================================
+    % Save GUI outputs
+    %==============================================================
+    setappdata( ...
+        fig, ...
+        'last_save_outputs', ...
+        struct( ...
+            'invalid_cells', invalid_cells, ...
+            'valid_cells', valid_cells, ...
+            'orig2new', orig2new, ...
+            'DF_sg', DF, ...
+            'DF_raw', DF_raw_selected, ...
+            'F0', F0, ...
+            'noise_est', noise_est, ...
+            'Raster', Raster, ...
+            'Acttmp2', {Acttmp2}, ...
+            'MAct', MAct, ...
+            'thresholds', thresholds, ...
+            'opts', opts, ...
+            'summary', summary));
 
     if ishghandle(fig)
         uiresume(fig);
     end
 end
-%% ===================== DISPLAY =====================
+
+%% ===================== GUI DISPLAY =====================
 function refresh_data(fig)
 
     DF      = getappdata(fig,'DF_sg');
@@ -1966,18 +3408,18 @@ function refresh_data(fig)
 
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
-    is_blue_cell = false;
-    if isappdata(fig,'blue_indices')
-        blue_indices = getappdata(fig,'blue_indices');
+    is_electroporated_cell = false;
+    if isappdata(fig,'electroporated_indices')
+        electroporated_indices = getappdata(fig,'electroporated_indices');
 
-        if ~isempty(blue_indices)
-            blue_indices = blue_indices(:);
-            blue_indices = blue_indices(isfinite(blue_indices));
-            is_blue_cell = any(round(blue_indices) == round(cell_id));
+        if ~isempty(electroporated_indices)
+            electroporated_indices = electroporated_indices(:);
+            electroporated_indices = electroporated_indices(isfinite(electroporated_indices));
+            is_electroporated_cell = any(round(electroporated_indices) == round(cell_id));
         end
     end
 
-    if is_blue_cell
+    if is_electroporated_cell
         text(ax, 0.72, 0.95, 'ÉLECTROPORÉE', ...
             'Units','normalized', ...
             'Color',[0.1 0.2 0.9], ...
@@ -1989,94 +3431,93 @@ function refresh_data(fig)
     end
 
     if ~viewer_mode
-
+    
         label_txt   = '';
         label_color = [0 0 0];
-
+    
+        manual_status = ...
+            getappdata(fig,'manual_status');
+    
+        cutoff_status = ...
+            getappdata(fig,'cutoff_status');
+    
         n_peaks_all = [];
+    
         if isappdata(fig,'n_peaks_all')
-            n_peaks_all = getappdata(fig,'n_peaks_all');
+            n_peaks_all = ...
+                getappdata(fig,'n_peaks_all');
         end
-
-        cutoff_validated = isappdata(fig,'cutoff_validated') && getappdata(fig,'cutoff_validated');
-
-        if isappdata(fig,'cell_status')
-
-            st = getappdata(fig,'cell_status');
-
-            if cell_id >= 1 && cell_id <= numel(st)
-
-                if st(cell_id) == -1
-
-                    if ~isempty(n_peaks_all) && ...
-                       cell_id <= numel(n_peaks_all) && ...
-                       n_peaks_all(cell_id) == 0
-
-                        label_txt   = 'AUTO BAD (0 pics)';
-                        label_color = [0.6 0.6 0.6];
-                    else
-                        label_txt   = 'BAD MANUEL';
-                        label_color = [0.85 0.1 0.1];
-                    end
-
-                elseif st(cell_id) == +1
-
-                    label_txt   = 'GOOD MANUEL';
-                    label_color = [0.1 0.6 0.1];
-
-                else
-
-                   if cutoff_validated && ~isempty(n_peaks_all) && isappdata(fig,'opts')
-
-                        opts = getappdata(fig,'opts');
-                        min_n_peaks = opts.min_n_peaks_cutoff;
-                    
-                        if cell_id <= numel(n_peaks_all)
-                    
-                            cond_peaks = n_peaks_all(cell_id) >= min_n_peaks;
-                    
-                            cond_mask = true;
-                            if isappdata(fig,'mask_sizes')
-                                mask_sizes = getappdata(fig,'mask_sizes');
-                    
-                                if cell_id <= numel(mask_sizes)
-                                    cond_mask = isfinite(mask_sizes(cell_id)) && ...
-                                        (mask_sizes(cell_id) >= opts.min_mask_um2);
-                                end
-                            end
-                    
-                            cond_connectivity = true;
-                            if isappdata(fig,'mask_connectivity_ratio')
-                                mask_connectivity_ratio = getappdata(fig,'mask_connectivity_ratio');
-                    
-                                if cell_id <= numel(mask_connectivity_ratio)
-                                    cond_connectivity = isfinite(mask_connectivity_ratio(cell_id)) && ...
-                                        (mask_connectivity_ratio(cell_id) >= opts.min_mask_connectivity);
-                                end
-                            end
-                    
-                            if cond_peaks && cond_mask && cond_connectivity
-                                label_txt   = 'GOOD (peaks+mask+conn)';
-                                label_color = [0.1 0.6 0.1];
-                            else
-                                label_txt   = 'BAD (peaks/mask/conn)';
-                                label_color = [0.85 0.1 0.1];
-                            end
-                        end
-                   end
-                end
-
-                if ~isempty(label_txt)
-                    text(ax, 0.02, 0.95, label_txt, ...
-                        'Units','normalized', ...
-                        'Color',label_color, ...
-                        'FontWeight','bold', ...
-                        'FontSize',12, ...
-                        'VerticalAlignment','top', ...
-                        'BackgroundColor',[1 1 1 0.6], ...
-                        'Margin',4);
-                end
-            end
+    
+        % ==========================================================
+        % Décision manuelle prioritaire
+        % ==========================================================
+        if cell_id <= numel(manual_status) && ...
+                manual_status(cell_id) == +1
+    
+            label_txt = ...
+                'GOOD MANUEL';
+    
+            label_color = ...
+                [0.1 0.6 0.1];
+    
+        elseif cell_id <= numel(manual_status) && ...
+                manual_status(cell_id) == -1
+    
+            label_txt = ...
+                'BAD MANUEL';
+    
+            label_color = ...
+                [0.85 0.1 0.1];
+    
+        % ==========================================================
+        % Cellule sans pic
+        % ==========================================================
+        elseif ~isempty(n_peaks_all) && ...
+                cell_id <= numel(n_peaks_all) && ...
+                n_peaks_all(cell_id) == 0
+    
+            label_txt = ...
+                'AUTO BAD (0 pics)';
+    
+            label_color = ...
+                [0.6 0.6 0.6];
+    
+        % ==========================================================
+        % Résultat cutoff
+        % ==========================================================
+        elseif cell_id <= numel(cutoff_status) && ...
+                cutoff_status(cell_id) == +1
+    
+            label_txt = ...
+                'GOOD CUTOFF';
+    
+            label_color = ...
+                [0.1 0.6 0.1];
+    
+        elseif cell_id <= numel(cutoff_status) && ...
+                cutoff_status(cell_id) == -1
+    
+            label_txt = ...
+                'BAD CUTOFF';
+    
+            label_color = ...
+                [0.85 0.1 0.1];
+        end
+    
+        if ~isempty(label_txt)
+    
+            text( ...
+                ax, ...
+                0.02, ...
+                0.95, ...
+                label_txt, ...
+                'Units','normalized', ...
+                'Color',label_color, ...
+                'FontWeight','bold', ...
+                'FontSize',12, ...
+                'VerticalAlignment','top', ...
+                'BackgroundColor',[1 1 1 0.6], ...
+                'Margin',4);
         end
     end
 
@@ -2418,7 +3859,7 @@ function add_scale_bar(ax, pixel_size_um)
         'BackgroundColor','k', 'Margin',1);
 end
 
-%% ===================== SLIDERS / PARAMS =====================
+%% ===================== GUI PARAMETERS =====================
 
 function make_slider(parent,fig,label,field,minv,maxv,val,pos)
 

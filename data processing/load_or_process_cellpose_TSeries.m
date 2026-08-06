@@ -1,848 +1,1120 @@
 function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
-    load_or_process_cellpose_TSeries(filePath, date_group_path, ...
-                                     gcamp_plane_path, ...
-                                     red_plane_path, ...
-                                     blue_plane_path, ...
-                                     green_plane_path, ...
-                                     current_blue_TSeries_path, ...
-                                     gcamp_output_folder_plane)
+    load_or_process_cellpose_TSeries( ...
+        filePath, ...
+        date_group_path, ...
+        gcamp_plane_path, ...
+        electroporated_plane_path, ...
+        green_plane_path, ...
+        current_electroporated_TSeries_path, ...
+        gcamp_output_folder_plane)
 
-    % Workflow:
-    %   1) Align Blue to the GCaMP mean image.
-    %   2) Open aligned Blue in Cellpose when its *_seg.npy is missing.
-    %   3) Create a GCaMP reference TIFF carrying the same Cellpose masks.
-    %   4) Open the GCaMP reference in Cellpose for manual correction.
-    %   5) Return the corrected gcamp_reference_*_seg.npy.
+    % ==============================================================
+    % Workflow
     %
-    % The paths gcamp_plane_path/red_plane_path/blue_plane_path/
-    % green_plane_path already correspond to the current plane.
+    %   1) Charger GCaMP.
+    %
+    %   2) Charger le canal electroporated :
+    %        - depuis Suite2p si electroporated_plane_path existe ;
+    %        - sinon depuis current_electroporated_TSeries_path.
+    %
+    %   3) Charger Green si disponible.
+    %
+    %   4) Estimer la translation :
+    %        Green -> GCaMP si Green existe,
+    %        sinon Electroporated -> GCaMP.
+    %
+    %   5) Appliquer cette translation à Electroporated.
+    %
+    %   6) Segmenter l'image electroporated alignée avec Cellpose.
+    %
+    %   7) Reporter ces masques sur une référence GCaMP,
+    %      puis permettre leur correction manuelle.
+    %
+    % meanImg_channels :
+    %   {1} = GCaMP
+    %   {2} = Electroporated
+    %   {3} = Green
+    % ==============================================================
 
-    numChannelsLocal = 4;  % 1=GCaMP, 2=Red, 3=Blue, 4=Green
+    numChannelsLocal = 3;
 
     meanImg_channels = cell(numChannelsLocal, 1);
-    aligned_image    = [];
+
+    aligned_image = [];
     aligned_image_path = '';
-    npy_file_path    = [];
-    meanImg          = [];
+    npy_file_path = [];
+    meanImg = [];
 
-    current_gcamp_folders_group_plane = gcamp_plane_path;
-    current_red_folders_group_plane   = red_plane_path;
-    current_blue_folders_group_plane  = blue_plane_path;
-    current_green_folders_group_plane = green_plane_path;
+    % ==============================================================
+    % Paths du plan courant
+    % ==============================================================
 
-    % Existing code below uses p as a one-based plane index.
-    plane_index_zero_based = infer_plane_index_from_paths( ...
-        gcamp_plane_path, blue_plane_path, gcamp_output_folder_plane);
+    current_gcamp_folders_group_plane = ...
+        gcamp_plane_path;
+
+    current_electroporated_folders_group_plane = ...
+        electroporated_plane_path;
+
+    current_green_folders_group_plane = ...
+        green_plane_path;
+
+    % ==============================================================
+    % Numéro du plan
+    % ==============================================================
+
+    plane_index_zero_based = ...
+        infer_plane_index_from_paths( ...
+            gcamp_plane_path, ...
+            electroporated_plane_path, ...
+            gcamp_output_folder_plane);
+
     p = plane_index_zero_based + 1;
 
+    % ==============================================================
+    % Output folder
+    % ==============================================================
+
     if isempty(gcamp_output_folder_plane)
+
         if ~isempty(gcamp_plane_path)
-            gcamp_output_folder_plane = gcamp_plane_path;
+
+            gcamp_output_folder_plane = ...
+                gcamp_plane_path;
+
         else
-            gcamp_output_folder_plane = date_group_path;
+
+            gcamp_output_folder_plane = ...
+                date_group_path;
         end
     end
 
     if ~isempty(gcamp_output_folder_plane) && ...
             ~isfolder(gcamp_output_folder_plane)
+
         mkdir(gcamp_output_folder_plane);
     end
 
-    if iscell(current_blue_TSeries_path)
-        if isempty(current_blue_TSeries_path)
-            current_blue_TSeries_path = "";
+    % ==============================================================
+    % Normaliser current_electroporated_TSeries_path
+    % ==============================================================
+
+    if iscell(current_electroporated_TSeries_path)
+
+        if isempty(current_electroporated_TSeries_path)
+
+            current_electroporated_TSeries_path = "";
+
         else
-            current_blue_TSeries_path = current_blue_TSeries_path{1};
+
+            current_electroporated_TSeries_path = ...
+                current_electroporated_TSeries_path{1};
         end
     end
 
+    if isempty(current_electroporated_TSeries_path)
+
+        current_electroporated_TSeries_path = "";
+    end
+
+    % ==============================================================
+    % Vérifier date_group_path
+    % ==============================================================
+
     if isempty(date_group_path) || ...
-            ~(ischar(date_group_path) || isstring(date_group_path))
-        warning('load_or_process_cellpose_TSeries:InvalidDateGroupPath', ...
-            'Invalid date_group_path for plane %d.', p);
-        [meanImg_channels, meanImg] = complete_meanImg_channels( ...
-            meanImg_channels, filePath, ...
-            current_gcamp_folders_group_plane, meanImg);
+            ~(ischar(date_group_path) || ...
+              isstring(date_group_path))
+
+        warning( ...
+            'load_or_process_cellpose_TSeries:InvalidDateGroupPath', ...
+            'Invalid date_group_path for plane %d.', ...
+            p);
+
+        [meanImg_channels, meanImg] = ...
+            complete_meanImg_channels( ...
+                meanImg_channels, ...
+                filePath, ...
+                current_gcamp_folders_group_plane, ...
+                meanImg);
+
         return;
     end
 
-    if isempty(current_blue_TSeries_path)
-        current_blue_TSeries_path = "";
-    end
+    % ==============================================================
+    % 1) Charger meanImg GCaMP
+    % ==============================================================
 
-% ==========================================================
-    %  Pré-remplissage des meanImg_channels depuis suite2p
-    % ==========================================================
     if ~isempty(current_gcamp_folders_group_plane)
-        tmp = load_meanImg_from_path(current_gcamp_folders_group_plane);
+
+        tmp = ...
+            load_meanImg_from_path( ...
+                current_gcamp_folders_group_plane);
+
         if ~isempty(tmp)
+
             meanImg_channels{1} = tmp;
-            meanImg             = tmp;
+            meanImg = tmp;
         end
     end
 
-    if ~isempty(current_red_folders_group_plane)
-        tmp = load_meanImg_from_path(current_red_folders_group_plane);
+    % ==============================================================
+    % 2) Charger meanImg Electroporated depuis Suite2p
+    % ==============================================================
+
+    if ~isempty(current_electroporated_folders_group_plane)
+
+        tmp = ...
+            load_meanImg_from_path( ...
+                current_electroporated_folders_group_plane);
+
         if ~isempty(tmp)
+
             meanImg_channels{2} = tmp;
         end
     end
 
-    if ~isempty(current_blue_folders_group_plane)
-        tmp = load_meanImg_from_path(current_blue_folders_group_plane);
+    % ==============================================================
+    % 3) Charger meanImg Green
+    % ==============================================================
+
+    if ~isempty(current_green_folders_group_plane)
+
+        tmp = ...
+            load_meanImg_from_path( ...
+                current_green_folders_group_plane);
+
         if ~isempty(tmp)
+
             meanImg_channels{3} = tmp;
         end
     end
 
-    if ~isempty(current_green_folders_group_plane)
-        tmp = load_meanImg_from_path(current_green_folders_group_plane);
-        if ~isempty(tmp)
-            meanImg_channels{4} = tmp;
+    if isempty(meanImg) && ...
+            ~isempty(meanImg_channels{1})
+
+        meanImg = ...
+            meanImg_channels{1};
+    end
+
+    % ==============================================================
+    % CAS 1
+    %
+    % Pas de Suite2p electroporated :
+    % utiliser directement current_electroporated_TSeries_path
+    % ==============================================================
+
+    if isempty(current_electroporated_folders_group_plane)
+
+        if isempty(current_electroporated_TSeries_path) || ...
+                ~(ischar(current_electroporated_TSeries_path) || ...
+                  isstring(current_electroporated_TSeries_path))
+
+            warning( ...
+                'load_or_process_cellpose_TSeries:InvalidElectroporatedTSeries', ...
+                ['No valid electroporated TSeries available ' ...
+                 'for plane %d.'], ...
+                p);
+
+            [meanImg_channels, meanImg] = ...
+                complete_meanImg_channels( ...
+                    meanImg_channels, ...
+                    filePath, ...
+                    current_gcamp_folders_group_plane, ...
+                    meanImg);
+
+            return;
         end
-    end
 
-    if isempty(meanImg) && ~isempty(meanImg_channels{1})
-        meanImg = meanImg_channels{1};
-    end
+        % ==========================================================
+        % Chercher le dossier plane*
+        % ==========================================================
 
-    % ==========================================================
-    %  CAS 1 : pas de blue group suite2p
-    % ==========================================================
-    if isempty(current_blue_folders_group_plane)
+        planeFolderName = ...
+            sprintf( ...
+                'plane%d', ...
+                p - 1);
 
-        path      = fullfile(date_group_path, 'Single images');
-        canal_str = 'Ch3';  % Blue
+        current_electroporated_TSeries_path_plane = ...
+            fullfile( ...
+                current_electroporated_TSeries_path, ...
+                planeFolderName);
 
-        if exist(path, 'dir')
-            % ======================================================
-            % CAS 1A : dossier "Single images"
-            % ======================================================
-            cellpose_files       = dir(fullfile(path, '*_seg.npy'));
-            cellpose_files_canal = cellpose_files(contains({cellpose_files.name}, canal_str));
+        if ~isfolder( ...
+                current_electroporated_TSeries_path_plane)
 
-            if ~isempty(cellpose_files_canal)
-                % --- seg.npy existe déjà ---
-                npy_file_path = select_or_default(cellpose_files_canal, canal_str, '*.npy');
-                npy_file_path = validate_existing_file(npy_file_path);
+            current_electroporated_TSeries_path_plane = ...
+                char(current_electroporated_TSeries_path);
+        end
 
-                if ~isempty(npy_file_path)
-                    aligned_image_path = strrep(npy_file_path, '_seg.npy', '.tif');
+        % ==========================================================
+        % Chercher segmentation electroporated existante
+        % ==========================================================
 
-                    % retrouver brute Ch3
-                    [pth, name, ext] = fileparts(aligned_image_path);
-                    raw_name      = regexprep(name, '^aligned_', '');
-                    tif_file_path = fullfile(pth, [raw_name ext]);
+        segPattern = ...
+            sprintf( ...
+                'aligned_%s_AVG*_seg.npy', ...
+                planeFolderName);
 
-                    image_tiff = safe_read_and_normalize(tif_file_path);
-                    if ~isempty(image_tiff)
-                        meanImg_channels{3} = image_tiff;
-                    end
+        segFiles = ...
+            dir( ...
+                fullfile( ...
+                    current_electroporated_TSeries_path_plane, ...
+                    segPattern));
 
-                    aligned_image = safe_read_and_normalize(aligned_image_path);
+        % ==========================================================
+        % CAS 1A : segmentation déjà présente
+        % ==========================================================
 
-                    if isempty(aligned_image)
-                        warning('seg.npy trouvé mais image alignée absente ou illisible -> recalage relancé');
-                        fprintf('[FIX] Recomputing alignment because TIFF missing/unreadable: %s\n', aligned_image_path);
+        if ~isempty(segFiles)
 
-                        [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                            meanImg_channels, aligned_image_path);
+            electroporated_seg_path = ...
+                fullfile( ...
+                    current_electroporated_TSeries_path_plane, ...
+                    segFiles(1).name);
 
-                        fprintf('Transform estimated from: %s\n', source_used);
+            electroporated_seg_path = ...
+                validate_existing_file( ...
+                    electroporated_seg_path);
 
-                        if ~isempty(aligned_image)
-                            npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                            npy_file_path = validate_existing_file(npy_file_path);
-                        else
-                            npy_file_path = [];
-                        end
-                    end
-                end
+            if ~isempty(electroporated_seg_path)
 
-            else
-                % --- pas de seg.npy -> chercher tif ---
-                tif_files       = dir(fullfile(path, '*.tif'));
-                tif_files_canal = tif_files(contains({tif_files.name}, canal_str));
+                [segDir, segName, ~] = ...
+                    fileparts( ...
+                        electroporated_seg_path);
 
-                if isempty(tif_files_canal)
-                    disp(['Aucun fichier contenant "', canal_str, '" trouvé.']);
-                end
+                baseName = ...
+                    regexprep( ...
+                        segName, ...
+                        '_seg$', ...
+                        '');
 
-                aligned_files = tif_files(~cellfun('isempty', ...
-                    regexp({tif_files.name}, ['^aligned_.*_' canal_str '(_|\.)'])));
+                aligned_image_path = ...
+                    fullfile( ...
+                        segDir, ...
+                        [baseName '.tif']);
+            end
 
-                if ~isempty(aligned_files)
-                    % --- image alignée déjà présente ---
-                    aligned_image_path = select_or_default(aligned_files, canal_str, '*.tif');
-                    aligned_image      = safe_read_and_normalize(aligned_image_path);
+            % ------------------------------------------------------
+            % Charger image moyenne brute electroporated
+            % ------------------------------------------------------
 
-                    tif_file_path = select_or_default(tif_files_canal, canal_str, '*.tif');
-                    image_tiff = safe_read_and_normalize(tif_file_path);
-                    if ~isempty(image_tiff)
-                        meanImg_channels{3} = image_tiff;
-                    end
+            avgPattern = ...
+                sprintf( ...
+                    'plane%d_AVG*.tif', ...
+                    p - 1);
 
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
+            avgFiles = ...
+                dir( ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        avgPattern));
 
-                else
-                    % --- aucun alignement existant -> recalcul ---
-                    tif_file_path = select_or_default(tif_files_canal, canal_str, '*.tif');
+            if ~isempty(avgFiles)
 
-                    if isempty(tif_file_path)
-                        disp(['Aucun fichier "', canal_str, '" sélectionné ou trouvé.']);
-                    else
-                        image_tiff = safe_read_and_normalize(tif_file_path);
-                        if ~isempty(image_tiff)
-                            meanImg_channels{3} = image_tiff;
-                        end
+                avg_path = ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        avgFiles(1).name);
 
-                        if isempty(meanImg_channels{1}) && ~isempty(current_gcamp_folders_group_plane)
-                            tmp = load_meanImg_from_path(current_gcamp_folders_group_plane);
-                            if ~isempty(tmp)
-                                meanImg_channels{1} = tmp;
-                                meanImg             = tmp;
-                            end
-                        end
+                electroporated_img = ...
+                    safe_read_and_normalize( ...
+                        avg_path);
 
-                        if isempty(meanImg_channels{1}) && ~isempty(image_tiff)
-                            meanImg_channels{1} = image_tiff;
-                            meanImg             = image_tiff;
-                        end
+                if ~isempty(electroporated_img)
 
-                        [~, file_name, ~] = fileparts(tif_file_path);
-                        aligned_image_path = fullfile(path, ['aligned_', file_name, '.tif']);
-
-                        [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                            meanImg_channels, aligned_image_path);
-
-                        fprintf('Transform estimated from: %s\n', source_used);
-
-                        if ~isempty(aligned_image)
-                            npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                            npy_file_path = validate_existing_file(npy_file_path);
-                        else
-                            npy_file_path = [];
-                        end
-                    end
+                    meanImg_channels{2} = ...
+                        electroporated_img;
                 end
             end
+
+            aligned_image = ...
+                safe_read_and_normalize( ...
+                    aligned_image_path);
+
+            % ------------------------------------------------------
+            % TIFF aligné absent / illisible
+            % ------------------------------------------------------
+
+            if isempty(aligned_image)
+
+                fprintf( ...
+                    ['Plane %d: existing electroporated masks found, ' ...
+                     'but aligned TIFF must be reconstructed.\n'], ...
+                    p);
+
+                [aligned_image, ~, source_used] = ...
+                    align_electroporated_locally_and_confirm( ...
+                        meanImg_channels, ...
+                        aligned_image_path);
+
+                fprintf( ...
+                    'Transform estimated from: %s\n', ...
+                    source_used);
+            end
+
+        % ==========================================================
+        % CAS 1B : pas de segmentation existante
+        % ==========================================================
 
         else
-            % ======================================================
-            % CAS 1B : Blue\plane*
-            % ======================================================
-            if ~(ischar(current_blue_TSeries_path) || isstring(current_blue_TSeries_path)) || isempty(current_blue_TSeries_path)
-                warning('load_or_process_cellpose_TSeries:InvalidBlueTSeriesPath', ...
-                    'Invalid current_blue_TSeries_path for plane %d.', p);
-                [meanImg_channels, meanImg] = complete_meanImg_channels( ...
-                    meanImg_channels, filePath, current_gcamp_folders_group_plane, meanImg);
-                return;
+
+            % ------------------------------------------------------
+            % Chercher image alignée existante
+            % ------------------------------------------------------
+
+            alignedPattern = ...
+                sprintf( ...
+                    'aligned_plane%d_AVG*.tif', ...
+                    p - 1);
+
+            alignedFiles = ...
+                dir( ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        alignedPattern));
+
+            % ------------------------------------------------------
+            % Charger image moyenne electroporated
+            % ------------------------------------------------------
+
+            avgPattern = ...
+                sprintf( ...
+                    'plane%d_AVG*.tif', ...
+                    p - 1);
+
+            avgFiles = ...
+                dir( ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        avgPattern));
+
+            if ~isempty(avgFiles)
+
+                avg_path = ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        avgFiles(1).name);
+
+                electroporated_img = ...
+                    safe_read_and_normalize( ...
+                        avg_path);
+
+                if ~isempty(electroporated_img)
+
+                    meanImg_channels{2} = ...
+                        electroporated_img;
+                end
             end
 
-            planeFolderName = sprintf('plane%d', p-1);
-            current_blue_TSeries_path_plane = fullfile(current_blue_TSeries_path, planeFolderName);
+            % ------------------------------------------------------
+            % Aligned existe déjà
+            % ------------------------------------------------------
 
-            if ~isfolder(current_blue_TSeries_path_plane)
-                warning('Blue plane folder not found: %s -> fallback to %s', ...
-                        current_blue_TSeries_path_plane, current_blue_TSeries_path);
-                current_blue_TSeries_path_plane = current_blue_TSeries_path;
-            end
+            if ~isempty(alignedFiles)
 
-            segPattern = sprintf('aligned_%s_AVG*_seg.npy', planeFolderName);
-            segFiles   = dir(fullfile(current_blue_TSeries_path_plane, segPattern));
+                aligned_image_path = ...
+                    fullfile( ...
+                        current_electroporated_TSeries_path_plane, ...
+                        alignedFiles(1).name);
 
-            if ~isempty(segFiles)
-                npy_file_path = fullfile(current_blue_TSeries_path_plane, segFiles(1).name);
-                npy_file_path = validate_existing_file(npy_file_path);
+                aligned_image = ...
+                    safe_read_and_normalize( ...
+                        aligned_image_path);
 
-                [segDir, segName, ~] = fileparts(npy_file_path);
-                baseName = regexprep(segName, '_seg$', '');
-                aligned_image_path = fullfile(segDir, [baseName '.tif']);
-
-                avgPattern = sprintf('plane%d_AVG*.tif', p-1);
-                avgFiles   = dir(fullfile(current_blue_TSeries_path_plane, avgPattern));
-                if ~isempty(avgFiles)
-                    avg_path = fullfile(current_blue_TSeries_path_plane, avgFiles(1).name);
-                    blue_img = safe_read_and_normalize(avg_path);
-                    if ~isempty(blue_img)
-                        meanImg_channels{3} = blue_img;
-                    end
-                end
-
-                aligned_image = safe_read_and_normalize(aligned_image_path);
-
-                if isempty(aligned_image)
-                    warning('seg.npy trouvé mais image alignée absente ou illisible -> recalage relancé');
-                    fprintf('[FIX] Recomputing alignment because TIFF missing/unreadable: %s\n', aligned_image_path);
-
-                    [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                        meanImg_channels, aligned_image_path);
-
-                    fprintf('Transform estimated from: %s\n', source_used);
-
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
-                end
+            % ------------------------------------------------------
+            % Aucun aligned -> recalage
+            % ------------------------------------------------------
 
             else
-                alignedPattern = sprintf('aligned_plane%d_AVG*.tif', p-1);
-                alignedFiles   = dir(fullfile(current_blue_TSeries_path_plane, alignedPattern));
 
-                if ~isempty(alignedFiles)
-                    aligned_image_path = fullfile(current_blue_TSeries_path_plane, alignedFiles(1).name);
-                    aligned_image      = safe_read_and_normalize(aligned_image_path);
+                if isempty(meanImg_channels{2})
 
-                    avgPattern = sprintf('plane%d_AVG*.tif', p-1);
-                    avgFiles   = dir(fullfile(current_blue_TSeries_path_plane, avgPattern));
-                    if ~isempty(avgFiles)
-                        avg_path = fullfile(current_blue_TSeries_path_plane, avgFiles(1).name);
-                        blue_img = safe_read_and_normalize(avg_path);
-                        if ~isempty(blue_img)
-                            meanImg_channels{3} = blue_img;
-                        end
-                    end
+                    fprintf( ...
+                        ['Plane %d: no electroporated mean image ' ...
+                         'found in:\n%s\n'], ...
+                        p, ...
+                        current_electroporated_TSeries_path_plane);
 
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
+                    aligned_image = [];
+                    npy_file_path = [];
 
                 else
-                    avgPattern = sprintf('plane%d_AVG*.tif', p-1);
-                    avgFiles   = dir(fullfile(current_blue_TSeries_path_plane, avgPattern));
 
-                    if isempty(avgFiles)
-                        fprintf('No seg, no aligned image, no %s in %s\n', ...
-                                avgPattern, current_blue_TSeries_path_plane);
-                        npy_file_path = [];
+                    if isempty(meanImg_channels{1})
+
+                        warning( ...
+                            ['Plane %d: GCaMP mean image missing. ' ...
+                             'Electroporated alignment impossible.'], ...
+                            p);
+
                         aligned_image = [];
+                        npy_file_path = [];
+
                     else
-                        avg_path = fullfile(current_blue_TSeries_path_plane, avgFiles(1).name);
-                        blue_img = safe_read_and_normalize(avg_path);
-                        if ~isempty(blue_img)
-                            meanImg_channels{3} = blue_img;
-                        end
 
-                        if isempty(meanImg_channels{1}) && ~isempty(current_gcamp_folders_group_plane)
-                            meanImg_gcamp = load_meanImg_from_path(current_gcamp_folders_group_plane);
-                            if ~isempty(meanImg_gcamp)
-                                meanImg_channels{1} = meanImg_gcamp;
-                                meanImg             = meanImg_gcamp;
-                            end
-                        end
+                        aligned_image_path = ...
+                            fullfile( ...
+                                current_electroporated_TSeries_path_plane, ...
+                                sprintf( ...
+                                    'aligned_plane%d_AVG.tif', ...
+                                    p - 1));
 
-                        if isempty(meanImg_channels{1}) && ~isempty(blue_img)
-                            meanImg_channels{1} = blue_img;
-                            meanImg             = blue_img;
-                        end
+                        [ ...
+                            aligned_image, ...
+                            ~, ...
+                            source_used ...
+                        ] = ...
+                            align_electroporated_locally_and_confirm( ...
+                                meanImg_channels, ...
+                                aligned_image_path);
 
-                        aligned_image_path = fullfile(current_blue_TSeries_path_plane, ...
-                            sprintf('aligned_plane%d_AVG.tif', p-1));
-
-                        [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                            meanImg_channels, aligned_image_path);
-
-                        fprintf('Transform estimated from: %s\n', source_used);
-
-                        if ~isempty(aligned_image)
-                            npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                            npy_file_path = validate_existing_file(npy_file_path);
-                        else
-                            npy_file_path = [];
-                        end
+                        fprintf( ...
+                            'Transform estimated from: %s\n', ...
+                            source_used);
                     end
                 end
             end
         end
 
-    % ==========================================================
-    %  CAS 2 : blue group existant
-    % ==========================================================
+    % ==============================================================
+    % CAS 2
+    %
+    % Suite2p electroporated existe
+    % ==============================================================
+
     else
+
         try
-            cellpose_files = dir(fullfile(current_blue_folders_group_plane, '*_seg.npy'));
+
+            % ======================================================
+            % Charger image electroporated depuis Suite2p
+            % ======================================================
+
+            if isempty(meanImg_channels{2})
+
+                tmp = ...
+                    load_meanImg_from_path( ...
+                        current_electroporated_folders_group_plane);
+
+                if ~isempty(tmp)
+
+                    meanImg_channels{2} = tmp;
+                end
+            end
+
+            % ======================================================
+            % Chercher une segmentation existante
+            % ======================================================
+
+            cellpose_files = ...
+                dir( ...
+                    fullfile( ...
+                        current_electroporated_folders_group_plane, ...
+                        '*_seg.npy'));
 
             if ~isempty(cellpose_files)
-                npy_file_path = select_or_default(cellpose_files, '', '*.npy');
-                npy_file_path = validate_existing_file(npy_file_path);
 
-                aligned_image_path = [];
-                if ~isempty(npy_file_path)
-                    [segDir, segName, ~] = fileparts(npy_file_path);
-                    baseName = regexprep(segName, '_seg$', '');
-                    aligned_image_path = fullfile(segDir, [baseName '.tif']);
+                electroporated_seg_path = ...
+                    select_or_default( ...
+                        cellpose_files, ...
+                        '', ...
+                        '*.npy');
+
+                electroporated_seg_path = ...
+                    validate_existing_file( ...
+                        electroporated_seg_path);
+
+                if ~isempty(electroporated_seg_path)
+
+                    [segDir, segName, ~] = ...
+                        fileparts( ...
+                            electroporated_seg_path);
+
+                    baseName = ...
+                        regexprep( ...
+                            segName, ...
+                            '_seg$', ...
+                            '');
+
+                    aligned_image_path = ...
+                        fullfile( ...
+                            segDir, ...
+                            [baseName '.tif']);
                 end
+            end
 
-                if isempty(aligned_image_path) || ~isfile(aligned_image_path)
-                    aligned_image_path = fullfile(current_blue_folders_group_plane, ...
-                        sprintf('aligned_plane%d_AVG.tif', p-1));
-                end
+            % ======================================================
+            % Si aucun chemin fourni par le seg :
+            % chemin aligned standard
+            % ======================================================
 
-                aligned_image = safe_read_and_normalize(aligned_image_path);
+            if isempty(aligned_image_path)
 
-                if isempty(aligned_image)
-                    warning('seg.npy trouvé mais image alignée absente ou illisible -> recalage relancé');
-                    fprintf('[FIX] Recomputing alignment because TIFF missing/unreadable: %s\n', aligned_image_path);
+                aligned_image_path = ...
+                    fullfile( ...
+                        current_electroporated_folders_group_plane, ...
+                        sprintf( ...
+                            'aligned_plane%d_AVG.tif', ...
+                            p - 1));
+            end
 
-                    [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                        meanImg_channels, aligned_image_path);
+            % ======================================================
+            % Aligned existe
+            % ======================================================
 
-                    fprintf('Transform estimated from: %s\n', source_used);
+            if isfile(aligned_image_path)
 
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
-                end
+                aligned_image = ...
+                    safe_read_and_normalize( ...
+                        aligned_image_path);
+
+            % ======================================================
+            % Sinon créer aligned
+            % ======================================================
 
             else
-                aligned_image_path = fullfile(current_blue_folders_group_plane, ...
-                    sprintf('aligned_plane%d_AVG.tif', p-1));
 
-                if isfile(aligned_image_path)
-                    aligned_image = safe_read_and_normalize(aligned_image_path);
+                [ ...
+                    aligned_image, ...
+                    ~, ...
+                    source_used ...
+                ] = ...
+                    align_electroporated_locally_and_confirm( ...
+                        meanImg_channels, ...
+                        aligned_image_path);
 
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
-
-                else
-                    if isempty(meanImg_channels{1}) && ~isempty(current_gcamp_folders_group_plane)
-                        tmp = load_meanImg_from_path(current_gcamp_folders_group_plane);
-                        if ~isempty(tmp)
-                            meanImg_channels{1} = tmp;
-                            meanImg             = tmp;
-                        end
-                    end
-
-                    if isempty(meanImg_channels{3}) && ~isempty(current_blue_folders_group_plane)
-                        tmp = load_meanImg_from_path(current_blue_folders_group_plane);
-                        if ~isempty(tmp)
-                            meanImg_channels{3} = tmp;
-                        end
-                    end
-
-                    [aligned_image, ~, source_used] = align_blue_locally_and_confirm( ...
-                        meanImg_channels, aligned_image_path);
-
-                    fprintf('Transform estimated from: %s\n', source_used);
-
-                    if ~isempty(aligned_image)
-                        npy_file_path = launch_cellpose_from_matlab(aligned_image_path);
-                        npy_file_path = validate_existing_file(npy_file_path);
-                    else
-                        npy_file_path = [];
-                    end
-                end
+                fprintf( ...
+                    'Transform estimated from: %s\n', ...
+                    source_used);
             end
 
         catch ME
-            warning('load_or_process_cellpose_TSeries:ExistingBlueBranchFailed', ...
-                'Plane %d: existing-blue branch failed: %s', p, ME.message);
+
+            warning( ...
+                'load_or_process_cellpose_TSeries:ExistingElectroporatedBranchFailed', ...
+                ['Plane %d: existing-electroporated branch ' ...
+                 'failed: %s'], ...
+                p, ...
+                ME.message);
+
             aligned_image = [];
             npy_file_path = [];
         end
     end
 
+    % ==============================================================
+    % FLUX CELLPOSE FINAL
+    % ==============================================================
 
-    % ==========================================================
-    %  FLUX CELLPOSE FINAL UNIFIÉ
-    % ==========================================================
-    % Whatever branch produced or recovered the aligned Blue image,
-    % continue toward the GCaMP reference. An existing Blue *_seg.npy
-    % is accepted, but is never returned as the final result.
-    if ~isempty(aligned_image_path) && isfile(aligned_image_path)
+    if ~isempty(aligned_image_path) && ...
+            isfile(aligned_image_path)
 
         if isempty(aligned_image)
-            aligned_image = safe_read_and_normalize(aligned_image_path);
+
+            aligned_image = ...
+                safe_read_and_normalize( ...
+                    aligned_image_path);
         end
 
         if ~isempty(aligned_image)
 
-            [aligned_folder, aligned_name, ~] = ...
-                fileparts(aligned_image_path);
+            [ ...
+                aligned_folder, ...
+                aligned_name, ...
+                ~ ...
+            ] = ...
+                fileparts( ...
+                    aligned_image_path);
 
-            blue_seg_path = fullfile( ...
-                aligned_folder, [aligned_name '_seg.npy']);
+            electroporated_seg_path = ...
+                fullfile( ...
+                    aligned_folder, ...
+                    [aligned_name '_seg.npy']);
 
-            % First manual mask drawing on aligned Blue, only when missing.
-            if ~isfile(blue_seg_path)
-                fprintf('\n============================================\n');
-                fprintf('CELLPOSE STEP 1: DRAW MASKS ON ALIGNED BLUE\n');
+            % ======================================================
+            % STEP 1 :
+            % Dessiner les masques sur electroporated si absents
+            % ======================================================
+
+            if ~isfile(electroporated_seg_path)
+
+                fprintf('\n');
+                fprintf('============================================\n');
+                fprintf('CELLPOSE STEP 1\n');
+                fprintf('DRAW MASKS ON ALIGNED ELECTROPORATED IMAGE\n');
                 fprintf('Save with Ctrl+S, then close Cellpose.\n');
                 fprintf('============================================\n');
 
-                blue_seg_path = launch_cellpose_from_matlab( ...
-                    aligned_image_path, true, ...
-                    'Draw masks on aligned Blue');
+                electroporated_seg_path = ...
+                    launch_cellpose_from_matlab( ...
+                        aligned_image_path, ...
+                        true, ...
+                        'Draw masks on aligned electroporated image');
 
-                blue_seg_path = validate_existing_file(blue_seg_path);
+                electroporated_seg_path = ...
+                    validate_existing_file( ...
+                        electroporated_seg_path);
+
             else
-                fprintf(['Existing aligned-Blue masks found.\n' ...
-                         'Continuing with the GCaMP reference:\n%s\n'], ...
-                         blue_seg_path);
+            
+                fprintf( ...
+                    'Existing aligned-electroporated masks found:\n%s\n', ...
+                    electroporated_seg_path);
             end
 
-            if ~isempty(blue_seg_path)
-                npy_file_path = create_and_refine_masks_on_gcamp( ...
-                    aligned_image_path, ...
-                    meanImg_channels{1}, ...
-                    gcamp_output_folder_plane, ...
-                    blue_seg_path);
+            % ======================================================
+            % STEP 2 :
+            % Reporter / corriger les masques sur GCaMP
+            % ======================================================
 
-                npy_file_path = validate_existing_file(npy_file_path);
+            if ~isempty(electroporated_seg_path)
+
+                npy_file_path = ...
+                    create_and_refine_masks_on_gcamp( ...
+                        aligned_image_path, ...
+                        meanImg_channels{1}, ...
+                        gcamp_output_folder_plane, ...
+                        electroporated_seg_path);
+
+                npy_file_path = ...
+                    validate_existing_file( ...
+                        npy_file_path);
+
             else
-                warning(['No aligned-Blue *_seg.npy was saved. ' ...
-                         'The GCaMP correction step cannot start.']);
+
+                warning( ...
+                    ['No aligned-electroporated *_seg.npy was saved. ' ...
+                     'GCaMP correction cannot start.']);
+
                 npy_file_path = [];
             end
+
         else
-            warning('Aligned Blue TIFF exists but could not be read.');
+
+            warning( ...
+                ['Aligned electroporated TIFF exists but ' ...
+                 'could not be read.']);
+
             npy_file_path = [];
         end
+
     elseif ~isempty(aligned_image)
-        warning(['An aligned Blue image is present in memory, but its ' ...
-                 'TIFF path is unavailable. Cellpose was not launched.']);
+
+        warning( ...
+            ['An aligned electroporated image exists in memory, ' ...
+             'but its TIFF path is unavailable.']);
+
         npy_file_path = [];
     end
 
-    % ==========================================================
-    %  Post-traitement
-    % ==========================================================
-    [meanImg_channels, meanImg] = complete_meanImg_channels( ...
-        meanImg_channels, filePath, current_gcamp_folders_group_plane, meanImg);
+    % ==============================================================
+    % Post-processing
+    % ==============================================================
+
+    [meanImg_channels, meanImg] = ...
+        complete_meanImg_channels( ...
+            meanImg_channels, ...
+            filePath, ...
+            current_gcamp_folders_group_plane, ...
+            meanImg);
 end
 
 
-% =========================================================================
-% Helpers locaux
-% =========================================================================
+% ========================================================================
+% SAFE READ
+% ========================================================================
 
 function img = safe_read_and_normalize(img_path)
+
     img = [];
+
     if isempty(img_path)
         return;
     end
-    if ~(ischar(img_path) || isstring(img_path))
+
+    if ~(ischar(img_path) || ...
+            isstring(img_path))
         return;
     end
+
     if ~isfile(img_path)
         return;
     end
+
     try
-        img = normalize_image(imread(img_path));
+
+        img = ...
+            normalize_image( ...
+                imread(img_path));
+
     catch ME
-        warning('load_or_process_cellpose_TSeries:ReadImageFailed', ...
-            'Failed reading image "%s": %s', char(img_path), ME.message);
+
+        warning( ...
+            'load_or_process_cellpose_TSeries:ReadImageFailed', ...
+            'Failed reading image "%s": %s', ...
+            char(img_path), ...
+            ME.message);
+
         img = [];
     end
 end
 
+
+% ========================================================================
+% VALIDATE FILE
+% ========================================================================
+
 function filepath = validate_existing_file(filepath)
+
     if isempty(filepath)
+
         filepath = [];
         return;
     end
-    if ~(ischar(filepath) || isstring(filepath))
+
+    if ~(ischar(filepath) || ...
+            isstring(filepath))
+
         filepath = [];
         return;
     end
+
     if ~isfile(filepath)
+
         filepath = [];
     end
 end
 
-% =====================================================================
-% ======================== HELPER FUNCTIONS ===========================
-% =====================================================================
 
-function [aligned_image, T, source_used] = align_blue_locally_and_confirm( ...
-        meanImg_channels, aligned_image_path)
+% ========================================================================
+% ALIGN ELECTROPORATED
+% ========================================================================
+
+function [aligned_image, T, source_used] = ...
+        align_electroporated_locally_and_confirm( ...
+            meanImg_channels, ...
+            aligned_image_path)
+
+    % meanImg_channels:
+    %   {1} GCaMP
+    %   {2} Electroporated
+    %   {3} Green
 
     ref_img = [];
+
     if numel(meanImg_channels) >= 1
-        ref_img = meanImg_channels{1};
+
+        ref_img = ...
+            meanImg_channels{1};
     end
 
-    blue_img = [];
-    if numel(meanImg_channels) >= 3
-        blue_img = meanImg_channels{3};
+    electroporated_img = [];
+
+    if numel(meanImg_channels) >= 2
+
+        electroporated_img = ...
+            meanImg_channels{2};
     end
 
     green_img = [];
-    if numel(meanImg_channels) >= 4
-        green_img = meanImg_channels{4};
+
+    if numel(meanImg_channels) >= 3
+
+        green_img = ...
+            meanImg_channels{3};
     end
 
     aligned_image = [];
     T = [];
     source_used = '';
 
+    % ==============================================================
+    % Vérifications
+    % ==============================================================
+
     if isempty(ref_img)
-        warning('align_blue_locally_and_confirm: GCaMP absent.');
+
+        warning( ...
+            ['align_electroporated_locally_and_confirm: ' ...
+             'GCaMP absent.']);
+
         return;
     end
 
-    ref_img = double(ref_img);
+    if isempty(electroporated_img)
 
-    % ----------------------------------------------------------
-    % Choix de l'image servant à estimer la translation
-    % ----------------------------------------------------------
+        warning( ...
+            ['align_electroporated_locally_and_confirm: ' ...
+             'Electroporated image absent.']);
+
+        return;
+    end
+
+    ref_img = ...
+        double(ref_img);
+
+    % ==============================================================
+    % Image utilisée pour ESTIMER la translation
+    %
+    % Green prioritaire lorsqu'il existe.
+    % Sinon Electroporated.
+    % ==============================================================
+
     if ~isempty(green_img)
-        moving_for_estimation = double(green_img);
-        source_used = 'Green';
-    elseif ~isempty(blue_img)
-        moving_for_estimation = double(blue_img);
-        source_used = 'Blue';
+
+        moving_for_estimation = ...
+            double(green_img);
+
+        source_used = ...
+            'Green';
+
     else
-        warning('align_blue_locally_and_confirm: ni Green ni Blue disponible.');
-        return;
+
+        moving_for_estimation = ...
+            double(electroporated_img);
+
+        source_used = ...
+            'Electroporated';
     end
 
-    % ----------------------------------------------------------
-    % Image finale à translater
-    % ----------------------------------------------------------
-    if ~isempty(blue_img)
-        moving_img = double(blue_img);
-    else
-        moving_img = double(green_img);
+    % ==============================================================
+    % Image réellement transformée
+    % ==============================================================
+
+    moving_img = ...
+        double(electroporated_img);
+
+    % ==============================================================
+    % Registration
+    % ==============================================================
+
+    moving_reg = ...
+        mat2gray( ...
+            moving_for_estimation);
+
+    ref_reg = ...
+        mat2gray( ...
+            ref_img);
+
+    % Si tailles différentes, mettre la moving d'estimation
+    % aux dimensions de la référence uniquement pour calculer T.
+
+    if ~isequal(size(moving_reg), size(ref_reg))
+
+        moving_reg = ...
+            imresize( ...
+                moving_reg, ...
+                size(ref_reg));
     end
 
-    % ----------------------------------------------------------
-    % Recalage par phase correlation (imregcorr)
-    % ----------------------------------------------------------
-    moving_reg = mat2gray(double(moving_for_estimation));
-    ref_reg    = mat2gray(double(ref_img));
-    
     try
-        reg_obj = imregcorr(moving_reg, ref_reg, 'translation');
-    
-        T = reg_obj.T;
-    
-        fprintf('%s -> GCaMP | imregcorr translation\n', source_used);
-        fprintf('dx = %.3f px\n', T(3,1));
-        fprintf('dy = %.3f px\n', T(3,2));
-    
+
+        reg_obj = ...
+            imregcorr( ...
+                moving_reg, ...
+                ref_reg, ...
+                'translation');
+
+        T = ...
+            reg_obj.T;
+
+        fprintf( ...
+            '%s -> GCaMP | imregcorr translation\n', ...
+            source_used);
+
+        fprintf( ...
+            'dx = %.3f px\n', ...
+            T(3,1));
+
+        fprintf( ...
+            'dy = %.3f px\n', ...
+            T(3,2));
+
     catch ME
-        warning('imregcorr failed: %s', ME.message);
-        T = eye(3);
+
+        warning( ...
+            'imregcorr failed: %s', ...
+            ME.message);
+
+        T = ...
+            eye(3);
     end
 
-aligned_image = apply_transform_with_phasecorr(moving_img, T, ref_img);
+    % ==============================================================
+    % Appliquer T à ELECTROPORATED
+    % ==============================================================
+
+    aligned_image = ...
+        apply_transform_with_phasecorr( ...
+            moving_img, ...
+            T, ...
+            ref_img);
 
     if isempty(aligned_image)
-        warning('align_blue_locally_and_confirm: transformation vide.');
+
+        warning( ...
+            ['align_electroporated_locally_and_confirm: ' ...
+             'empty transformation.']);
+
         return;
     end
 
-    % ----------------------------------------------------------
-    % Vérification dimensions
-    % ----------------------------------------------------------
-    if ~isequal(size(aligned_image,1), size(ref_img,1)) || ...
-       ~isequal(size(aligned_image,2), size(ref_img,2))
-        warning(['Aligned image size mismatch with GCaMP reference. ' ...
-                 'Forcing resize as fallback.']);
-        aligned_image = imresize(aligned_image, [size(ref_img,1), size(ref_img,2)]);
+    % ==============================================================
+    % Dimensions
+    % ==============================================================
+
+    if ~isequal( ...
+            size(aligned_image,1), ...
+            size(ref_img,1)) || ...
+            ~isequal( ...
+                size(aligned_image,2), ...
+                size(ref_img,2))
+
+        aligned_image = ...
+            imresize( ...
+                aligned_image, ...
+                [ ...
+                    size(ref_img,1), ...
+                    size(ref_img,2) ...
+                ]);
     end
 
-    % ----------------------------------------------------------
-    % Métriques before/after
-    % ----------------------------------------------------------
-    before_cmp = mat2gray(double(moving_img));
-    ref_cmp    = mat2gray(double(ref_img));
-    after_cmp  = mat2gray(double(aligned_image));
+    % ==============================================================
+    % Métriques
+    % ==============================================================
 
-    if ~isequal(size(before_cmp), size(ref_cmp))
-        before_cmp = imresize(before_cmp, size(ref_cmp));
+    before_cmp = ...
+        mat2gray( ...
+            moving_img);
+
+    ref_cmp = ...
+        mat2gray( ...
+            ref_img);
+
+    after_cmp = ...
+        mat2gray( ...
+            aligned_image);
+
+    if ~isequal( ...
+            size(before_cmp), ...
+            size(ref_cmp))
+
+        before_cmp = ...
+            imresize( ...
+                before_cmp, ...
+                size(ref_cmp));
     end
 
-    if ~isequal(size(after_cmp), size(ref_cmp))
-        after_cmp = imresize(after_cmp, size(ref_cmp));
+    if ~isequal( ...
+            size(after_cmp), ...
+            size(ref_cmp))
+
+        after_cmp = ...
+            imresize( ...
+                after_cmp, ...
+                size(ref_cmp));
     end
 
-    before_err = mean(abs(ref_cmp(:) - before_cmp(:)), 'omitnan');
-    after_err  = mean(abs(ref_cmp(:) - after_cmp(:)), 'omitnan');
+    before_err = ...
+        mean( ...
+            abs( ...
+                ref_cmp(:) - ...
+                before_cmp(:)), ...
+            'omitnan');
 
-    fprintf('Error vs ref before = %.6f\n', before_err);
-    fprintf('Error vs ref after  = %.6f\n', after_err);
-    fprintf('Improvement         = %.6f\n', before_err - after_err);
+    after_err = ...
+        mean( ...
+            abs( ...
+                ref_cmp(:) - ...
+                after_cmp(:)), ...
+            'omitnan');
 
-    % ----------------------------------------------------------
-    % Prévisualisation utilisateur avec Enregistrer / Annuler
-    % ----------------------------------------------------------
-    [was_saved, aligned_image, T] = preview_alignment_with_save_cancel(moving_img, aligned_image, ref_img, T);
+    fprintf( ...
+        'Error vs ref before = %.6f\n', ...
+        before_err);
+
+    fprintf( ...
+        'Error vs ref after  = %.6f\n', ...
+        after_err);
+
+    fprintf( ...
+        'Improvement         = %.6f\n', ...
+        before_err - after_err);
+
+    % ==============================================================
+    % Validation manuelle
+    % ==============================================================
+
+    [ ...
+        was_saved, ...
+        aligned_image, ...
+        T ...
+    ] = ...
+        preview_alignment_with_save_cancel( ...
+            moving_img, ...
+            aligned_image, ...
+            ref_img, ...
+            T);
 
     if ~was_saved
-        fprintf('Recalage annulé par l''utilisateur.\n');
+
+        fprintf( ...
+            'Alignment cancelled by user.\n');
+
         aligned_image = [];
         T = [];
         source_used = '';
+
         return;
     end
 
-    % ----------------------------------------------------------
-    % Sauvegarde TIFF aligné
-    % ----------------------------------------------------------
-    if ~isempty(aligned_image) && ~isempty(aligned_image_path)
+    % ==============================================================
+    % Sauvegarde
+    % ==============================================================
+
+    if ~isempty(aligned_image) && ...
+            ~isempty(aligned_image_path)
+
         try
-            imwrite(aligned_image, aligned_image_path, 'tif');
-            fprintf('Aligned image saved: %s\n', aligned_image_path);
+
+            imwrite( ...
+                aligned_image, ...
+                aligned_image_path, ...
+                'tif');
+
+            fprintf( ...
+                'Aligned electroporated image saved:\n%s\n', ...
+                aligned_image_path);
+
         catch ME
-            warning('align_blue_locally_and_confirm: impossible de sauver %s (%s).', ...
-                aligned_image_path, ME.message);
+
+            warning( ...
+                ['Unable to save aligned electroporated ' ...
+                 'image "%s": %s'], ...
+                aligned_image_path, ...
+                ME.message);
         end
     end
 end
 
-function [bestTx, bestTy, bestScore] = estimate_local_translation_from_zero( ...
-    moving_img, ref_img, radius, step)
 
-    if nargin < 4 || isempty(step)
-        step = 1;
-    end
-    if nargin < 3 || isempty(radius)
-        radius = 15;
-    end
+% ========================================================================
+% PREVIEW ALIGNMENT
+% ========================================================================
 
-    if isempty(moving_img) || isempty(ref_img)
-        bestTx = 0;
-        bestTy = 0;
-        bestScore = -Inf;
-        return;
-    end
-
-    moving_img = double(moving_img);
-    ref_img    = double(ref_img);
-
-    % -------------------------------------------------
-    % 1) Préparation des images pour le recalage
-    %    (contours × pondération sombre)
-    % -------------------------------------------------
-    moving_p = prepare_image_for_registration(moving_img);
-    ref_p    = prepare_image_for_registration(ref_img);
-
-    if isempty(moving_p) || isempty(ref_p) || ~isequal(size(moving_p), size(ref_p))
-        bestTx = 0;
-        bestTy = 0;
-        bestScore = -Inf;
-        return;
-    end
-
-    ref_size = size(ref_p);
-    ref_size = ref_size(1:2);
-
-    % -------------------------------------------------
-    % 2) ROI centrale
-    %    Limite l'influence des bords et du fond
-    % -------------------------------------------------
-    [H, W] = size(ref_p);
-
-    roi_half_w = round(W * 0.25);
-    roi_half_h = round(H * 0.25);
-
-    cx = round(W / 2);
-    cy = round(H / 2);
-
-    x1 = max(1, cx - roi_half_w);
-    x2 = min(W, cx + roi_half_w);
-    y1 = max(1, cy - roi_half_h);
-    y2 = min(H, cy + roi_half_h);
-
-    ref_roi = ref_p(y1:y2, x1:x2);
-
-    % -------------------------------------------------
-    % 3) Initialisation recherche locale
-    % -------------------------------------------------
-    bestTx = 0;
-    bestTy = 0;
-    bestScore = -Inf;
-
-    tx_list = -radius:step:radius;
-    ty_list = -radius:step:radius;
-
-    % -------------------------------------------------
-    % 4) Recherche exhaustive locale
-    % -------------------------------------------------
-    for tx = tx_list
-        for ty = ty_list
-
-            Ttmp = eye(3);
-            Ttmp(3,1) = tx;
-            Ttmp(3,2) = ty;
-
-            moved = imwarp(moving_p, affine2d(Ttmp), ...
-                'OutputView', imref2d(ref_size));
-
-            moved_roi = moved(y1:y2, x1:x2);
-
-            score = normalized_corr_score(moved_roi, ref_roi);
-
-            if score > bestScore
-                bestScore = score;
-                bestTx = tx;
-                bestTy = ty;
-            end
-        end
-    end
-
-    % -------------------------------------------------
-    % 5) Affichage debug
-    % -------------------------------------------------
-    fprintf('Best local translation: dx = %.3f px, dy = %.3f px, score = %.6f\n', ...
-        bestTx, bestTy, bestScore);
-end
-
-function score = normalized_corr_score(I1, I2)
-
-    I1 = double(I1);
-    I2 = double(I2);
-
-    if isempty(I1) || isempty(I2) || ~isequal(size(I1), size(I2))
-        score = -Inf;
-        return;
-    end
-
-    I1(~isfinite(I1)) = 0;
-    I2(~isfinite(I2)) = 0;
-
-    I1 = I1 - mean(I1(:));
-    I2 = I2 - mean(I2(:));
-
-    s1 = std(I1(:));
-    s2 = std(I2(:));
-
-    if s1 < eps || s2 < eps
-        score = -Inf;
-        return;
-    end
-
-    I1 = I1 / s1;
-    I2 = I2 / s2;
-
-    score = mean(I1(:) .* I2(:), 'omitnan');
-end
-
-function [was_saved, aligned_img, T] = preview_alignment_with_save_cancel(original_img, aligned_img, ref_img, T)
+function [was_saved, aligned_img, T] = ...
+        preview_alignment_with_save_cancel( ...
+            original_img, ...
+            aligned_img, ...
+            ref_img, ...
+            T)
 
     was_saved = false;
 
-    if isempty(original_img) || isempty(aligned_img) || isempty(ref_img) || isempty(T)
+    if isempty(original_img) || ...
+            isempty(aligned_img) || ...
+            isempty(ref_img) || ...
+            isempty(T)
+
         return;
     end
 
@@ -853,67 +1125,96 @@ function [was_saved, aligned_img, T] = preview_alignment_with_save_cancel(origin
     dx = T(3,1);
     dy = T(3,2);
 
-    original_disp = enhance_for_overlay(original_img);
-    aligned_disp  = enhance_for_overlay(aligned_img);
-    ref_disp      = enhance_for_overlay(ref_img);
+    original_disp = ...
+        enhance_for_overlay( ...
+            original_img);
+
+    aligned_disp = ...
+        enhance_for_overlay( ...
+            aligned_img);
+
+    ref_disp = ...
+        enhance_for_overlay( ...
+            ref_img);
 
     hFig = figure( ...
-        'Name', 'Preview alignment', ...
-        'NumberTitle', 'off', ...
-        'MenuBar', 'none', ...
-        'ToolBar', 'none', ...
-        'Color', 'w', ...
-        'Position', [80 80 1500 720], ...
-        'CloseRequestFcn', @onCancel);
+        'Name', ...
+        'Preview electroporated alignment', ...
+        'NumberTitle', ...
+        'off', ...
+        'MenuBar', ...
+        'none', ...
+        'ToolBar', ...
+        'none', ...
+        'Color', ...
+        'w', ...
+        'Position', ...
+        [80 80 1500 720], ...
+        'CloseRequestFcn', ...
+        @onCancel);
 
     S = struct();
+
     S.saved = false;
     S.state = 1;
-    S.original_img  = original_img;
-    S.aligned_img   = aligned_img;
-    S.ref_img       = ref_img;
-    S.T             = T;
+
+    S.original_img = original_img;
+    S.aligned_img = aligned_img;
+    S.ref_img = ref_img;
+    S.T = T;
 
     S.original_disp = original_disp;
-    S.aligned_disp  = aligned_disp;
-    S.ref_disp      = ref_disp;
+    S.aligned_disp = aligned_disp;
+    S.ref_disp = ref_disp;
 
-    S.ax1 = axes('Parent', hFig, 'Position', [0.05 0.12 0.34 0.78]);
-    S.ax2 = axes('Parent', hFig, 'Position', [0.44 0.12 0.34 0.78]);
+    S.ax1 = axes( ...
+        'Parent', hFig, ...
+        'Position', [0.05 0.12 0.34 0.78]);
 
-    S.infoTxt = uicontrol('Parent', hFig, ...
+    S.ax2 = axes( ...
+        'Parent', hFig, ...
+        'Position', [0.44 0.12 0.34 0.78]);
+
+    S.infoTxt = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'text', ...
-        'String', sprintf(['Recalage automatique appliqué\n\n' ...
-                           'dx = %.2f px\n' ...
-                           'dy = %.2f px\n\n' ...
-                           'Gauche : Original / Alignée\n' ...
-                           'Droite : Référence / Alignée\n' ...
-                           'Alternance automatique'], dx, dy), ...
+        'String', ...
+        sprintf( ...
+            ['Automatic alignment\n\n' ...
+             'dx = %.2f px\n' ...
+             'dy = %.2f px\n\n' ...
+             'Left: original / aligned\n' ...
+             'Right: GCaMP / aligned'], ...
+            dx, ...
+            dy), ...
         'FontSize', 11, ...
         'BackgroundColor', 'w', ...
         'HorizontalAlignment', 'left', ...
         'Units', 'normalized', ...
         'Position', [0.81 0.62 0.16 0.22]);
 
-    S.btnManual = uicontrol('Parent', hFig, ...
+    S.btnManual = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'pushbutton', ...
-        'String', 'Recalage manuel', ...
+        'String', 'Manual alignment', ...
         'FontSize', 12, ...
         'Units', 'normalized', ...
         'Position', [0.82 0.54 0.14 0.08], ...
         'Callback', @onManual);
 
-    S.btnSave = uicontrol('Parent', hFig, ...
+    S.btnSave = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'pushbutton', ...
-        'String', 'Enregistrer', ...
+        'String', 'Save', ...
         'FontSize', 12, ...
         'Units', 'normalized', ...
         'Position', [0.82 0.42 0.14 0.08], ...
         'Callback', @onSave);
 
-    S.btnCancel = uicontrol('Parent', hFig, ...
+    S.btnCancel = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'pushbutton', ...
-        'String', 'Annuler', ...
+        'String', 'Cancel', ...
         'FontSize', 12, ...
         'Units', 'normalized', ...
         'Position', [0.82 0.30 0.14 0.08], ...
@@ -924,154 +1225,267 @@ function [was_saved, aligned_img, T] = preview_alignment_with_save_cancel(origin
     refresh_alternating_display(hFig);
 
     animTimer = timer( ...
-        'ExecutionMode', 'fixedSpacing', ...
-        'Period', 0.6, ...
-        'TimerFcn', @(~,~) toggle_display(hFig));
+        'ExecutionMode', ...
+        'fixedSpacing', ...
+        'Period', ...
+        0.6, ...
+        'TimerFcn', ...
+        @(~,~) toggle_display(hFig));
 
     S = guidata(hFig);
-    S.animTimer = animTimer;
+
+    S.animTimer = ...
+        animTimer;
+
     guidata(hFig, S);
 
     start(animTimer);
+
     uiwait(hFig);
 
     if isvalid_handle(hFig)
+
         S = guidata(hFig);
 
-        if isfield(S, 'animTimer') && ~isempty(S.animTimer) && isvalid(S.animTimer)
+        if isfield(S, 'animTimer') && ...
+                ~isempty(S.animTimer) && ...
+                isvalid(S.animTimer)
+
             stop(S.animTimer);
             delete(S.animTimer);
         end
 
-        was_saved   = S.saved;
+        was_saved = S.saved;
         aligned_img = S.aligned_img;
-        T           = S.T;
+        T = S.T;
 
         delete(hFig);
     end
 
+
     function toggle_display(fig)
+
         if ~isvalid_handle(fig)
             return;
         end
+
         S = guidata(fig);
-        S.state = 3 - S.state;
+
+        S.state = ...
+            3 - S.state;
+
         guidata(fig, S);
+
         refresh_alternating_display(fig);
     end
 
+
     function refresh_alternating_display(fig)
+
         if ~isvalid_handle(fig)
             return;
         end
-    
+
         S = guidata(fig);
-    
+
         cla(S.ax1);
         cla(S.ax2);
-    
+
         if S.state == 1
-            % --- état 1 ---
-            imagesc(S.ax1, S.original_disp);
-            axis(S.ax1, 'image');
-            title(S.ax1, 'Blue original');
-    
-            imagesc(S.ax2, S.ref_disp);
-            axis(S.ax2, 'image');
-            title(S.ax2, 'GCaMP reference');
-    
+
+            imagesc( ...
+                S.ax1, ...
+                S.original_disp);
+
+            axis( ...
+                S.ax1, ...
+                'image');
+
+            title( ...
+                S.ax1, ...
+                'Electroporated original');
+
+            imagesc( ...
+                S.ax2, ...
+                S.ref_disp);
+
+            axis( ...
+                S.ax2, ...
+                'image');
+
+            title( ...
+                S.ax2, ...
+                'GCaMP reference');
+
         else
-            % --- état 2 ---
-            imagesc(S.ax1, S.aligned_disp);
-            axis(S.ax1, 'image');
-            title(S.ax1, 'Blue aligned');
-    
-            imagesc(S.ax2, S.aligned_disp);
-            axis(S.ax2, 'image');
-            title(S.ax2, 'Blue aligned');
+
+            imagesc( ...
+                S.ax1, ...
+                S.aligned_disp);
+
+            axis( ...
+                S.ax1, ...
+                'image');
+
+            title( ...
+                S.ax1, ...
+                'Electroporated aligned');
+
+            imagesc( ...
+                S.ax2, ...
+                S.aligned_disp);
+
+            axis( ...
+                S.ax2, ...
+                'image');
+
+            title( ...
+                S.ax2, ...
+                'Electroporated aligned');
         end
-    
+
         colormap(S.ax1, parula);
         colormap(S.ax2, parula);
-    
+
         drawnow limitrate;
     end
 
+
     function onManual(src, ~)
-        fig = ancestor(src, 'figure');
-        if isempty(fig) || ~isvalid_handle(fig)
+
+        fig = ...
+            ancestor( ...
+                src, ...
+                'figure');
+
+        if isempty(fig) || ...
+                ~isvalid_handle(fig)
+
             return;
         end
 
-        S = guidata(fig);
+        S = ...
+            guidata(fig);
 
-        if isfield(S, 'animTimer') && ~isempty(S.animTimer) && isvalid(S.animTimer)
+        if isfield(S, 'animTimer') && ...
+                ~isempty(S.animTimer) && ...
+                isvalid(S.animTimer)
+
             stop(S.animTimer);
         end
 
-        [T_manual, was_manual_saved] = manual_translation_gui( ...
-            S.original_img, S.ref_img, S.T);
+        [ ...
+            T_manual, ...
+            was_manual_saved ...
+        ] = ...
+            manual_translation_gui( ...
+                S.original_img, ...
+                S.ref_img, ...
+                S.T);
 
-        if was_manual_saved && ~isempty(T_manual)
+        if was_manual_saved && ...
+                ~isempty(T_manual)
 
-            S.T = T_manual;
-            S.aligned_img = apply_transform_with_phasecorr(S.original_img, S.T, S.ref_img);
+            S.T = ...
+                T_manual;
+
+            S.aligned_img = ...
+                apply_transform_with_phasecorr( ...
+                    S.original_img, ...
+                    S.T, ...
+                    S.ref_img);
 
             if ~isempty(S.aligned_img)
-                S.aligned_disp = enhance_for_overlay(S.aligned_img);
+
+                S.aligned_disp = ...
+                    enhance_for_overlay( ...
+                        S.aligned_img);
 
                 dx = S.T(3,1);
                 dy = S.T(3,2);
 
-                set(S.infoTxt, 'String', sprintf([ ...
-                    'Recalage manuel/auto appliqué\n\n' ...
-                    'dx = %.2f px\n' ...
-                    'dy = %.2f px\n\n' ...
-                    'Gauche : Original / Alignée\n' ...
-                    'Droite : Référence / Alignée\n' ...
-                    'Alternance automatique'], dx, dy));
+                set( ...
+                    S.infoTxt, ...
+                    'String', ...
+                    sprintf( ...
+                        ['Manual alignment\n\n' ...
+                         'dx = %.2f px\n' ...
+                         'dy = %.2f px'], ...
+                        dx, ...
+                        dy));
             end
 
             guidata(fig, S);
+
             refresh_alternating_display(fig);
         end
 
-        if isfield(S, 'animTimer') && ~isempty(S.animTimer) && isvalid(S.animTimer)
+        S = guidata(fig);
+
+        if isfield(S, 'animTimer') && ...
+                ~isempty(S.animTimer) && ...
+                isvalid(S.animTimer)
+
             start(S.animTimer);
         end
     end
 
+
     function onSave(src, ~)
-        fig = ancestor(src, 'figure');
-        if isempty(fig) || ~isvalid_handle(fig)
+
+        fig = ...
+            ancestor(src, 'figure');
+
+        if isempty(fig) || ...
+                ~isvalid_handle(fig)
+
             return;
         end
 
         S = guidata(fig);
+
         S.saved = true;
+
         guidata(fig, S);
 
-        if isfield(S, 'animTimer') && ~isempty(S.animTimer) && isvalid(S.animTimer)
+        if isfield(S, 'animTimer') && ...
+                ~isempty(S.animTimer) && ...
+                isvalid(S.animTimer)
+
             stop(S.animTimer);
         end
 
         uiresume(fig);
     end
 
+
     function onCancel(src, ~)
+
         fig = src;
-        if ~ishandle(fig) || ~strcmp(get(fig, 'Type'), 'figure')
-            fig = ancestor(src, 'figure');
+
+        if ~ishandle(fig) || ...
+                ~strcmp(get(fig, 'Type'), 'figure')
+
+            fig = ...
+                ancestor(src, 'figure');
         end
-        if isempty(fig) || ~isvalid_handle(fig)
+
+        if isempty(fig) || ...
+                ~isvalid_handle(fig)
+
             return;
         end
 
         S = guidata(fig);
+
         S.saved = false;
+
         guidata(fig, S);
 
-        if isfield(S, 'animTimer') && ~isempty(S.animTimer) && isvalid(S.animTimer)
+        if isfield(S, 'animTimer') && ...
+                ~isempty(S.animTimer) && ...
+                isvalid(S.animTimer)
+
             stop(S.animTimer);
         end
 
@@ -1079,19 +1493,32 @@ function [was_saved, aligned_img, T] = preview_alignment_with_save_cancel(origin
     end
 end
 
-function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init)
+
+% ========================================================================
+% MANUAL TRANSLATION
+% ========================================================================
+
+function [T_out, was_saved] = ...
+        manual_translation_gui( ...
+            moving_img, ...
+            ref_img, ...
+            T_init)
 
     was_saved = false;
     T_out = [];
 
-    if isempty(moving_img) || isempty(ref_img)
+    if isempty(moving_img) || ...
+            isempty(ref_img)
+
         return;
     end
 
     moving_img = double(moving_img);
-    ref_img    = double(ref_img);
+    ref_img = double(ref_img);
 
-    if nargin < 3 || isempty(T_init)
+    if nargin < 3 || ...
+            isempty(T_init)
+
         T_init = eye(3);
     end
 
@@ -1102,6 +1529,7 @@ function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init
     ref_size = ref_size(1:2);
 
     S = struct();
+
     S.moving = moving_img;
     S.ref = ref_img;
     S.tx = tx;
@@ -1112,7 +1540,7 @@ function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init
     S.saved = false;
 
     hFig = figure( ...
-        'Name', 'Recalage manuel', ...
+        'Name', 'Manual alignment', ...
         'NumberTitle', 'off', ...
         'Color', 'w', ...
         'MenuBar', 'none', ...
@@ -1123,47 +1551,44 @@ function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init
         'WindowButtonMotionFcn', @onMouseMove, ...
         'CloseRequestFcn', @onCancel);
 
-    % ===== AXE =====
-    S.ax = axes('Parent', hFig, 'Position', [0.05 0.08 0.70 0.86]);
+    S.ax = axes( ...
+        'Parent', hFig, ...
+        'Position', [0.05 0.08 0.70 0.86]);
+
     axis(S.ax, 'image');
     hold(S.ax, 'on');
-    colormap(S.ax, parula);
 
-    % ===== BOUTONS =====
-    uicontrol('Parent', hFig, ...
+    uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'pushbutton', ...
-        'String', 'Valider', ...
+        'String', 'Save', ...
         'FontSize', 11, ...
         'Units', 'normalized', ...
         'Position', [0.81 0.80 0.15 0.08], ...
         'Callback', @onSave);
 
-    uicontrol('Parent', hFig, ...
+    uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'pushbutton', ...
-        'String', 'Annuler', ...
+        'String', 'Cancel', ...
         'FontSize', 11, ...
         'Units', 'normalized', ...
         'Position', [0.81 0.68 0.15 0.08], ...
         'Callback', @onCancel);
 
-    % ===== SLIDER ALPHA =====
-    uicontrol('Parent', hFig, ...
-        'Style', 'text', ...
-        'String', 'Transparence moving', ...
-        'FontSize', 10, ...
-        'BackgroundColor', 'w', ...
-        'Units', 'normalized', ...
-        'Position', [0.81 0.58 0.15 0.04]);
-
-    S.sliderAlpha = uicontrol('Parent', hFig, ...
+    S.sliderAlpha = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'slider', ...
-        'Min', 0.05, 'Max', 1.0, 'Value', 0.5, ...
+        'Min', 0.05, ...
+        'Max', 1, ...
+        'Value', 0.5, ...
         'Units', 'normalized', ...
         'Position', [0.81 0.54 0.15 0.04], ...
-        'Callback', @(~,~) refreshOverlay(hFig));
+        'Callback', ...
+        @(~,~) refreshOverlay(hFig));
 
-    % ===== TEXTE INFO =====
-    S.txt = uicontrol('Parent', hFig, ...
+    S.txt = uicontrol( ...
+        'Parent', hFig, ...
         'Style', 'text', ...
         'String', '', ...
         'FontSize', 11, ...
@@ -1173,87 +1598,122 @@ function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init
         'Position', [0.80 0.35 0.18 0.12]);
 
     guidata(hFig, S);
+
     refreshOverlay(hFig);
 
     uiwait(hFig);
 
     if isvalid_handle(hFig)
+
         S = guidata(hFig);
 
         if S.saved
+
             T_out = eye(3);
+
             T_out(3,1) = S.tx;
             T_out(3,2) = S.ty;
+
             was_saved = true;
         end
 
         delete(hFig);
     end
 
-    % =========================================================
-    % INTERACTIONS SOURIS
-    % =========================================================
 
     function onMouseDown(src, ~)
+
         S = guidata(src);
-        cp = get(S.ax, 'CurrentPoint');
+
+        cp = ...
+            get( ...
+                S.ax, ...
+                'CurrentPoint');
+
         S.dragging = true;
         S.startPoint = cp(1,1:2);
         S.startTxTy = [S.tx S.ty];
+
         guidata(src, S);
     end
 
+
     function onMouseMove(src, ~)
+
         S = guidata(src);
+
         if ~S.dragging
             return;
         end
 
-        cp = get(S.ax, 'CurrentPoint');
-        delta = cp(1,1:2) - S.startPoint;
+        cp = ...
+            get( ...
+                S.ax, ...
+                'CurrentPoint');
 
-        S.tx = S.startTxTy(1) + delta(1);
-        S.ty = S.startTxTy(2) + delta(2);
+        delta = ...
+            cp(1,1:2) - ...
+            S.startPoint;
+
+        S.tx = ...
+            S.startTxTy(1) + ...
+            delta(1);
+
+        S.ty = ...
+            S.startTxTy(2) + ...
+            delta(2);
 
         guidata(src, S);
+
         refreshOverlay(src);
     end
 
+
     function onMouseUp(src, ~)
+
         S = guidata(src);
+
         S.dragging = false;
+
         guidata(src, S);
     end
 
-    % =========================================================
-    % CALLBACKS
-    % =========================================================
 
     function onSave(src, ~)
+
         fig = ancestor(src, 'figure');
+
         S = guidata(fig);
+
         S.saved = true;
+
         guidata(fig, S);
+
         uiresume(fig);
     end
 
+
     function onCancel(src, ~)
+
         fig = ancestor(src, 'figure');
+
         if isempty(fig)
             fig = src;
         end
+
         if ~isvalid_handle(fig)
             return;
         end
+
         S = guidata(fig);
+
         S.saved = false;
+
         guidata(fig, S);
+
         uiresume(fig);
     end
 
-    % =========================================================
-    % AFFICHAGE
-    % =========================================================
 
     function refreshOverlay(fig)
 
@@ -1264,164 +1724,125 @@ function [T_out, was_saved] = manual_translation_gui(moving_img, ref_img, T_init
         S = guidata(fig);
 
         Ttmp = eye(3);
+
         Ttmp(3,1) = S.tx;
         Ttmp(3,2) = S.ty;
 
-        moved = imwarp(double(S.moving), affine2d(Ttmp), ...
-            'OutputView', imref2d(ref_size));
+        moved = ...
+            imwarp( ...
+                double(S.moving), ...
+                affine2d(Ttmp), ...
+                'OutputView', ...
+                imref2d(ref_size));
 
-        ref_disp   = enhance_for_overlay(S.ref);
-        moved_disp = enhance_for_overlay(moved);
+        ref_disp = ...
+            enhance_for_overlay( ...
+                S.ref);
 
-        alpha_val = get(S.sliderAlpha, 'Value');
+        moved_disp = ...
+            enhance_for_overlay( ...
+                moved);
+
+        alpha_val = ...
+            get( ...
+                S.sliderAlpha, ...
+                'Value');
 
         cla(S.ax);
+
         hold(S.ax, 'on');
 
-        imagesc(S.ax, ref_disp);
-        hMov = imagesc(S.ax, moved_disp);
-        set(hMov, 'AlphaData', alpha_val);
+        imagesc( ...
+            S.ax, ...
+            ref_disp);
 
-        colormap(S.ax, parula);
+        hMov = ...
+            imagesc( ...
+                S.ax, ...
+                moved_disp);
+
+        set( ...
+            hMov, ...
+            'AlphaData', ...
+            alpha_val);
+
         axis(S.ax, 'image');
 
-        title(S.ax, 'Drag souris = translation');
+        title( ...
+            S.ax, ...
+            'Drag electroporated image');
 
-        set(S.txt, 'String', sprintf( ...
-            'dx = %.2f px\ndy = %.2f px\nalpha = %.2f', ...
-            S.tx, S.ty, alpha_val));
+        set( ...
+            S.txt, ...
+            'String', ...
+            sprintf( ...
+                'dx = %.2f px\ndy = %.2f px\nalpha = %.2f', ...
+                S.tx, ...
+                S.ty, ...
+                alpha_val));
 
         drawnow limitrate;
     end
 end
 
-function Iprep = prepare_image_for_registration(I)
 
-    I = double(I);
+% ========================================================================
+% APPLY TRANSFORM
+% ========================================================================
 
-    if isempty(I) || all(~isfinite(I(:)))
-        Iprep = zeros(size(I));
-        return;
-    end
-
-    vals = I(isfinite(I));
-    if isempty(vals)
-        Iprep = zeros(size(I));
-        return;
-    end
-
-    % -------------------------------------------------
-    % 1) Normalisation robuste
-    % -------------------------------------------------
-    p1  = prctile(vals, 1);
-    p99 = prctile(vals, 99);
-
-    if p99 > p1
-        I = (I - p1) / (p99 - p1);
-    else
-        I = mat2gray(I);
-    end
-
-    I = max(0, min(1, I));
-
-    % -------------------------------------------------
-    % 2) Lissage léger
-    % -------------------------------------------------
-    I = imgaussfilt(I, 1.0);
-
-    % -------------------------------------------------
-    % 3) Carte d'obscurité
-    %    sombre = important
-    %    très sombre = encore plus important
-    % -------------------------------------------------
-    darkness = 1 - I;
-
-    % seuil doux : enlève les zones trop peu sombres
-    dark_threshold = 0.30;
-    darkness = max(0, darkness - dark_threshold);
-
-    % renormalisation après seuil
-    if any(darkness(:))
-        mx_dark = max(darkness(:));
-        if mx_dark > 0
-            darkness = darkness / mx_dark;
-        end
-    end
-
-    % amplification non linéaire :
-    % les plus noirs parmi les sombres dominent fortement
-    gamma_dark = 2.5;
-    dark_weight = darkness .^ gamma_dark;
-
-    % -------------------------------------------------
-    % 4) Contours / gradients
-    %    On privilégie les bords plutôt que les surfaces
-    % -------------------------------------------------
-    [Gx, Gy] = imgradientxy(I, 'sobel');
-    G = hypot(Gx, Gy);
-
-    G(~isfinite(G)) = 0;
-
-    if any(G(:))
-        G = G - min(G(:));
-        mx = max(G(:));
-        if mx > 0
-            G = G / mx;
-        end
-    end
-
-    % enlève une partie du bruit faible
-    G(G < 0.03) = 0;
-
-    % renforcement léger des contours nets
-    G = G .^ 1.2;
-
-    % -------------------------------------------------
-    % 5) Signal final pour recalage
-    %    contours × masque sombre fortement pondéré
-    % -------------------------------------------------
-    Iprep = G .* dark_weight;
-
-    % -------------------------------------------------
-    % 6) Normalisation finale
-    % -------------------------------------------------
-    Iprep(~isfinite(Iprep)) = 0;
-
-    if any(Iprep(:))
-        Iprep = Iprep - min(Iprep(:));
-        mx = max(Iprep(:));
-        if mx > 0
-            Iprep = Iprep / mx;
-        end
-    end
-end
-
- 
-function aligned_img = apply_transform_with_phasecorr(channel_img, T, ref_img)
+function aligned_img = ...
+        apply_transform_with_phasecorr( ...
+            channel_img, ...
+            T, ...
+            ref_img)
 
     aligned_img = [];
 
-    if isempty(channel_img) || isempty(T) || isempty(ref_img)
-        warning('apply_transform_with_phasecorr: entrée vide.');
+    if isempty(channel_img) || ...
+            isempty(T) || ...
+            isempty(ref_img)
+
         return;
     end
 
-    ref_size = size(ref_img);
-    ref_size = ref_size(1:2);
+    ref_size = ...
+        size(ref_img);
+
+    ref_size = ...
+        ref_size(1:2);
 
     try
-        aligned_raw = imwarp(double(channel_img), affine2d(T), ...
-            'OutputView', imref2d(ref_size), ...
-            'Interp', 'linear');
+
+        aligned_raw = ...
+            imwarp( ...
+                double(channel_img), ...
+                affine2d(T), ...
+                'OutputView', ...
+                imref2d(ref_size), ...
+                'Interp', ...
+                'linear');
+
     catch ME
-        warning('apply_transform_with_phasecorr: imwarp a échoué (%s).', ME.message);
+
+        warning( ...
+            'apply_transform_with_phasecorr: %s', ...
+            ME.message);
+
         return;
     end
 
-    aligned_img = normalize_image(aligned_raw);
+    aligned_img = ...
+        normalize_image( ...
+            aligned_raw);
 end
 
+
+% ========================================================================
+% LOAD MEAN IMAGE
+% ========================================================================
+
 function meanImg = load_meanImg_from_path(path_in)
+
     meanImg = [];
 
     if isempty(path_in)
@@ -1429,291 +1850,374 @@ function meanImg = load_meanImg_from_path(path_in)
     end
 
     if isfolder(path_in)
-        ops_npy = fullfile(path_in, 'ops.npy');
+
+        ops_npy = ...
+            fullfile( ...
+                path_in, ...
+                'ops.npy');
+
         if isfile(ops_npy)
+
             try
-                mod = py.importlib.import_module('python_function');
-                ops = mod.read_npy_file(ops_npy);
-                meanImg = double(ops{'meanImg'});
+
+                mod = ...
+                    py.importlib.import_module( ...
+                        'python_function');
+
+                ops = ...
+                    mod.read_npy_file( ...
+                        ops_npy);
+
+                meanImg = ...
+                    double( ...
+                        ops{'meanImg'});
+
                 return;
+
             catch
-                warning('Erreur lecture ops.npy dans %s', path_in);
+
+                warning( ...
+                    'Error reading ops.npy in %s', ...
+                    path_in);
             end
         end
 
-        ops_mat = fullfile(path_in, 'ops.mat');
+        ops_mat = ...
+            fullfile( ...
+                path_in, ...
+                'ops.mat');
+
         if isfile(ops_mat)
+
             S = load(ops_mat);
-            if isfield(S,'ops') && isfield(S.ops,'meanImg')
-                meanImg = S.ops.meanImg;
+
+            if isfield(S, 'ops') && ...
+                    isfield(S.ops, 'meanImg')
+
+                meanImg = ...
+                    S.ops.meanImg;
+
                 return;
             end
-        end
-    end
-
-    [~,~,ext] = fileparts(path_in);
-    if strcmpi(ext,'.mat') && isfile(path_in)
-        S = load(path_in);
-        if isfield(S,'ops') && isfield(S.ops,'meanImg')
-            meanImg = S.ops.meanImg;
-            return;
         end
     end
 end
 
-function path_out = select_or_default(files, canal_str, pattern)
+
+% ========================================================================
+% SELECT FILE
+% ========================================================================
+
+function path_out = ...
+        select_or_default( ...
+            files, ...
+            canal_str, ...
+            pattern)
+
     if isempty(files)
+
         path_out = '';
         return;
     end
 
     if numel(files) > 1
-        [selected_file, selected_path] = uigetfile({['*' canal_str pattern]}, ...
-            ['Plusieurs fichiers "', canal_str, '" trouvés. Veuillez sélectionner :'], ...
-            fullfile(files(1).folder, files(1).name));
+
+        [selected_file, selected_path] = ...
+            uigetfile( ...
+                {['*' canal_str pattern]}, ...
+                'Select file', ...
+                fullfile( ...
+                    files(1).folder, ...
+                    files(1).name));
+
         if isequal(selected_file, 0)
+
             path_out = '';
             return;
         end
-        path_out = fullfile(selected_path, selected_file);
+
+        path_out = ...
+            fullfile( ...
+                selected_path, ...
+                selected_file);
+
     else
-        path_out = fullfile(files(1).folder, files(1).name);
+
+        path_out = ...
+            fullfile( ...
+                files(1).folder, ...
+                files(1).name);
     end
 end
 
-function [meanImg_channels, meanImg] = complete_meanImg_channels( ...
-        meanImg_channels, filePath, gcamp_plane_path, meanImg)
+
+% ========================================================================
+% COMPLETE MEAN IMAGES
+% ========================================================================
+
+function [meanImg_channels, meanImg] = ...
+        complete_meanImg_channels( ...
+            meanImg_channels, ...
+            filePath, ...
+            gcamp_plane_path, ...
+            meanImg)
 
     try
-        if ~isempty(filePath) && exist(filePath, 'file') == 2
-            data = load(filePath);
-            if isfield(data, 'meanImg_channels')
-                nLoc = numel(meanImg_channels);
-                nSrc = numel(data.meanImg_channels);
-                n    = min(nLoc, nSrc);
+
+        if ~isempty(filePath) && ...
+                exist(filePath, 'file') == 2
+
+            saved_data = ...
+                load(filePath);
+
+            if isfield( ...
+                    saved_data, ...
+                    'meanImg_channels')
+
+                source = ...
+                    saved_data.meanImg_channels;
+
+                n = ...
+                    min( ...
+                        numel(meanImg_channels), ...
+                        numel(source));
+
                 for j = 1:n
+
                     if isempty(meanImg_channels{j})
-                        meanImg_channels{j} = data.meanImg_channels{j};
+
+                        meanImg_channels{j} = ...
+                            source{j};
                     end
                 end
             end
         end
 
-        if (isempty(meanImg) || (isnumeric(meanImg) && all(meanImg(:) == 0)))
-            if ~isempty(meanImg_channels) && numel(meanImg_channels) >= 1 && ...
-                    ~isempty(meanImg_channels{1})
-                meanImg = meanImg_channels{1};
+        if isempty(meanImg)
+
+            if ~isempty(meanImg_channels{1})
+
+                meanImg = ...
+                    meanImg_channels{1};
 
             elseif ~isempty(gcamp_plane_path)
-                [meanImg_tmp, meanImg_channels_tmp] = ...
-                    load_ops_or_mat(gcamp_plane_path, filePath);
 
-                if ~isempty(meanImg_tmp)
-                    meanImg = meanImg_tmp;
-                end
-                if ~isempty(meanImg_channels_tmp)
-                    nLoc = numel(meanImg_channels);
-                    nSrc = numel(meanImg_channels_tmp);
-                    n    = min(nLoc, nSrc);
-                    for j = 1:n
-                        if isempty(meanImg_channels{j})
-                            meanImg_channels{j} = meanImg_channels_tmp{j};
-                        end
-                    end
-                    if isempty(meanImg) && ~isempty(meanImg_channels{1})
-                        meanImg = meanImg_channels{1};
-                    end
+                meanImg = ...
+                    load_meanImg_from_path( ...
+                        gcamp_plane_path);
+
+                if ~isempty(meanImg)
+
+                    meanImg_channels{1} = ...
+                        meanImg;
                 end
             end
         end
 
     catch ME
-        disp('Erreur lors du post-traitement meanImg_channels :');
-        disp(ME.message);
+
+        warning( ...
+            'complete_meanImg_channels: %s', ...
+            ME.message);
     end
 end
 
-function [meanImg, meanImg_channels] = load_ops_or_mat(path_in, filePath)
-    numChannelsLocal   = 4;
-    meanImg            = [];
-    meanImg_channels   = cell(numChannelsLocal, 1);
 
-    if nargin < 2
-        filePath = '';
-    end
-
-    [~, ~, ext] = fileparts(path_in);
-
-    if isfolder(path_in)
-        files_npy = dir(fullfile(path_in, '*.npy'));
-        if ~isempty(files_npy)
-            newOpsPath = fullfile(path_in, 'ops.npy');
-            try
-                mod = py.importlib.import_module('python_function');
-                ops = mod.read_npy_file(newOpsPath);
-                meanImg = double(ops{'meanImg'});
-                meanImg_channels{1} = meanImg;
-            catch
-                disp('Erreur lors du chargement ops.npy');
-            end
-        end
-    end
-
-    if isempty(meanImg) && strcmpi(ext, '.mat') && exist(path_in, 'file') == 2
-        data = load(path_in);
-        if isfield(data, 'ops') && isfield(data.ops, 'meanImg')
-            meanImg = data.ops.meanImg;
-            meanImg_channels{1} = meanImg;
-        elseif isfield(data, 'meanImg_channels')
-            meanImg_channels = data.meanImg_channels;
-            if ~isempty(meanImg_channels) && ~isempty(meanImg_channels{1})
-                meanImg = meanImg_channels{1};
-            end
-        end
-    end
-
-    if isempty(meanImg) && ~isempty(filePath) && exist(filePath, 'file') == 2
-        data = load(filePath);
-        if isfield(data, 'meanImg_channels')
-            meanImg_channels = data.meanImg_channels;
-            if ~isempty(meanImg_channels) && ~isempty(meanImg_channels{1})
-                meanImg = meanImg_channels{1};
-            end
-        elseif isfield(data, 'ops') && isfield(data.ops, 'meanImg')
-            meanImg = data.ops.meanImg;
-            meanImg_channels{1} = meanImg;
-        end
-    end
-end
+% ========================================================================
+% NORMALIZE IMAGE
+% ========================================================================
 
 function norm_img = normalize_image(img)
+
     if isfloat(img)
-        norm_img = mat2gray(img);
+
+        norm_img = ...
+            mat2gray(img);
+
     elseif isinteger(img)
-        denom = double(max(img(:)));
+
+        denom = ...
+            double( ...
+                max(img(:)));
+
         if denom == 0
-            norm_img = uint8(img);
+
+            norm_img = ...
+                uint8(img);
+
         else
-            norm_img = double(img) / denom * 255;
-            norm_img = uint8(norm_img);
+
+            norm_img = ...
+                uint8( ...
+                    double(img) ./ denom .* 255);
         end
+
     else
-        norm_img = mat2gray(double(img));
+
+        norm_img = ...
+            mat2gray( ...
+                double(img));
     end
 end
+
+
+% ========================================================================
+% ENHANCE DISPLAY
+% ========================================================================
 
 function out = enhance_for_overlay(img)
 
     img = double(img);
 
-    if isempty(img) || all(~isfinite(img(:)))
+    if isempty(img) || ...
+            all(~isfinite(img(:)))
+
         out = zeros(size(img));
         return;
     end
 
-    vals = img(isfinite(img));
+    vals = ...
+        img(isfinite(img));
 
-    p_low  = prctile(vals, 2);
-    p_high = prctile(vals, 98);
+    p_low = ...
+        prctile(vals, 2);
+
+    p_high = ...
+        prctile(vals, 98);
 
     if p_high <= p_low
-        out = mat2gray(img);
+
+        out = ...
+            mat2gray(img);
+
         return;
     end
 
-    out = (img - p_low) / (p_high - p_low);
-    out = max(min(out,1),0);
-    out = out .^ 0.7;
+    out = ...
+        (img - p_low) ./ ...
+        (p_high - p_low);
+
+    out = ...
+        max( ...
+            min(out, 1), ...
+            0);
+
+    out = ...
+        out .^ 0.7;
 end
+
+
+% ========================================================================
+% HANDLE
+% ========================================================================
 
 function tf = isvalid_handle(h)
-    tf = ~isempty(h) && isgraphics(h);
+
+    tf = ...
+        ~isempty(h) && ...
+        isgraphics(h);
 end
 
 
-function final_npy_path = create_and_refine_masks_on_gcamp( ...
-        aligned_blue_path, ...
-        gcamp_image, ...
-        output_folder, ...
-        blue_seg_path)
+% ========================================================================
+% CREATE / REFINE GCAMP MASKS
+% ========================================================================
+
+function final_npy_path = ...
+        create_and_refine_masks_on_gcamp( ...
+            aligned_electroporated_path, ...
+            gcamp_image, ...
+            output_folder, ...
+            electroporated_seg_path)
 
     final_npy_path = [];
 
-    % ==========================================================
-    % Vérification des entrées
-    % ==========================================================
-
-    if isempty(aligned_blue_path) || ~isfile(aligned_blue_path)
+    if isempty(aligned_electroporated_path) || ...
+            ~isfile(aligned_electroporated_path)
 
         warning( ...
-            'create_and_refine_masks_on_gcamp:MissingAlignedBlue', ...
-            'Aligned Blue image not found.');
+            'create_and_refine_masks_on_gcamp:MissingAlignedElectroporated', ...
+            'Aligned electroporated image not found.');
 
         return;
     end
 
     if isempty(output_folder)
 
-        output_folder = fileparts(aligned_blue_path);
+        output_folder = ...
+            fileparts( ...
+                aligned_electroporated_path);
     end
 
     if ~isfolder(output_folder)
+
         mkdir(output_folder);
     end
 
-    % ==========================================================
-    % Déterminer les chemins GCaMP attendus
-    % ==========================================================
+    % ==============================================================
+    % GCaMP reference path
+    % ==============================================================
 
-    [~, blue_name, ~] = fileparts(aligned_blue_path);
+    [~, electroporated_name, ~] = ...
+        fileparts( ...
+            aligned_electroporated_path);
 
-    blue_name = regexprep( ...
-        blue_name, ...
-        '^aligned_', ...
-        '');
+    electroporated_name = ...
+        regexprep( ...
+            electroporated_name, ...
+            '^aligned_', ...
+            '');
 
-    gcamp_reference_path = fullfile( ...
-        output_folder, ...
-        ['gcamp_reference_' blue_name '.tif']);
-
+    gcamp_reference_path = ...
+        fullfile( ...
+            output_folder, ...
+            [ ...
+                'gcamp_reference_' ...
+                electroporated_name ...
+                '.tif' ...
+            ]);
+    
+    fprintf( ...
+    ['Existing aligned-electroporated masks found.\n' ...
+     'Continuing with GCaMP reference:\n%s\n'], ...
+    gcamp_reference_path);
+    
     [gcamp_folder, gcamp_name, ~] = ...
-        fileparts(gcamp_reference_path);
+        fileparts( ...
+            gcamp_reference_path);
 
-    existing_gcamp_seg_path = fullfile( ...
-        gcamp_folder, ...
-        [gcamp_name '_seg.npy']);
+    existing_gcamp_seg_path = ...
+        fullfile( ...
+            gcamp_folder, ...
+            [gcamp_name '_seg.npy']);
 
-    % ==========================================================
-    % PRIORITÉ ABSOLUE :
-    % Si les masques GCaMP existent déjà, les récupérer directement
-    % sans créer l'image et sans ouvrir Cellpose
-    % ==========================================================
+    % ==============================================================
+    % Déjà corrigé
+    % ==============================================================
 
     if isfile(existing_gcamp_seg_path)
 
-        final_npy_path = validate_existing_file( ...
-            existing_gcamp_seg_path);
+        final_npy_path = ...
+            validate_existing_file( ...
+                existing_gcamp_seg_path);
 
-        fprintf('\n');
-        fprintf('------------------------------------------------------------\n');
-        fprintf('Existing corrected GCaMP masks found\n');
-        fprintf('Action: Cellpose not opened.\n');
-        fprintf('NPY   : %s\n', final_npy_path);
-        fprintf('------------------------------------------------------------\n');
+        fprintf( ...
+            'Existing corrected GCaMP masks found:\n%s\n', ...
+            final_npy_path);
 
         return;
     end
 
-    % ==========================================================
-    % Aucun masque GCaMP existant :
-    % vérifier les données nécessaires à leur création
-    % ==========================================================
+    % ==============================================================
+    % Vérifier source masks
+    % ==============================================================
 
-    if isempty(blue_seg_path) || ~isfile(blue_seg_path)
+    if isempty(electroporated_seg_path) || ...
+            ~isfile(electroporated_seg_path)
 
         warning( ...
-            'create_and_refine_masks_on_gcamp:MissingBlueMasks', ...
-            'Aligned-Blue Cellpose masks not found.');
+            'create_and_refine_masks_on_gcamp:MissingElectroporatedMasks', ...
+            'Aligned-electroporated Cellpose masks not found.');
 
         return;
     end
@@ -1727,22 +2231,18 @@ function final_npy_path = create_and_refine_masks_on_gcamp( ...
         return;
     end
 
-    % ==========================================================
-    % Créer l'image GCaMP uniquement si elle n'existe pas
-    % ==========================================================
+    % ==============================================================
+    % Créer référence GCaMP
+    % ==============================================================
 
-    if isfile(gcamp_reference_path)
-
-        fprintf('\n');
-        fprintf('Existing GCaMP reference image found:\n');
-        fprintf('%s\n', gcamp_reference_path);
-
-    else
+    if ~isfile(gcamp_reference_path)
 
         gcamp_reference_image = ...
-            prepare_image_for_cellpose_display(gcamp_image);
+            prepare_image_for_cellpose_display( ...
+                gcamp_image);
 
         try
+
             imwrite( ...
                 gcamp_reference_image, ...
                 gcamp_reference_path, ...
@@ -1752,107 +2252,94 @@ function final_npy_path = create_and_refine_masks_on_gcamp( ...
 
             warning( ...
                 'create_and_refine_masks_on_gcamp:SaveReferenceFailed', ...
-                'Unable to save GCaMP reference TIFF: %s', ...
+                '%s', ...
                 ME.message);
 
             return;
         end
-
-        fprintf('\nGCaMP reference image created:\n');
-        fprintf('%s\n', gcamp_reference_path);
     end
 
-    % ==========================================================
-    % Revérifier le fichier NPY après création/récupération du TIFF
-    % ==========================================================
+    % ==============================================================
+    % Copier masques electroporated vers GCaMP
+    % ==============================================================
 
-    if isfile(existing_gcamp_seg_path)
-
-        final_npy_path = validate_existing_file( ...
+    success = ...
+        create_gcamp_seg_from_electroporated_seg( ...
+            electroporated_seg_path, ...
+            gcamp_reference_path, ...
             existing_gcamp_seg_path);
 
-        fprintf('\n');
-        fprintf('Existing GCaMP masks recovered.\n');
-        fprintf('Cellpose will not be opened.\n');
-        fprintf('%s\n', final_npy_path);
-
-        return;
-    end
-
-    % ==========================================================
-    % Créer le premier fichier GCaMP _seg.npy depuis les masques Blue
-    % ==========================================================
-
-    success = create_gcamp_seg_from_blue_seg( ...
-        blue_seg_path, ...
-        gcamp_reference_path, ...
-        existing_gcamp_seg_path);
-
-    if ~success || ~isfile(existing_gcamp_seg_path)
+    if ~success || ...
+            ~isfile(existing_gcamp_seg_path)
 
         warning( ...
             'create_and_refine_masks_on_gcamp:InitialSegFailed', ...
-            'Unable to create the initial GCaMP *_seg.npy.');
+            'Unable to create initial GCaMP segmentation.');
 
         return;
     end
 
-    % ==========================================================
-    % À ce stade, le fichier vient d'être créé automatiquement.
-    % On ouvre Cellpose uniquement pour sa première correction.
-    % ==========================================================
+    % ==============================================================
+    % Correction GCaMP
+    % ==============================================================
 
     fprintf('\n');
-    fprintf('------------------------------------------------------------\n');
     fprintf('GCaMP mask correction\n');
     fprintf('Save with Ctrl+S, then close Cellpose.\n');
-    fprintf('------------------------------------------------------------\n');
 
-    final_npy_path = launch_cellpose_from_matlab( ...
-        gcamp_reference_path, ...
-        false, ...
-        'Correct masks on GCaMP');
+    final_npy_path = ...
+        launch_cellpose_from_matlab( ...
+            gcamp_reference_path, ...
+            false, ...
+            'Correct masks on GCaMP');
 
-    final_npy_path = validate_existing_file( ...
-        final_npy_path);
-
-    if isempty(final_npy_path)
-
-        warning( ...
-            'create_and_refine_masks_on_gcamp:NoCorrectedSeg', ...
-            ['No corrected GCaMP segmentation was found. ' ...
-             'Save with Ctrl+S before closing Cellpose.']);
-
-        return;
-    end
-
-    fprintf('\nFinal corrected masks:\n');
-    fprintf('%s\n', final_npy_path);
+    final_npy_path = ...
+        validate_existing_file( ...
+            final_npy_path);
 end
 
 
-function success = create_gcamp_seg_from_blue_seg( ...
-        source_seg_path, gcamp_image_path, destination_seg_path)
+% ========================================================================
+% COPY ELECTROPORATED MASKS TO GCAMP
+% ========================================================================
+
+function success = ...
+        create_gcamp_seg_from_electroporated_seg( ...
+            source_seg_path, ...
+            gcamp_image_path, ...
+            destination_seg_path)
 
     success = false;
 
-    if ~isfile(source_seg_path) || ~isfile(gcamp_image_path)
-        warning('Source segmentation or GCaMP TIFF is missing.');
+    if ~isfile(source_seg_path) || ...
+            ~isfile(gcamp_image_path)
+
         return;
     end
 
     pyExec = ...
         'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\python.exe';
 
-    script_path = [tempname '.py'];
-    fid = fopen(script_path, 'w');
+    script_path = ...
+        [tempname '.py'];
+
+    fid = ...
+        fopen( ...
+            script_path, ...
+            'w');
 
     if fid == -1
-        warning('Unable to create temporary Python script.');
+
+        warning( ...
+            'Unable to create temporary Python script.');
+
         return;
     end
 
-    cleanupObj = onCleanup(@() delete_temp_script(script_path)); %#ok<NASGU>
+    cleanupObj = ...
+        onCleanup( ...
+            @() delete_temp_script( ...
+                script_path)); %#ok<NASGU>
 
     lines = {
         'import sys'
@@ -1868,43 +2355,57 @@ function success = create_gcamp_seg_from_blue_seg( ...
         'masks = np.asarray(data["masks"])'
         ''
         'if masks.shape[-2:] != gcamp_img.shape[-2:]:'
-        '    raise ValueError(f"Mask and GCaMP dimensions differ: {masks.shape} vs {gcamp_img.shape}")'
+        '    raise ValueError("Mask and GCaMP dimensions differ")'
         ''
         'data["img"] = gcamp_img'
         'data["filename"] = gcamp_path'
         'np.save(destination_seg, data, allow_pickle=True)'
-        'print(destination_seg)'
     };
 
     for k = 1:numel(lines)
-        fprintf(fid, '%s\n', lines{k});
+
+        fprintf( ...
+            fid, ...
+            '%s\n', ...
+            lines{k});
     end
+
     fclose(fid);
 
-    command = sprintf('"%s" "%s" "%s" "%s" "%s"', ...
-        pyExec, script_path, source_seg_path, ...
-        gcamp_image_path, destination_seg_path);
+    command = ...
+        sprintf( ...
+            '"%s" "%s" "%s" "%s" "%s"', ...
+            pyExec, ...
+            script_path, ...
+            source_seg_path, ...
+            gcamp_image_path, ...
+            destination_seg_path);
 
-    [status, command_output] = system(command);
+    [status, command_output] = ...
+        system(command);
 
     if status ~= 0
-        warning('Error creating GCaMP *_seg.npy:\n%s', command_output);
+
+        warning( ...
+            'Error creating GCaMP segmentation:\n%s', ...
+            command_output);
+
         return;
     end
 
-    success = isfile(destination_seg_path);
-
-    if success
-        fprintf('GCaMP masks file created:\n%s\n', ...
-            destination_seg_path);
-    else
-        warning('Expected GCaMP *_seg.npy was not created.');
-    end
+    success = ...
+        isfile(destination_seg_path);
 end
 
 
+% ========================================================================
+% TEMP SCRIPT
+% ========================================================================
+
 function delete_temp_script(script_path)
+
     if isfile(script_path)
+
         try
             delete(script_path);
         catch
@@ -1913,50 +2414,97 @@ function delete_temp_script(script_path)
 end
 
 
-function image_out = prepare_image_for_cellpose_display(image_in)
+% ========================================================================
+% PREPARE GCAMP IMAGE
+% ========================================================================
 
-    image_in = double(image_in);
+function image_out = ...
+        prepare_image_for_cellpose_display( ...
+            image_in)
+
+    image_in = ...
+        double(image_in);
+
     image_in(~isfinite(image_in)) = 0;
 
-    values = image_in(isfinite(image_in));
+    values = ...
+        image_in(isfinite(image_in));
+
     if isempty(values)
-        image_out = uint16(zeros(size(image_in)));
+
+        image_out = ...
+            uint16( ...
+                zeros(size(image_in)));
+
         return;
     end
 
-    low_value  = prctile(values, 1);
-    high_value = prctile(values, 99.8);
+    low_value = ...
+        prctile(values, 1);
+
+    high_value = ...
+        prctile(values, 99.8);
 
     if high_value <= low_value
-        normalized = mat2gray(image_in);
+
+        normalized = ...
+            mat2gray(image_in);
+
     else
-        normalized = (image_in - low_value) ./ ...
+
+        normalized = ...
+            (image_in - low_value) ./ ...
             (high_value - low_value);
-        normalized = max(0, min(1, normalized));
+
+        normalized = ...
+            max( ...
+                0, ...
+                min(1, normalized));
     end
 
-    normalized = normalized .^ 0.7;
-    image_out = uint16(normalized .* 65535);
+    normalized = ...
+        normalized .^ 0.7;
+
+    image_out = ...
+        uint16( ...
+            normalized .* 65535);
 end
 
 
-function plane_index = infer_plane_index_from_paths(varargin)
+% ========================================================================
+% PLANE INDEX
+% ========================================================================
+
+function plane_index = ...
+        infer_plane_index_from_paths(varargin)
 
     plane_index = 0;
 
     for i = 1:nargin
-        path_in = varargin{i};
+
+        path_in = ...
+            varargin{i};
 
         if isempty(path_in) || ...
-                ~(ischar(path_in) || isstring(path_in))
+                ~(ischar(path_in) || ...
+                  isstring(path_in))
+
             continue;
         end
 
-        token = regexp(char(path_in), ...
-            'plane(\d+)', 'tokens', 'once');
+        token = ...
+            regexp( ...
+                char(path_in), ...
+                'plane(\d+)', ...
+                'tokens', ...
+                'once');
 
         if ~isempty(token)
-            plane_index = str2double(token{1});
+
+            plane_index = ...
+                str2double( ...
+                    token{1});
+
             if isfinite(plane_index)
                 return;
             end
@@ -1965,22 +2513,38 @@ function plane_index = infer_plane_index_from_paths(varargin)
 end
 
 
-function npy_file_path = launch_cellpose_from_matlab( ...
-        image_path, ask_confirmation, dialog_title)
+% ========================================================================
+% CELLPOSE
+% ========================================================================
+
+function npy_file_path = ...
+        launch_cellpose_from_matlab( ...
+            image_path, ...
+            ask_confirmation, ...
+            dialog_title)
 
     npy_file_path = [];
 
-    if nargin < 2 || isempty(ask_confirmation)
+    if nargin < 2 || ...
+            isempty(ask_confirmation)
+
         ask_confirmation = true;
     end
 
-    if nargin < 3 || isempty(dialog_title)
-        dialog_title = 'Launch Cellpose';
+    if nargin < 3 || ...
+            isempty(dialog_title)
+
+        dialog_title = ...
+            'Launch Cellpose';
     end
 
-    if isempty(image_path) || ~isfile(image_path)
-        warning('Cellpose image not found: %s', ...
+    if isempty(image_path) || ...
+            ~isfile(image_path)
+
+        warning( ...
+            'Cellpose image not found: %s', ...
             char(string(image_path)));
+
         return;
     end
 
@@ -1991,113 +2555,106 @@ function npy_file_path = launch_cellpose_from_matlab( ...
         'C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts\cellpose.exe';
 
     if ~isfile(cellposePath)
-        warning('cellpose.exe not found: %s', cellposePath);
+
+        warning( ...
+            'cellpose.exe not found: %s', ...
+            cellposePath);
+
         return;
     end
 
-    % ---------------------------------------------------------
-    % Configuration Python
-    % ---------------------------------------------------------
     try
+
         currentPyEnv = pyenv;
 
-        if ~strcmp(currentPyEnv.Version, pyExec)
-            pyenv('Version', pyExec);
+        if ~strcmp( ...
+                currentPyEnv.Version, ...
+                pyExec)
+
+            pyenv( ...
+                'Version', ...
+                pyExec);
         end
+
     catch ME
-        warning('Impossible de configurer pyenv: %s', ME.message);
+
+        warning( ...
+            'Unable to configure pyenv: %s', ...
+            ME.message);
     end
 
-    try
-        py.print("Python is working with Cellpose!");
-    catch
-        warning('Python n''est pas correctement configuré dans MATLAB.');
-    end
+    [folderPath, fileName, ~] = ...
+        fileparts( ...
+            image_path);
 
-    setenv('PATH', [getenv('PATH') ...
-        ';C:\Users\goldstein\AppData\Local\anaconda3\envs\cellpose\Scripts']);
+    candidate_npy = ...
+        fullfile( ...
+            folderPath, ...
+            [fileName '_seg.npy']);
 
-    % ---------------------------------------------------------
-    % Fichier _seg.npy attendu
-    % ---------------------------------------------------------
-    [folderPath, fileName, ~] = fileparts(image_path);
+    file_existed_before = ...
+        isfile(candidate_npy);
 
-    candidate_npy = fullfile( ...
-        folderPath, ...
-        [fileName '_seg.npy']);
-
-    % État du fichier avant ouverture de Cellpose
-    file_existed_before = isfile(candidate_npy);
     previous_datenum = [];
     previous_bytes = [];
 
     if file_existed_before
-        info_before = dir(candidate_npy);
 
-        previous_datenum = info_before.datenum;
-        previous_bytes   = info_before.bytes;
+        info_before = ...
+            dir(candidate_npy);
+
+        previous_datenum = ...
+            info_before.datenum;
+
+        previous_bytes = ...
+            info_before.bytes;
     end
 
-    % ---------------------------------------------------------
-    % Confirmation utilisateur
-    % ---------------------------------------------------------
     if ask_confirmation
 
-        answer = questdlg( ...
-            sprintf([ ...
-                'Do you want to launch Cellpose?\n\n' ...
-                'Open this image manually in Cellpose:\n%s\n\n' ...
-                'Draw or correct the masks.\n' ...
-                'Save with Ctrl+S, then close Cellpose.'], ...
-                image_path), ...
-            dialog_title, ...
-            'Yes', ...
-            'No', ...
-            'Yes');
+        answer = ...
+            questdlg( ...
+                sprintf( ...
+                    ['Do you want to launch Cellpose?\n\n' ...
+                     '%s\n\n' ...
+                     'Save with Ctrl+S, then close Cellpose.'], ...
+                    image_path), ...
+                dialog_title, ...
+                'Yes', ...
+                'No', ...
+                'Yes');
 
         if ~strcmp(answer, 'Yes')
-            fprintf('Cellpose non lancé.\n');
             return;
         end
     end
 
-    % ---------------------------------------------------------
-    % Ouverture du GUI Cellpose
-    % ---------------------------------------------------------
-    fprintf('\n============================================\n');
-    fprintf('CELLPOSE GUI\n');
-    fprintf('Open this image manually in Cellpose:\n%s\n', ...
-        image_path);
-    fprintf('Save with Ctrl+S, then close Cellpose.\n');
-    fprintf('============================================\n');
-
-    [status, command_output] = system(['"' cellposePath '"']);
+    [status, command_output] = ...
+        system( ...
+            ['"' cellposePath '"']);
 
     if status ~= 0
-        warning('Cellpose closed with status %d:\n%s', ...
-            status, command_output);
+
+        warning( ...
+            'Cellpose closed with status %d:\n%s', ...
+            status, ...
+            command_output);
+
         return;
     end
 
-    % ---------------------------------------------------------
-    % Vérification après fermeture de Cellpose
-    % ---------------------------------------------------------
     if ~isfile(candidate_npy)
 
-        warning([ ...
-            'Aucun fichier NPY trouvé après Cellpose.\n' ...
-            'Image à ouvrir :\n%s\n\n' ...
-            'Fichier attendu :\n%s'], ...
-            image_path, candidate_npy);
+        warning( ...
+            'No Cellpose segmentation saved for:\n%s', ...
+            image_path);
 
         return;
     end
 
-    info_after = dir(candidate_npy);
+    info_after = ...
+        dir(candidate_npy);
 
-    % ---------------------------------------------------------
-    % Si le fichier existait déjà, vérifier qu'il a été modifié
-    % ---------------------------------------------------------
     if file_existed_before
 
         file_was_modified = ...
@@ -2106,24 +2663,14 @@ function npy_file_path = launch_cellpose_from_matlab( ...
 
         if ~file_was_modified
 
-            warning([ ...
-                'Le fichier _seg.npy existait déjà avant Cellpose, ' ...
-                'mais il n''a pas été modifié.\n\n' ...
-                'Corrigez les masques, utilisez Ctrl+S, ' ...
-                'puis fermez Cellpose.\n\n' ...
-                'Fichier :\n%s'], ...
-                candidate_npy);
+            warning( ...
+                ['Existing segmentation was not modified. ' ...
+                 'Use Ctrl+S before closing Cellpose.']);
 
-            npy_file_path = [];
             return;
         end
     end
 
-    % ---------------------------------------------------------
-    % Résultat final
-    % ---------------------------------------------------------
-    npy_file_path = candidate_npy;
-
-    fprintf('Fichier NPY corrigé et sauvegardé :\n%s\n', ...
-        npy_file_path);
+    npy_file_path = ...
+        candidate_npy;
 end
