@@ -6,8 +6,8 @@ function [cross_corr_gcamp_gcamp, cross_corr_gcamp_mtor, cross_corr_mtor_mtor] =
 % Inputs
 %   DF_gcamp           : [nG x T] traces GCaMP
 %   gcamp_output_folder: dossier session (optionnel, juste pour logs)
-%   DF_all             : [nAll x T] traces combinées (GCaMP + mTOR/blue)
-%   mtor_indices       : indices des cellules mTOR/blue dans DF_all
+%   DF_all             : [nAll x T] traces combinées (GCaMP + mTOR/electroporated)
+%   mtor_indices       : indices des cellules mTOR/electroporated dans DF_all
 %
 % Outputs
 %   cross_corr_gcamp_gcamp : [nG x nG]

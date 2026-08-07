@@ -79,7 +79,11 @@ function selected_groups = process_selected_groups( ...
             %% -----------------------------------------------------
             % Mean images
             % ------------------------------------------------------
-
+            
+            % ======================================================
+            % GCaMP : toujours colonne 1
+            % ======================================================
+            
             meanImgs_gcamp = save_mean_images( ...
                 'GCaMP', ...
                 current_animal, ...
@@ -87,32 +91,66 @@ function selected_groups = process_selected_groups( ...
                 current_dates, ...
                 gcamp_output_folders, ...
                 current_suite2p_group(:, 1));
-
-            meanImgs_red = save_mean_images( ...
-                'Red', ...
-                current_animal, ...
-                current_ages, ...
-                current_dates, ...
-                gcamp_output_folders, ...
-                current_suite2p_group(:, 1));
-
-            meanImgs_blue = save_mean_images( ...
-                'Blue', ...
-                current_animal, ...
-                current_ages, ...
-                current_dates, ...
-                gcamp_output_folders, ...
-                current_suite2p_group(:, 3));       
-
-            data.meanImgs_gcamp = ...
-                meanImgs_gcamp;
-
-            data.meanImgs_red = ...
-                meanImgs_red;
-
-            data.meanImgs_blue = ...
-                meanImgs_blue;
-
+            
+            data.gcamp_plane.meanImgs_gcamp = ...
+                meanImgs_gcamp;            
+            
+            % ======================================================
+            % Electroporated : choisir automatiquement colonne 2 ou 3
+            % ======================================================
+            
+            electroporated_column = [];
+            
+            for c = [2 3]
+            
+                if c > size(current_suite2p_group, 2)
+                    continue;
+                end
+            
+                current_column = ...
+                    current_suite2p_group(:, c);
+            
+                has_electroporated_data = ...
+                    any(cellfun( ...
+                        @(x) ~isempty(x) && ...
+                              (~ischar(x) || ~isempty(strtrim(x))), ...
+                        current_column));
+            
+                if has_electroporated_data
+            
+                    electroporated_column = c;
+                    break;
+                end
+            end
+            
+            % ======================================================
+            % Mean image electroporated
+            % ======================================================
+            
+            if ~isempty(electroporated_column)
+            
+                if electroporated_column == 2
+                    channel_name = 'Red';
+                else
+                    channel_name = 'Blue';
+                end
+            
+                meanImgs_electroporated = save_mean_images( ...
+                    channel_name, ...
+                    current_animal, ...
+                    current_ages, ...
+                    current_dates, ...
+                    gcamp_output_folders, ...
+                    current_suite2p_group(:, electroporated_column));
+            
+            else
+            
+                meanImgs_electroporated = {};
+            
+            end
+            
+            data.electroporated_plane.meanImgs_electroporated = ...
+                meanImgs_electroporated;
             %% -----------------------------------------------------
             % Motion energy
             % ------------------------------------------------------
@@ -200,7 +238,7 @@ function selected_groups = process_selected_groups( ...
                 selected_groups.(current_type)(k).data;
         
             meanImgs_gcamp = ...
-                data.meanImgs_gcamp;
+                data.gcamp_plane.meanImgs_gcamp;
         
             [processing_cache{k}, data] = ...
                 process_electroporated_pass1( ...
@@ -211,16 +249,10 @@ function selected_groups = process_selected_groups( ...
                     paths.suite2p, ...
                     data);
                     
-            % alignedImgs_blue = extract_aligned_blue_images( ...
-            %     processing_cache{k});
-            %
-            % data.alignedImgs_blue = ...
-            %     alignedImgs_blue;
-            % 
             selected_groups.(current_type)(k).data = ...
                 data;
         end
-
+        
         %% =========================================================
         % Blue ROI extraction for all animals
         % ==========================================================
@@ -275,85 +307,6 @@ function selected_groups = process_selected_groups( ...
 
             selected_groups.(current_type)(k).data = ...
                 data;
-        end
-    end
-end
-
-function alignedImgs_blue = extract_aligned_blue_images( ...
-    processing_cache)
-
-%EXTRACT_ALIGNED_BLUE_IMAGES
-%
-% Extrait les images bleues alignées depuis processing_cache.
-%
-% Structure de sortie :
-%
-%   alignedImgs_blue{m}{p}
-%
-% où :
-%   m = acquisition
-%   p = plan
-%
-% L'image est récupérée depuis :
-%
-%   processing_cache{m}.planes{p}.aligned_image
-
-    num_acquisitions = numel(processing_cache);
-
-    alignedImgs_blue = cell( ...
-        num_acquisitions, ...
-        1);
-
-    for m = 1:num_acquisitions
-
-        alignedImgs_blue{m} = {};
-
-        if isempty(processing_cache{m}) || ...
-                ~isstruct(processing_cache{m})
-
-            continue;
-        end
-
-        cache_m = processing_cache{m};
-
-        if ~isfield(cache_m, 'planes') || ...
-                isempty(cache_m.planes)
-
-            continue;
-        end
-
-        num_planes = numel(cache_m.planes);
-
-        alignedImgs_blue{m} = cell( ...
-            num_planes, ...
-            1);
-
-        for p = 1:num_planes
-
-            alignedImgs_blue{m}{p} = [];
-
-            if isempty(cache_m.planes{p}) || ...
-                    ~isstruct(cache_m.planes{p})
-
-                continue;
-            end
-
-            if ~isfield( ...
-                    cache_m.planes{p}, ...
-                    'aligned_image')
-
-                continue;
-            end
-
-            aligned_image = ...
-                cache_m.planes{p}.aligned_image;
-
-            if isempty(aligned_image)
-                continue;
-            end
-
-            alignedImgs_blue{m}{p} = ...
-                aligned_image;
         end
     end
 end

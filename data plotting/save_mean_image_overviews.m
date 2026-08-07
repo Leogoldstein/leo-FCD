@@ -3,75 +3,139 @@ function save_mean_image_overviews( ...
     current_animal, ...
     current_dates, ...
     current_ages, ...
+    current_automatic_selection, ...
+    current_suite2p_group, ...
     gcamp_root_folders, ...
     current_output_folder, ...
     meanImgs_gcamp, ...
-    meanImgs_blue)
+    alignedImgs_electroporated)
 
 %SAVE_MEAN_IMAGE_OVERVIEWS
 %
-% Crée une seule figure par recording.
+% Crée une figure par recording.
 %
 % Chaque ligne correspond à un plan.
 %
-% Si un canal bleu existe pour au moins un plan :
+% Le canal electroporated est déterminé automatiquement à partir de
+% current_suite2p_group :
+%
+%   colonne 2 présente -> Electroporated affiché en rouge
+%   sinon colonne 3     -> Electroporated affiché en bleu
+%
+% Si un canal electroporated existe :
 %
 %   Colonne 1 : GCaMP en vert
-%   Colonne 2 : cellules électroporées en bleu
-%   Colonne 3 : overlay
+%   Colonne 2 : Electroporated en rouge ou bleu
+%   Colonne 3 : Overlay
 %
-% Si aucun canal bleu n'existe :
+% Sinon :
 %
-%   Une seule colonne GCaMP est créée.
+%   Une seule colonne GCaMP.
 %
-% Chaque figure peut être sauvegardée indépendamment :
+% Sauvegarde :
 %
-%   1) dans gcamp_root_folders{m}
-%   2) dans current_output_folder avec un nom contenant :
-%          line_animal_date_age_mean_images_overview.png
+%   - toujours dans gcamp_root_folders{m}
+%   - dans current_output_folder uniquement si
+%     current_automatic_selection ~= 0
 %
-% Chaque destination est vérifiée indépendamment.
-%
-% - Si les deux fichiers existent, aucune figure n'est créée.
-% - Si un seul fichier existe, la figure est créée uniquement pour
-%   sauvegarder la destination manquante.
-% - Aucun fichier existant n'est écrasé.
+% Aucun fichier existant n'est écrasé.
 
-    if nargin < 7
+
+    if nargin < 10
 
         error( ...
             'save_mean_image_overviews:MissingInputs', ...
-            'Seven input arguments are required.');
-
+            'Ten input arguments are required.');
     end
 
-    if isempty(meanImgs_gcamp) && isempty(meanImgs_blue)
+
+    if isempty(meanImgs_gcamp) && ...
+            isempty(alignedImgs_electroporated)
 
         fprintf('\n');
         fprintf('No mean image available for overview figures.\n');
 
         return;
-
     end
 
-    line_name = normalize_text_mean_overview( ...
-        current_line);
 
-    animal_name = normalize_text_mean_overview( ...
-        current_animal);
+    % =============================================================
+    % Identité
+    % =============================================================
 
-    current_output_folder = normalize_text_mean_overview( ...
-        current_output_folder);
+    line_name = ...
+        normalize_text_mean_overview( ...
+            current_line);
 
-    line_clean = sanitize_filename_mean_overview( ...
-        line_name);
+    animal_name = ...
+        normalize_text_mean_overview( ...
+            current_animal);
 
-    animal_clean = sanitize_filename_mean_overview( ...
-        animal_name);
+    current_output_folder = ...
+        normalize_text_mean_overview( ...
+            current_output_folder);
 
-    num_recordings = max( ...
-        numel(meanImgs_gcamp), ...
-        numel(meanImgs_blue));
+    line_clean = ...
+        sanitize_filename_mean_overview( ...
+            line_name);
+
+    animal_clean = ...
+        sanitize_filename_mean_overview( ...
+            animal_name);
+
+
+    % =============================================================
+    % Couleur du canal electroporated
+    %
+    % Colonne 2 -> Red
+    % Colonne 3 -> Blue
+    % =============================================================
+
+    electroporated_color_channel = [];
+    electroporated_color_name = '';
+
+    for c = [2 3]
+
+        if c > size(current_suite2p_group, 2)
+            continue;
+        end
+
+        current_column = ...
+            current_suite2p_group(:, c);
+
+        has_electroporated_data = ...
+            any( ...
+                cellfun( ...
+                    @(x) ...
+                        ~isempty(x) && ...
+                        (~ischar(x) || ...
+                         ~isempty(strtrim(x))), ...
+                    current_column));
+
+        if ~has_electroporated_data
+            continue;
+        end
+
+        if c == 2
+
+            electroporated_color_channel = 1;
+            electroporated_color_name = 'Red';
+
+        else
+
+            electroporated_color_channel = 3;
+            electroporated_color_name = 'Blue';
+        end
+
+        break;
+    end
+
+
+    num_recordings = ...
+        max( ...
+            numel(meanImgs_gcamp), ...
+            numel(alignedImgs_electroporated));
+
 
     fprintf('\n');
     fprintf('============================================================\n');
@@ -79,47 +143,74 @@ function save_mean_image_overviews( ...
     fprintf('Line      : %s\n', line_name);
     fprintf('Animal    : %s\n', animal_name);
     fprintf('Recordings: %d\n', num_recordings);
+
+    if isempty(electroporated_color_name)
+
+        fprintf('Electroporated channel: unavailable\n');
+
+    else
+
+        fprintf( ...
+            'Electroporated channel: %s\n', ...
+            electroporated_color_name);
+    end
+
     fprintf('============================================================\n');
+
+
+    % =============================================================
+    % Recordings
+    % =============================================================
 
     for m = 1:num_recordings
 
-        % =============================================================
+        % =========================================================
         % Age
-        % =============================================================
+        % =========================================================
 
-        age_name = get_age_name_mean_overview( ...
-            current_ages, ...
-            m);
+        age_name = ...
+            get_age_name_mean_overview( ...
+                current_ages, ...
+                m);
 
-        age_clean = sanitize_filename_mean_overview( ...
-            age_name);
+        age_clean = ...
+            sanitize_filename_mean_overview( ...
+                age_name);
 
-        % =============================================================
+
+        % =========================================================
         % Date
-        % =============================================================
+        % =========================================================
 
-        date_name = get_date_name_mean_overview( ...
-            current_dates, ...
-            m);
+        date_name = ...
+            get_date_name_mean_overview( ...
+                current_dates, ...
+                m);
 
-        date_clean = sanitize_filename_mean_overview( ...
-            date_name);
+        date_clean = ...
+            sanitize_filename_mean_overview( ...
+                date_name);
 
-        % =============================================================
-        % Images du recording courant
-        % =============================================================
 
-        gcamp_images_m = get_recording_images_mean_overview( ...
-            meanImgs_gcamp, ...
-            m);
+        % =========================================================
+        % Images du recording
+        % =========================================================
 
-        blue_images_m = get_recording_images_mean_overview( ...
-            meanImgs_blue, ...
-            m);
+        gcamp_images_m = ...
+            get_recording_images_mean_overview( ...
+                meanImgs_gcamp, ...
+                m);
 
-        num_planes = max( ...
-            numel(gcamp_images_m), ...
-            numel(blue_images_m));
+        electroporated_images_m = ...
+            get_recording_images_mean_overview( ...
+                alignedImgs_electroporated, ...
+                m);
+
+        num_planes = ...
+            max( ...
+                numel(gcamp_images_m), ...
+                numel(electroporated_images_m));
+
 
         fprintf('\n');
         fprintf('------------------------------------------------------------\n');
@@ -129,24 +220,29 @@ function save_mean_image_overviews( ...
         fprintf('Planes    : %d\n', num_planes);
         fprintf('------------------------------------------------------------\n');
 
+
         if num_planes == 0
 
             fprintf('Status: no mean image available.\n');
 
             continue;
-
         end
 
-        % =====================================================
-        % Dossier local du recording
-        % =====================================================
 
-        output_root_folder = get_root_folder_mean_overview( ...
-            gcamp_root_folders, ...
-            m);
+        % =========================================================
+        % Dossier local du recording
+        %
+        % Toujours utilisé, indépendamment de automatic_selection.
+        % =========================================================
+
+        output_root_folder = ...
+            get_root_folder_mean_overview( ...
+                gcamp_root_folders, ...
+                m);
 
         local_png_path = '';
         local_destination_available = false;
+
 
         if isempty(output_root_folder)
 
@@ -172,115 +268,133 @@ function save_mean_image_overviews( ...
                          'recording %d: %s'], ...
                         m, ...
                         ME.message);
-
                 end
             end
+
 
             if isfolder(output_root_folder)
 
-                local_png_path = fullfile( ...
-                    output_root_folder, ...
-                    sprintf( ...
-                        'Mean_images_%s_%s_%s.png', ...
-                        animal_clean, ...
-                        date_clean, ...
-                        age_clean));
+                local_png_path = ...
+                    fullfile( ...
+                        output_root_folder, ...
+                        sprintf( ...
+                            'Mean_images_%s_%s_%s.png', ...
+                            animal_clean, ...
+                            date_clean, ...
+                            age_clean));
 
                 local_destination_available = true;
-
             end
         end
 
-        % =====================================================
-        % Construction du nom pour current_output_folder
-        % =====================================================
-        
-        % Les plans sont indexés à partir de 0 dans les noms
-        plane_numbers = 0:(num_planes - 1);
-        
-        if isempty(plane_numbers)
-        
-            plane_clean = '';
-        
-        elseif numel(plane_numbers) == 1
-        
-            plane_clean = sprintf( ...
-                'plane%d', ...
-                plane_numbers);
-        
-        else
-        
-            plane_clean = [ ...
-                'planes', ...
-                strjoin( ...
-                    arrayfun( ...
-                        @num2str, ...
-                        plane_numbers, ...
-                        'UniformOutput', false), ...
-                    '-')];
-        
-        end
-        
-        name_parts = { ...
-            line_clean, ...
-            animal_clean, ...
-            date_clean, ...
-            age_clean, ...
-            plane_clean};
-        
-        % Supprime les éléments vides, notamment line si elle est vide
-        name_parts = name_parts( ...
-            ~cellfun(@isempty, name_parts));
-        
-        if isempty(name_parts)
-        
-            summary_base_name = ...
-                'mean_images_overview';
-        
-        else
-        
-            summary_base_name = [ ...
-                strjoin(name_parts, '_'), ...
-                '_mean_images_overview'];
-        
-        end
-        
+
+        % =========================================================
+        % Destination summary
+        %
+        % Uniquement pour automatic selection.
+        % =========================================================
+
         summary_png_path = '';
         summary_destination_available = false;
-        
-        if ~isempty(current_output_folder)
-        
-            if ~isfolder(current_output_folder)
-        
-                try
-        
-                    mkdir(current_output_folder);
-        
-                catch ME
-        
-                    warning( ...
-                        'save_mean_image_overviews:SummaryFolderFailed', ...
-                        ['Unable to create current_output_folder: ' ...
-                         '%s'], ...
-                        ME.message);
-        
-                end
+
+
+        if current_automatic_selection
+
+            % -----------------------------------------------------
+            % Plans indexés à partir de 0 dans le nom
+            % -----------------------------------------------------
+
+            plane_numbers = ...
+                0:(num_planes - 1);
+
+            if isempty(plane_numbers)
+
+                plane_clean = '';
+
+            elseif numel(plane_numbers) == 1
+
+                plane_clean = ...
+                    sprintf( ...
+                        'plane%d', ...
+                        plane_numbers);
+
+            else
+
+                plane_clean = [ ...
+                    'planes', ...
+                    strjoin( ...
+                        arrayfun( ...
+                            @num2str, ...
+                            plane_numbers, ...
+                            'UniformOutput', false), ...
+                        '-')];
             end
-        
-            if isfolder(current_output_folder)
-        
-                summary_png_path = fullfile( ...
-                    current_output_folder, ...
-                    [summary_base_name '.png']);
-        
-                summary_destination_available = true;
-        
+
+
+            name_parts = { ...
+                line_clean, ...
+                animal_clean, ...
+                date_clean, ...
+                age_clean, ...
+                plane_clean};
+
+            name_parts = ...
+                name_parts( ...
+                    ~cellfun( ...
+                        @isempty, ...
+                        name_parts));
+
+
+            if isempty(name_parts)
+
+                summary_base_name = ...
+                    'mean_images_overview';
+
+            else
+
+                summary_base_name = [ ...
+                    strjoin( ...
+                        name_parts, ...
+                        '_'), ...
+                    '_mean_images_overview'];
+            end
+
+
+            if ~isempty(current_output_folder)
+
+                if ~isfolder(current_output_folder)
+
+                    try
+
+                        mkdir(current_output_folder);
+
+                    catch ME
+
+                        warning( ...
+                            'save_mean_image_overviews:SummaryFolderFailed', ...
+                            ['Unable to create current_output_folder: ' ...
+                             '%s'], ...
+                            ME.message);
+                    end
+                end
+
+
+                if isfolder(current_output_folder)
+
+                    summary_png_path = ...
+                        fullfile( ...
+                            current_output_folder, ...
+                            [summary_base_name '.png']);
+
+                    summary_destination_available = true;
+                end
             end
         end
 
-        % =====================================================
-        % Vérification indépendante des deux destinations
-        % =====================================================
+
+        % =========================================================
+        % Vérification indépendante des destinations
+        % =========================================================
 
         local_exists = ...
             local_destination_available && ...
@@ -290,6 +404,7 @@ function save_mean_image_overviews( ...
             summary_destination_available && ...
             isfile(summary_png_path);
 
+
         local_needs_save = ...
             local_destination_available && ...
             ~local_exists;
@@ -298,23 +413,23 @@ function save_mean_image_overviews( ...
             summary_destination_available && ...
             ~summary_exists;
 
+
         if local_exists
 
             fprintf( ...
                 'Local overview already exists:\n%s\n', ...
                 local_png_path);
-
         end
+
 
         if summary_exists
 
             fprintf( ...
                 'Summary overview already exists:\n%s\n', ...
                 summary_png_path);
-
         end
 
-        % Aucun dossier valide
+
         if ~local_destination_available && ...
                 ~summary_destination_available
 
@@ -325,10 +440,9 @@ function save_mean_image_overviews( ...
                 m);
 
             continue;
-
         end
 
-        % Les deux fichiers disponibles existent déjà
+
         if ~local_needs_save && ...
                 ~summary_needs_save
 
@@ -337,153 +451,208 @@ function save_mean_image_overviews( ...
                  'exist, figure skipped.\n']);
 
             continue;
-
         end
 
-        % =====================================================
-        % Charger les images des différents plans
-        % =====================================================
 
-        gcamp_planes = cell(num_planes, 1);
-        blue_planes = cell(num_planes, 1);
+        % =========================================================
+        % Charger les images par plan
+        % =========================================================
 
-        has_gcamp_by_plane = false(num_planes, 1);
-        has_blue_by_plane = false(num_planes, 1);
+        gcamp_planes = ...
+            cell(num_planes, 1);
+
+        electroporated_planes = ...
+            cell(num_planes, 1);
+
+
+        has_gcamp_by_plane = ...
+            false(num_planes, 1);
+
+        has_electroporated_by_plane = ...
+            false(num_planes, 1);
+
 
         for p = 1:num_planes
 
-            gcamp_planes{p} = get_plane_image_mean_overview( ...
-                gcamp_images_m, ...
-                p);
+            gcamp_planes{p} = ...
+                get_plane_image_mean_overview( ...
+                    gcamp_images_m, ...
+                    p);
 
-            blue_planes{p} = get_plane_image_mean_overview( ...
-                blue_images_m, ...
-                p);
+            electroporated_planes{p} = ...
+                get_plane_image_mean_overview( ...
+                    electroporated_images_m, ...
+                    p);
+
 
             has_gcamp_by_plane(p) = ...
-                ~isempty(gcamp_planes{p});
+                ~isempty( ...
+                    gcamp_planes{p});
 
-            has_blue_by_plane(p) = ...
-                ~isempty(blue_planes{p});
-
+            has_electroporated_by_plane(p) = ...
+                ~isempty( ...
+                    electroporated_planes{p});
         end
 
+
         valid_planes = ...
-            has_gcamp_by_plane | has_blue_by_plane;
+            has_gcamp_by_plane | ...
+            has_electroporated_by_plane;
+
 
         if ~any(valid_planes)
 
             fprintf('Status: all planes are empty.\n');
 
             continue;
-
         end
 
-        has_any_blue = any(has_blue_by_plane);
 
-        if has_any_blue
+        % Une image electroporated n'est affichée que si le canal
+        % correspondant a réellement été identifié.
+        has_any_electroporated = ...
+            any(has_electroporated_by_plane) && ...
+            ~isempty(electroporated_color_channel);
+
+
+        if has_any_electroporated
 
             num_columns = 3;
 
         else
 
             num_columns = 1;
-
         end
 
-        valid_plane_indices = find(valid_planes);
-        num_valid_planes = numel(valid_plane_indices);
 
-        % =====================================================
-        % Dimensions de la figure
-        % =====================================================
+        valid_plane_indices = ...
+            find(valid_planes);
+
+        num_valid_planes = ...
+            numel(valid_plane_indices);
+
+
+        % =========================================================
+        % Dimensions figure
+        % =========================================================
 
         tile_width = 480;
         tile_height = 420;
 
-        figure_width = max( ...
-            600, ...
-            num_columns * tile_width);
+        figure_width = ...
+            max( ...
+                600, ...
+                num_columns * tile_width);
 
-        figure_height = max( ...
-            500, ...
-            num_valid_planes * tile_height + 100);
+        figure_height = ...
+            max( ...
+                500, ...
+                num_valid_planes * tile_height + 100);
+
 
         fig = [];
 
+
         try
 
-            fig = figure( ...
-                'Visible', 'off', ...
-                'Color', 'w', ...
-                'Units', 'pixels', ...
-                'Position', [ ...
-                    100, ...
-                    100, ...
-                    figure_width, ...
-                    figure_height]);
+            fig = ...
+                figure( ...
+                    'Visible', 'off', ...
+                    'Color', 'w', ...
+                    'Units', 'pixels', ...
+                    'Position', [ ...
+                        100, ...
+                        100, ...
+                        figure_width, ...
+                        figure_height]);
 
-            layout = tiledlayout( ...
-                fig, ...
-                num_valid_planes, ...
-                num_columns, ...
-                'TileSpacing', 'compact', ...
-                'Padding', 'compact');
 
-            % =================================================
+            layout = ...
+                tiledlayout( ...
+                    fig, ...
+                    num_valid_planes, ...
+                    num_columns, ...
+                    'TileSpacing', 'compact', ...
+                    'Padding', 'compact');
+
+
+            % =====================================================
             % Une ligne par plan
-            % =================================================
+            % =====================================================
 
             for row_index = 1:num_valid_planes
 
-                p = valid_plane_indices(row_index);
+                p = ...
+                    valid_plane_indices(row_index);
 
-                mean_gcamp = gcamp_planes{p};
-                mean_blue = blue_planes{p};
+                mean_gcamp = ...
+                    gcamp_planes{p};
 
-                has_gcamp = has_gcamp_by_plane(p);
-                has_blue = has_blue_by_plane(p);
+                mean_electroporated = ...
+                    electroporated_planes{p};
 
-                if has_any_blue
+                has_gcamp = ...
+                    has_gcamp_by_plane(p);
+
+                has_electroporated = ...
+                    has_electroporated_by_plane(p);
+
+
+                % =================================================
+                % GCaMP + Electroporated + Overlay
+                % =================================================
+
+                if has_any_electroporated
 
                     green_rgb = [];
-                    blue_rgb = [];
+                    electroporated_rgb = [];
                     overlay_rgb = [];
+
 
                     if has_gcamp
 
-                        green_rgb = create_single_channel_rgb( ...
-                            mean_gcamp, ...
-                            2);
-
+                        green_rgb = ...
+                            create_single_channel_rgb( ...
+                                mean_gcamp, ...
+                                2);
                     end
 
-                    if has_blue
 
-                        blue_rgb = create_single_channel_rgb( ...
-                            mean_blue, ...
-                            3);
+                    if has_electroporated
 
+                        electroporated_rgb = ...
+                            create_single_channel_rgb( ...
+                                mean_electroporated, ...
+                                electroporated_color_channel);
                     end
 
-                    if has_gcamp && has_blue
 
-                        [mean_gcamp_overlay, mean_blue_overlay] = ...
+                    if has_gcamp && ...
+                            has_electroporated
+
+                        [ ...
+                            mean_gcamp_overlay, ...
+                            mean_electroporated_overlay ...
+                        ] = ...
                             match_mean_image_sizes( ...
                                 mean_gcamp, ...
-                                mean_blue);
+                                mean_electroporated);
 
-                        overlay_rgb = create_mean_image_overlay( ...
-                            mean_gcamp_overlay, ...
-                            mean_blue_overlay);
-
+                        overlay_rgb = ...
+                            create_mean_image_overlay( ...
+                                mean_gcamp_overlay, ...
+                                mean_electroporated_overlay, ...
+                                electroporated_color_channel);
                     end
 
-                    % -----------------------------------------
-                    % GCaMP
-                    % -----------------------------------------
 
-                    ax_gcamp = nexttile(layout);
+                    % ---------------------------------------------
+                    % GCaMP
+                    % ---------------------------------------------
+
+                    ax_gcamp = ...
+                        nexttile(layout);
+
 
                     if has_gcamp
 
@@ -496,11 +665,12 @@ function save_mean_image_overviews( ...
                         show_empty_mean_image_panel( ...
                             ax_gcamp, ...
                             'GCaMP unavailable');
-
                     end
+
 
                     axis(ax_gcamp, 'image');
                     axis(ax_gcamp, 'off');
+
 
                     title( ...
                         ax_gcamp, ...
@@ -511,45 +681,54 @@ function save_mean_image_overviews( ...
                         'FontSize', 13, ...
                         'FontWeight', 'bold');
 
-                    % -----------------------------------------
+
+                    % ---------------------------------------------
                     % Electroporated
-                    % -----------------------------------------
+                    % ---------------------------------------------
 
-                    ax_blue = nexttile(layout);
+                    ax_electroporated = ...
+                        nexttile(layout);
 
-                    if has_blue
+
+                    if has_electroporated
 
                         image( ...
-                            ax_blue, ...
-                            blue_rgb);
+                            ax_electroporated, ...
+                            electroporated_rgb);
 
                     else
 
                         show_empty_mean_image_panel( ...
-                            ax_blue, ...
+                            ax_electroporated, ...
                             'Electroporated unavailable');
-
                     end
 
-                    axis(ax_blue, 'image');
-                    axis(ax_blue, 'off');
+
+                    axis(ax_electroporated, 'image');
+                    axis(ax_electroporated, 'off');
+
 
                     title( ...
-                        ax_blue, ...
+                        ax_electroporated, ...
                         sprintf( ...
-                            'Plane %d - Electroporated', ...
-                            p - 1), ...
+                            'Plane %d - Electroporated (%s)', ...
+                            p - 1, ...
+                            electroporated_color_name), ...
                         'Interpreter', 'none', ...
                         'FontSize', 13, ...
                         'FontWeight', 'bold');
 
-                    % -----------------------------------------
+
+                    % ---------------------------------------------
                     % Overlay
-                    % -----------------------------------------
+                    % ---------------------------------------------
 
-                    ax_overlay = nexttile(layout);
+                    ax_overlay = ...
+                        nexttile(layout);
 
-                    if has_gcamp && has_blue
+
+                    if has_gcamp && ...
+                            has_electroporated
 
                         image( ...
                             ax_overlay, ...
@@ -560,11 +739,12 @@ function save_mean_image_overviews( ...
                         show_empty_mean_image_panel( ...
                             ax_overlay, ...
                             'Overlay unavailable');
-
                     end
+
 
                     axis(ax_overlay, 'image');
                     axis(ax_overlay, 'off');
+
 
                     title( ...
                         ax_overlay, ...
@@ -575,19 +755,23 @@ function save_mean_image_overviews( ...
                         'FontSize', 13, ...
                         'FontWeight', 'bold');
 
+
+                % =================================================
+                % GCaMP seul
+                % =================================================
+
                 else
 
-                    % -----------------------------------------
-                    % GCaMP seul
-                    % -----------------------------------------
+                    ax_gcamp = ...
+                        nexttile(layout);
 
-                    ax_gcamp = nexttile(layout);
 
                     if has_gcamp
 
-                        green_rgb = create_single_channel_rgb( ...
-                            mean_gcamp, ...
-                            2);
+                        green_rgb = ...
+                            create_single_channel_rgb( ...
+                                mean_gcamp, ...
+                                2);
 
                         image( ...
                             ax_gcamp, ...
@@ -598,11 +782,12 @@ function save_mean_image_overviews( ...
                         show_empty_mean_image_panel( ...
                             ax_gcamp, ...
                             'GCaMP unavailable');
-
                     end
+
 
                     axis(ax_gcamp, 'image');
                     axis(ax_gcamp, 'off');
+
 
                     title( ...
                         ax_gcamp, ...
@@ -612,13 +797,13 @@ function save_mean_image_overviews( ...
                         'Interpreter', 'none', ...
                         'FontSize', 13, ...
                         'FontWeight', 'bold');
-
                 end
             end
 
-            % =================================================
+
+            % =====================================================
             % Titre général
-            % =================================================
+            % =====================================================
 
             sgtitle( ...
                 layout, ...
@@ -632,9 +817,10 @@ function save_mean_image_overviews( ...
                 'FontSize', 16, ...
                 'FontWeight', 'bold');
 
-            % =================================================
+
+            % =====================================================
             % Sauvegarde locale
-            % =================================================
+            % =====================================================
 
             if local_needs_save
 
@@ -645,12 +831,12 @@ function save_mean_image_overviews( ...
                 fprintf( ...
                     'Local overview saved:\n%s\n', ...
                     local_png_path);
-
             end
 
-            % =================================================
-            % Sauvegarde dans current_output_folder
-            % =================================================
+
+            % =====================================================
+            % Sauvegarde summary
+            % =====================================================
 
             if summary_needs_save
 
@@ -660,6 +846,7 @@ function save_mean_image_overviews( ...
                         char(local_png_path), ...
                         char(summary_png_path));
 
+
                 if same_destination
 
                     if ~local_needs_save
@@ -667,7 +854,6 @@ function save_mean_image_overviews( ...
                         fprintf( ...
                             ['Summary destination is identical to ' ...
                              'the existing local destination.\n']);
-
                     end
 
                 else
@@ -679,23 +865,24 @@ function save_mean_image_overviews( ...
                     fprintf( ...
                         'Summary overview saved:\n%s\n', ...
                         summary_png_path);
-
                 end
             end
+
 
             if isgraphics(fig)
 
                 close(fig);
-
             end
+
 
         catch ME
 
-            if ~isempty(fig) && isgraphics(fig)
+            if ~isempty(fig) && ...
+                    isgraphics(fig)
 
                 close(fig);
-
             end
+
 
             warning( ...
                 'save_mean_image_overviews:FigureCreationFailed', ...
@@ -703,16 +890,15 @@ function save_mean_image_overviews( ...
                  'mean-image overview figure: %s'], ...
                 m, ...
                 ME.message);
-
         end
     end
+
 
     fprintf('\n');
     fprintf('============================================================\n');
     fprintf('MEAN IMAGE OVERVIEW FIGURES COMPLETED\n');
     fprintf('Animal: %s\n', animal_name);
     fprintf('============================================================\n');
-
 end
 
 
@@ -724,25 +910,19 @@ function images = get_recording_images_mean_overview( ...
     images = {};
 
     if isempty(all_images)
-
         return;
-
     end
 
     if recording_index > numel(all_images)
-
         return;
-
     end
 
     if isempty(all_images{recording_index})
-
         return;
-
     end
 
-    images = all_images{recording_index};
-
+    images = ...
+        all_images{recording_index};
 end
 
 
@@ -754,25 +934,19 @@ function img = get_plane_image_mean_overview( ...
     img = [];
 
     if isempty(images)
-
         return;
-
     end
 
     if plane_index > numel(images)
-
         return;
-
     end
 
-    img = images{plane_index};
+    img = ...
+        images{plane_index};
 
     if isempty(img)
-
         img = [];
-
     end
-
 end
 
 
@@ -781,23 +955,27 @@ function [img1, img2] = match_mean_image_sizes( ...
     img1, ...
     img2)
 
-    if isempty(img1) || isempty(img2)
+    if isempty(img1) || ...
+            isempty(img2)
 
         return;
-
     end
 
-    h = min( ...
-        size(img1,1), ...
-        size(img2,1));
+    h = ...
+        min( ...
+            size(img1,1), ...
+            size(img2,1));
 
-    w = min( ...
-        size(img1,2), ...
-        size(img2,2));
+    w = ...
+        min( ...
+            size(img1,2), ...
+            size(img2,2));
 
-    img1 = img1(1:h, 1:w);
-    img2 = img2(1:h, 1:w);
+    img1 = ...
+        img1(1:h, 1:w);
 
+    img2 = ...
+        img2(1:h, 1:w);
 end
 
 
@@ -808,85 +986,107 @@ function rgb = create_single_channel_rgb( ...
 
     if isempty(img)
 
-        rgb = zeros(10,10,3);
+        rgb = ...
+            zeros(10, 10, 3);
 
         return;
-
     end
 
-    img = normalize_mean_image_contrast(img);
+    img = ...
+        normalize_mean_image_contrast(img);
 
-    rgb = zeros( ...
-        size(img,1), ...
-        size(img,2), ...
-        3);
+    rgb = ...
+        zeros( ...
+            size(img,1), ...
+            size(img,2), ...
+            3);
 
-    rgb(:,:,channel) = img;
-
+    rgb(:,:,channel) = ...
+        img;
 end
 
 
 %% ========================================================================
 function rgb = create_mean_image_overlay( ...
     gcamp, ...
-    blue)
+    electroporated, ...
+    electroporated_color_channel)
 
-    [gcamp, blue] = match_mean_image_sizes( ...
-        gcamp, ...
-        blue);
+    [gcamp, electroporated] = ...
+        match_mean_image_sizes( ...
+            gcamp, ...
+            electroporated);
 
-    gcamp = normalize_mean_image_contrast(gcamp);
-    blue = normalize_mean_image_contrast(blue);
+    gcamp = ...
+        normalize_mean_image_contrast( ...
+            gcamp);
 
-    rgb = zeros( ...
-        size(gcamp,1), ...
-        size(gcamp,2), ...
-        3);
+    electroporated = ...
+        normalize_mean_image_contrast( ...
+            electroporated);
 
-    rgb(:,:,2) = gcamp;
-    rgb(:,:,3) = blue;
+    rgb = ...
+        zeros( ...
+            size(gcamp,1), ...
+            size(gcamp,2), ...
+            3);
 
+    % GCaMP toujours vert
+    rgb(:,:,2) = ...
+        gcamp;
+
+    % Electroporated rouge ou bleu
+    rgb(:,:,electroporated_color_channel) = ...
+        electroporated;
 end
 
 
 %% ========================================================================
 function img = normalize_mean_image_contrast(img)
 
-    img = double(img);
+    img = ...
+        double(img);
 
-    p1 = calculate_percentile_mean_overview( ...
-        img(:), ...
-        1);
+    p1 = ...
+        calculate_percentile_mean_overview( ...
+            img(:), ...
+            1);
 
-    p99 = calculate_percentile_mean_overview( ...
-        img(:), ...
-        99);
+    p99 = ...
+        calculate_percentile_mean_overview( ...
+            img(:), ...
+            99);
+
 
     if ~isfinite(p1)
 
-        p1 = min(img(:));
-
+        p1 = ...
+            min(img(:));
     end
+
 
     if ~isfinite(p99)
 
-        p99 = max(img(:));
-
+        p99 = ...
+            max(img(:));
     end
+
 
     if p99 <= p1
 
-        img = zeros(size(img));
+        img = ...
+            zeros(size(img));
 
         return;
-
     end
 
-    img = (img - p1) / (p99 - p1);
+
+    img = ...
+        (img - p1) / ...
+        (p99 - p1);
 
     img(img < 0) = 0;
     img(img > 1) = 1;
-
 end
 
 
@@ -895,38 +1095,46 @@ function value = calculate_percentile_mean_overview( ...
     values, ...
     p)
 
-    values = values(isfinite(values));
+    values = ...
+        values(isfinite(values));
 
     if isempty(values)
 
         value = NaN;
 
         return;
-
     end
 
-    values = sort(values(:));
 
-    idx = 1 + ...
-        (numel(values) - 1) * p / 100;
+    values = ...
+        sort(values(:));
 
-    i1 = floor(idx);
-    i2 = ceil(idx);
+    idx = ...
+        1 + ...
+        (numel(values) - 1) * ...
+        p / 100;
+
+    i1 = ...
+        floor(idx);
+
+    i2 = ...
+        ceil(idx);
+
 
     if i1 == i2
 
-        value = values(i1);
+        value = ...
+            values(i1);
 
     else
 
-        alpha = idx - i1;
+        alpha = ...
+            idx - i1;
 
         value = ...
             (1 - alpha) * values(i1) + ...
             alpha * values(i2);
-
     end
-
 end
 
 
@@ -938,27 +1146,21 @@ function output_root_folder = get_root_folder_mean_overview( ...
     output_root_folder = '';
 
     if isempty(gcamp_root_folders)
-
         return;
-
     end
 
     if recording_index > numel(gcamp_root_folders)
-
         return;
-
     end
 
     if isempty(gcamp_root_folders{recording_index})
-
         return;
-
     end
 
-    output_root_folder = char( ...
-        string( ...
-            gcamp_root_folders{recording_index}));
-
+    output_root_folder = ...
+        char( ...
+            string( ...
+                gcamp_root_folders{recording_index}));
 end
 
 
@@ -967,40 +1169,39 @@ function date_name = get_date_name_mean_overview( ...
     current_dates, ...
     recording_index)
 
-    date_name = 'date_unknown';
+    date_name = ...
+        'date_unknown';
 
     if isempty(current_dates)
-
         return;
-
     end
+
 
     if ischar(current_dates) || ...
             isstring(current_dates) || ...
             isnumeric(current_dates)
 
-        date_name = normalize_text_mean_overview( ...
-            current_dates);
+        date_name = ...
+            normalize_text_mean_overview( ...
+                current_dates);
 
         return;
-
     end
+
 
     if recording_index > numel(current_dates)
-
         return;
-
     end
+
 
     if isempty(current_dates{recording_index})
-
         return;
-
     end
 
-    date_name = normalize_text_mean_overview( ...
-        current_dates{recording_index});
 
+    date_name = ...
+        normalize_text_mean_overview( ...
+            current_dates{recording_index});
 end
 
 
@@ -1009,41 +1210,40 @@ function age_name = get_age_name_mean_overview( ...
     current_ages, ...
     recording_index)
 
-    age_name = 'age_unknown';
+    age_name = ...
+        'age_unknown';
 
     if isempty(current_ages)
-
         return;
-
     end
+
 
     if ischar(current_ages) || ...
             isstring(current_ages) || ...
             isnumeric(current_ages)
 
-        age_name = normalize_text_mean_overview( ...
-            current_ages);
+        age_name = ...
+            normalize_text_mean_overview( ...
+                current_ages);
 
         return;
-
     end
+
 
     if recording_index > numel(current_ages)
-
         return;
-
     end
+
 
     if isempty(current_ages{recording_index})
-
         return;
-
     end
 
-    age_name = char( ...
-        string( ...
-            current_ages{recording_index}));
 
+    age_name = ...
+        char( ...
+            string( ...
+                current_ages{recording_index}));
 end
 
 
@@ -1066,7 +1266,6 @@ function show_empty_mean_image_panel( ...
         'VerticalAlignment', 'middle', ...
         'Color', [0.5 0.5 0.5], ...
         'FontSize', 11);
-
 end
 
 
@@ -1087,9 +1286,7 @@ function save_mean_overview_figure( ...
         saveas( ...
             fig, ...
             file_path);
-
     end
-
 end
 
 
@@ -1101,52 +1298,61 @@ function value = normalize_text_mean_overview(value)
         value = '';
 
         return;
-
     end
+
 
     if isstring(value)
 
-        value = char(value);
+        value = ...
+            char(value);
 
     elseif iscell(value)
 
-        value = char( ...
-            string(value{1}));
+        value = ...
+            char( ...
+                string( ...
+                    value{1}));
 
     elseif isnumeric(value)
 
-        value = num2str(value);
-
+        value = ...
+            num2str(value);
     end
 
-    value = strtrim(value);
 
+    value = ...
+        strtrim(value);
 end
 
 
 %% ========================================================================
 function value = sanitize_filename_mean_overview(value)
 
-    value = normalize_text_mean_overview(value);
+    value = ...
+        normalize_text_mean_overview( ...
+            value);
 
-    value = regexprep( ...
-        value, ...
-        '[<>:"/\\|?*]', ...
-        '-');
+    value = ...
+        regexprep( ...
+            value, ...
+            '[<>:"/\\|?*]', ...
+            '-');
 
-    value = regexprep( ...
-        value, ...
-        '\s+', ...
-        '_');
+    value = ...
+        regexprep( ...
+            value, ...
+            '\s+', ...
+            '_');
 
-    value = regexprep( ...
-        value, ...
-        '_+', ...
-        '_');
+    value = ...
+        regexprep( ...
+            value, ...
+            '_+', ...
+            '_');
 
-    value = regexprep( ...
-        value, ...
-        '^[_\-.]+|[_\-.]+$', ...
-        '');
-
+    value = ...
+        regexprep( ...
+            value, ...
+            '^[_\-.]+|[_\-.]+$', ...
+            '');
 end

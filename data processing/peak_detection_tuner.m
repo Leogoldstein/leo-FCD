@@ -3061,13 +3061,39 @@ function update_population_action_buttons(fig)
 
     % ==========================================================
     % MODE NORMAL :
-    % Cutoff + confirmation uniquement depuis COMBINED.
+    %
+    % - COMBINED disponible :
+    %       cutoff + confirmation uniquement depuis COMBINED
+    %
+    % - GCaMP-only :
+    %       GCaMP est la population maître
+    %       -> cutoff + confirmation autorisés
     % ==========================================================
-    if strcmp(selected_signal,'combined')
-        state = 'on';
-    else
-        state = 'off';
+    cell_type = '';
+
+    if isappdata(fig,'cell_type')
+        cell_type = ...
+            lower(char(string( ...
+                getappdata(fig,'cell_type'))));
     end
+
+    if strcmp(cell_type,'combined')
+
+        allow_actions = ...
+            strcmp(selected_signal,'combined');
+
+    elseif strcmp(cell_type,'gcamp')
+
+        allow_actions = ...
+            strcmp(selected_signal,'gcamp');
+
+    else
+
+        allow_actions = false;
+    end
+
+    state = ...
+        on_off(allow_actions);
 
     if ~isempty(btn_cutoff)
         set(btn_cutoff,'Enable',state);
