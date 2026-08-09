@@ -379,9 +379,61 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = ...
             %--------------------------------------------------
             elseif strcmpi(user_choice2, '2')
 
+                %--------------------------------------------------
+                % Création d'une nouvelle version :
+                % version maximale existante + 1
+                % en conservant la date/heure de daytime
+                %--------------------------------------------------
+                existing_names = {existing_subfolders.name};
+                
+                existing_versions = ...
+                    get_versions_from_vfolders(existing_names);
+                
+                existing_versions = ...
+                    existing_versions(~isnan(existing_versions));
+                
+                if isempty(existing_versions)
+                    new_version = 1;
+                else
+                    new_version = max(existing_versions) + 1;
+                end
+                
+                % Récupérer uniquement la partie date/heure de daytime
+                % Exemple :
+                % daytime = v1_26_08_08_15_13
+                % devient :
+                % date_part = 26_08_08_15_13
+                daytime_parts = regexp( ...
+                    daytime, ...
+                    '^v\d+_(.*)$', ...
+                    'tokens', ...
+                    'once');
+                
+                if isempty(daytime_parts)
+                    error( ...
+                        'Format inattendu pour daytime : %s', ...
+                        daytime);
+                end
+                
+                date_part = daytime_parts{1};
+                
+                new_folder_name = sprintf( ...
+                    'v%d_%s', ...
+                    new_version, ...
+                    date_part);
+                
                 current_root_folder = fullfile( ...
                     after_processing_root, ...
-                    daytime);
+                    new_folder_name);
+                
+                if ~isfolder(current_root_folder)
+                    mkdir(current_root_folder);
+                end
+                
+                fprintf( ...
+                    '  Nouvelle version créée : v%d -> %s\n', ...
+                    new_version, ...
+                    current_root_folder);
 
                 if ~isfolder(current_root_folder)
                     mkdir(current_root_folder);

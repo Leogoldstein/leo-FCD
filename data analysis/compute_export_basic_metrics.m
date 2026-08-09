@@ -15,12 +15,31 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 %
 % Pour chaque recording :
 %   1) récupère les métadonnées ;
-%   2) calcule les métriques d'activité ;
-%   3) charge ou calcule les métriques réseau ;
-%   4) charge ou calcule les SCEs ;
+%   2) calcule les métriques d'activité PAR PLAN ;
+%   3) charge ou calcule les métriques réseau PAR PLAN ;
+%   4) charge ou calcule les SCEs sur les plans concaténés ;
 %   5) assemble toutes les métriques ;
 %   6) remplit results_analysis ;
 %   7) construit results_table.
+%
+% Organisation :
+%
+%   Activité :
+%       results_analysis....activity.metric{m}{p}
+%
+%   Corrélations :
+%       results_analysis....correlations.metric{m}{p}
+%
+%   Coupling :
+%       results_analysis....coupling.metric{m}{p}
+%
+% avec :
+%       m = recording
+%       p = plan
+%
+% Les SCEs constituent volontairement une exception :
+% les différents plans sont concaténés avant calcul.
+% Les métriques SCE restent donc définies au niveau du recording.
 
 
     %==============================================================%
@@ -99,6 +118,9 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
             %======================================================%
             % Sampling rate
+            %
+            % SamplingRatePlane correspond à la fréquence
+            % d'échantillonnage d'un plan.
             %======================================================%
             sampling_rate = ...
                 get_metadata_value( ...
@@ -125,7 +147,18 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 1) Activity metrics
+            % 1) Activity metrics PAR PLAN
+            %
+            % compute_all_basic_metrics doit retourner :
+            %
+            %   nCells_by_plane
+            %   freq_by_plane
+            %   intervals_ms_by_plane
+            %   burst_rate_by_plane
+            %   burst_fraction_by_plane
+            %   burst_size_by_plane
+            %
+            % chaque champ étant une cellule {p}.
             %======================================================%
             metrics = ...
                 compute_all_basic_metrics( ...
@@ -151,7 +184,7 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 2) Network correlations + coupling
+            % 2) Network correlations + coupling PAR PLAN
             %======================================================%
             network_metrics = ...
                 load_or_process_network_metrics_for_session( ...
@@ -164,6 +197,10 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
             %======================================================%
             % 3) SCEs
+            %
+            % IMPORTANT :
+            % Les plans sont volontairement concaténés pour les SCEs.
+            % Ces métriques restent donc au niveau du recording.
             %======================================================%
             sce_metrics = ...
                 load_or_process_sce_for_session( ...
@@ -177,7 +214,7 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 4) Assemble GCaMP correlations
+            % 4) Assemble GCaMP correlations PAR PLAN
             %======================================================%
             metrics.gcamp_plane.correlations = ...
                 struct();
@@ -196,7 +233,7 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 5) Assemble GCaMP functional coupling
+            % 5) Assemble GCaMP functional coupling PAR PLAN
             %======================================================%
             metrics.gcamp_plane.coupling = ...
                 struct();
@@ -245,14 +282,14 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 6) Assemble SCEs
+            % 6) SCEs concaténés
             %======================================================%
             metrics.gcamp_plane.SCEs = ...
                 sce_metrics;
 
 
             %======================================================%
-            % 7) Assemble electroporated/mTOR metrics
+            % 7) Electroporated / mTOR PAR PLAN
             %======================================================%
             if process_electroporated
 
@@ -344,7 +381,7 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 8) Stockage dans results_analysis
+            % 8) Stockage
             %======================================================%
             results_analysis = ...
                 store_metrics_in_results_analysis( ...
@@ -355,7 +392,7 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 
 
             %======================================================%
-            % 9) Export table longue
+            % 9) Export table
             %======================================================%
             results_table = ...
                 append_all_metrics_to_results_table( ...
@@ -402,6 +439,9 @@ function [results_analysis, results_table] = compute_export_basic_metrics( ...
 end
 
 
+%==================================================================%
+% INITIALISATION RESULTS_ANALYSIS
+%==================================================================%
 function results_analysis = ...
     init_empty_results_analysis( ...
         nRec)
@@ -417,6 +457,10 @@ function results_analysis = ...
     %==============================================================%
     results_analysis.gcamp_plane.activity = ...
         struct();
+
+
+    results_analysis.gcamp_plane.activity.ActiveCellsNumber = ...
+        cell(nRec, 1);
 
 
     results_analysis.gcamp_plane.activity.FrequencyPerCell = ...
@@ -457,7 +501,7 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % GCaMP functional coupling
+    % GCaMP coupling
     %==============================================================%
     results_analysis.gcamp_plane.coupling = ...
         struct();
@@ -499,7 +543,11 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % GCaMP SCEs
+    % SCEs
+    %
+    % Contrairement aux autres métriques, les SCEs sont calculées
+    % après concaténation des plans.
+    % Donc une entrée par recording, pas une entrée par plan.
     %==============================================================%
     results_analysis.gcamp_plane.SCEs = ...
         struct();
@@ -572,10 +620,14 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % electroporated/mTOR activity
+    % Electroporated activity
     %==============================================================%
     results_analysis.electroporated_plane.activity = ...
         struct();
+
+
+    results_analysis.electroporated_plane.activity.ActiveCellsNumber = ...
+        cell(nRec, 1);
 
 
     results_analysis.electroporated_plane.activity.FrequencyPerCell = ...
@@ -599,7 +651,7 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % electroporated/mTOR correlations
+    % Electroporated correlations
     %==============================================================%
     results_analysis.electroporated_plane.correlations = ...
         struct();
@@ -631,7 +683,7 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % electroporated/mTOR coupling
+    % Electroporated coupling
     %==============================================================%
     results_analysis.electroporated_plane.coupling = ...
         struct();
@@ -673,6 +725,9 @@ function results_analysis = ...
 end
 
 
+%==================================================================%
+% STOCKAGE
+%==================================================================%
 function results_analysis = ...
     store_metrics_in_results_analysis( ...
         results_analysis, ...
@@ -681,34 +736,44 @@ function results_analysis = ...
         process_electroporated)
 
     %==============================================================%
-    % GCaMP activity
+    % GCaMP activity PAR PLAN
     %==============================================================%
     A = ...
         metrics.gcamp_plane.activity;
 
 
+    results_analysis.gcamp_plane.activity.ActiveCellsNumber{m} = ...
+        normalize_values_by_plane( ...
+            A.nCells_by_plane);
+
+
     results_analysis.gcamp_plane.activity.FrequencyPerCell{m} = ...
-        A.freq_by_plane;
+        normalize_values_by_plane( ...
+            A.freq_by_plane);
 
 
     results_analysis.gcamp_plane.activity.InterEventIntervals_ms{m} = ...
-        A.intervals_ms_by_plane;
+        normalize_values_by_plane( ...
+            A.intervals_ms_by_plane);
 
 
     results_analysis.gcamp_plane.activity.BurstRate_per_min{m} = ...
-        A.burst_rate_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_rate_by_plane);
 
 
     results_analysis.gcamp_plane.activity.BurstFraction{m} = ...
-        A.burst_fraction_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_fraction_by_plane);
 
 
     results_analysis.gcamp_plane.activity.BurstSize{m} = ...
-        A.burst_size_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_size_by_plane);
 
 
     %==============================================================%
-    % GCaMP correlations
+    % GCaMP correlations PAR PLAN
     %==============================================================%
     C = ...
         metrics.gcamp_plane.correlations;
@@ -716,16 +781,18 @@ function results_analysis = ...
 
     results_analysis.gcamp_plane.correlations. ...
         cross_corr_gcamp_gcamp_by_plane{m} = ...
-        C.cross_corr_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.cross_corr_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.correlations. ...
         max_corr_gcamp_gcamp_by_plane{m} = ...
-        C.max_corr_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.max_corr_gcamp_gcamp_by_plane);
 
 
     %==============================================================%
-    % GCaMP functional coupling
+    % GCaMP coupling PAR PLAN
     %==============================================================%
     C = ...
         metrics.gcamp_plane.coupling;
@@ -733,41 +800,48 @@ function results_analysis = ...
 
     results_analysis.gcamp_plane.coupling. ...
         population_corr_gcamp_gcamp_by_plane{m} = ...
-        C.population_corr_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.population_corr_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         peak_coupling_fraction_gcamp_gcamp_by_plane{m} = ...
-        C.peak_coupling_fraction_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_fraction_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         peak_coupling_shuffle_gcamp_gcamp_by_plane{m} = ...
-        C.peak_coupling_shuffle_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_shuffle_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         peak_coupling_excess_gcamp_gcamp_by_plane{m} = ...
-        C.peak_coupling_excess_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_excess_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         peak_coupling_ratio_gcamp_gcamp_by_plane{m} = ...
-        C.peak_coupling_ratio_gcamp_gcamp_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_ratio_gcamp_gcamp_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         max_lagged_corr_gcamp_gcamp_population_by_plane{m} = ...
-        C.max_lagged_corr_gcamp_gcamp_population_by_plane;
+        normalize_values_by_plane( ...
+            C.max_lagged_corr_gcamp_gcamp_population_by_plane);
 
 
     results_analysis.gcamp_plane.coupling. ...
         lag_to_gcamp_gcamp_population_ms_by_plane{m} = ...
-        C.lag_to_gcamp_gcamp_population_ms_by_plane;
+        normalize_values_by_plane( ...
+            C.lag_to_gcamp_gcamp_population_ms_by_plane);
 
 
     %==============================================================%
-    % GCaMP SCEs
+    % SCEs CONCATÉNÉS
     %==============================================================%
     S = ...
         metrics.gcamp_plane.SCEs;
@@ -840,7 +914,7 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % Sans electroporated : arrêt ici
+    % Sans electroporated
     %==============================================================%
     if ~process_electroporated
         return;
@@ -848,34 +922,44 @@ function results_analysis = ...
 
 
     %==============================================================%
-    % electroporated activity
+    % Electroporated activity PAR PLAN
     %==============================================================%
     A = ...
         metrics.electroporated_plane.activity;
 
 
+    results_analysis.electroporated_plane.activity.ActiveCellsNumber{m} = ...
+        normalize_values_by_plane( ...
+            A.nCells_by_plane);
+
+
     results_analysis.electroporated_plane.activity.FrequencyPerCell{m} = ...
-        A.freq_by_plane;
+        normalize_values_by_plane( ...
+            A.freq_by_plane);
 
 
     results_analysis.electroporated_plane.activity.InterEventIntervals_ms{m} = ...
-        A.intervals_ms_by_plane;
+        normalize_values_by_plane( ...
+            A.intervals_ms_by_plane);
 
 
     results_analysis.electroporated_plane.activity.BurstRate_per_min{m} = ...
-        A.burst_rate_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_rate_by_plane);
 
 
     results_analysis.electroporated_plane.activity.BurstFraction{m} = ...
-        A.burst_fraction_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_fraction_by_plane);
 
 
     results_analysis.electroporated_plane.activity.BurstSize{m} = ...
-        A.burst_size_by_plane;
+        normalize_values_by_plane( ...
+            A.burst_size_by_plane);
 
 
     %==============================================================%
-    % electroporated correlations
+    % Electroporated correlations PAR PLAN
     %==============================================================%
     C = ...
         metrics.electroporated_plane.correlations;
@@ -883,31 +967,36 @@ function results_analysis = ...
 
     results_analysis.electroporated_plane.correlations. ...
         cross_corr_gcamp_mtor_by_plane{m} = ...
-        C.cross_corr_gcamp_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.cross_corr_gcamp_mtor_by_plane);
 
 
     results_analysis.electroporated_plane.correlations. ...
         cross_corr_mtor_mtor_by_plane{m} = ...
-        C.cross_corr_mtor_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.cross_corr_mtor_mtor_by_plane);
 
 
     results_analysis.electroporated_plane.correlations. ...
         max_corr_gcamp_mtor_by_plane{m} = ...
-        C.max_corr_gcamp_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.max_corr_gcamp_mtor_by_plane);
 
 
     results_analysis.electroporated_plane.correlations. ...
         max_corr_mtor_mtor_by_plane{m} = ...
-        C.max_corr_mtor_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.max_corr_mtor_mtor_by_plane);
 
 
     results_analysis.electroporated_plane.correlations. ...
         median_corr_gcamp_mtor_by_plane{m} = ...
-        C.median_corr_gcamp_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.median_corr_gcamp_mtor_by_plane);
 
 
     %==============================================================%
-    % electroporated coupling
+    % Electroporated coupling PAR PLAN
     %==============================================================%
     C = ...
         metrics.electroporated_plane.coupling;
@@ -915,40 +1004,50 @@ function results_analysis = ...
 
     results_analysis.electroporated_plane.coupling. ...
         population_corr_gcamp_mtor_by_plane{m} = ...
-        C.population_corr_gcamp_mtor_by_plane;
+        normalize_values_by_plane( ...
+            C.population_corr_gcamp_mtor_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         peak_coupling_fraction_by_plane{m} = ...
-        C.peak_coupling_fraction_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_fraction_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         peak_coupling_shuffle_by_plane{m} = ...
-        C.peak_coupling_shuffle_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_shuffle_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         peak_coupling_excess_by_plane{m} = ...
-        C.peak_coupling_excess_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_excess_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         peak_coupling_ratio_by_plane{m} = ...
-        C.peak_coupling_ratio_by_plane;
+        normalize_values_by_plane( ...
+            C.peak_coupling_ratio_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         max_lagged_corr_gcamp_population_by_plane{m} = ...
-        C.max_lagged_corr_gcamp_population_by_plane;
+        normalize_values_by_plane( ...
+            C.max_lagged_corr_gcamp_population_by_plane);
 
 
     results_analysis.electroporated_plane.coupling. ...
         lag_to_gcamp_population_ms_by_plane{m} = ...
-        C.lag_to_gcamp_population_ms_by_plane;
+        normalize_values_by_plane( ...
+            C.lag_to_gcamp_population_ms_by_plane);
 end
 
 
+%==================================================================%
+% RESULTS TABLE
+%==================================================================%
 function results_table = ...
     append_all_metrics_to_results_table( ...
         results_table, ...
@@ -963,7 +1062,7 @@ function results_table = ...
         process_electroporated)
 
     %==============================================================%
-    % GCaMP activity
+    % GCaMP activity PAR PLAN
     %==============================================================%
     A = ...
         metrics.gcamp_plane.activity;
@@ -1024,7 +1123,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % GCaMP correlations
+    % GCaMP correlations PAR PLAN
     %==============================================================%
     C = ...
         metrics.gcamp_plane.correlations;
@@ -1040,7 +1139,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % GCaMP functional coupling
+    % GCaMP coupling PAR PLAN
     %==============================================================%
     C = ...
         metrics.gcamp_plane.coupling;
@@ -1111,6 +1210,9 @@ function results_table = ...
 
     %==============================================================%
     % SCEs
+    %
+    % VOLONTAIREMENT au niveau du recording.
+    % Plane = NaN.
     %==============================================================%
     S = ...
         metrics.gcamp_plane.SCEs;
@@ -1144,7 +1246,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % Sans electroporated
+    % Sans électroporées
     %==============================================================%
     if ~process_electroporated
         return;
@@ -1152,7 +1254,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % electroporated activity
+    % Electroporated activity PAR PLAN
     %==============================================================%
     A = ...
         metrics.electroporated_plane.activity;
@@ -1216,7 +1318,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % electroporated correlations
+    % Electroporated correlations PAR PLAN
     %==============================================================%
     C = ...
         metrics.electroporated_plane.correlations;
@@ -1250,7 +1352,7 @@ function results_table = ...
 
 
     %==============================================================%
-    % electroporated coupling
+    % Electroporated coupling PAR PLAN
     %==============================================================%
     C = ...
         metrics.electroporated_plane.coupling;
@@ -1320,6 +1422,9 @@ function results_table = ...
 end
 
 
+%==================================================================%
+% TABLE VIDE
+%==================================================================%
 function results_table = init_results_table()
 
     results_table = ...
@@ -1354,6 +1459,9 @@ function results_table = init_results_table()
 end
 
 
+%==================================================================%
+% AJOUT PAR PLAN
+%==================================================================%
 function results_table = append_values_by_plane( ...
     results_table, ...
     current_type, ...
@@ -1411,6 +1519,10 @@ function results_table = append_values_by_plane( ...
 end
 
 
+%==================================================================%
+% AJOUT GLOBAL RECORDING
+% Utilisé volontairement pour les SCEs.
+%==================================================================%
 function results_table = append_session_value( ...
     results_table, ...
     current_type, ...
@@ -1460,6 +1572,9 @@ function results_table = append_session_value( ...
 end
 
 
+%==================================================================%
+% CONSTRUCTION ROW
+%==================================================================%
 function row = make_results_row( ...
     current_type, ...
     animal_id, ...
@@ -1507,6 +1622,9 @@ function row = make_results_row( ...
 end
 
 
+%==================================================================%
+% NORMALISATION PAR PLAN
+%==================================================================%
 function values_by_plane = ...
     normalize_values_by_plane( ...
         values)
@@ -1538,6 +1656,9 @@ function values_by_plane = ...
 end
 
 
+%==================================================================%
+% RÉSUMÉ NUMÉRIQUE
+%==================================================================%
 function [mean_value, n_values] = ...
     summarize_numeric_values( ...
         values)
@@ -1612,6 +1733,9 @@ function [mean_value, n_values] = ...
 end
 
 
+%==================================================================%
+% DATE
+%==================================================================%
 function date_name = ...
     get_date_name_from_path( ...
         date_group_paths, ...
@@ -1639,6 +1763,9 @@ function date_name = ...
 end
 
 
+%==================================================================%
+% AGE
+%==================================================================%
 function age_label = ...
     get_age_for_recording( ...
         current_ages, ...
@@ -1733,6 +1860,9 @@ function age_number = ...
 end
 
 
+%==================================================================%
+% METADATA
+%==================================================================%
 function value = ...
     get_metadata_value( ...
         metadata, ...
@@ -1778,6 +1908,9 @@ function value = ...
 end
 
 
+%==================================================================%
+% NUMERIC PARSING
+%==================================================================%
 function v = ...
     parse_numeric_vector(x)
 

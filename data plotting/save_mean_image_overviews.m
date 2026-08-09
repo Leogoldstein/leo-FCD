@@ -892,13 +892,6 @@ function save_mean_image_overviews( ...
                 ME.message);
         end
     end
-
-
-    fprintf('\n');
-    fprintf('============================================================\n');
-    fprintf('MEAN IMAGE OVERVIEW FIGURES COMPLETED\n');
-    fprintf('Animal: %s\n', animal_name);
-    fprintf('============================================================\n');
 end
 
 

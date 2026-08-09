@@ -195,16 +195,7 @@ function folder_names = get_folder_list(type, lastFolderName)
 
         case "SHAM"
             folder_names = {
-                'mtor30\1931\27-08-2025';
-                'mtor38\2198\06-03-2026';
-                'mtor38\2199\30-01-2026';
                 'mtor38\2206\06-02-2026';
-                'mtor38\2206\12-02-2026';
-                'mtor38\2206\18-02-2026';
-                'mtor41\2340\08-04-2026';
-                'mtor45\2483\21-04-2026';
-                'mtor45\2486\07-05-2026';
-                'mtor45\2488\22-04-2026';
             };
 
         case "FCD"

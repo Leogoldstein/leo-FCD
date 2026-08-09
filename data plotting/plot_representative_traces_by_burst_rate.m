@@ -14,12 +14,15 @@ function plot_representative_traces_by_burst_rate( ...
 % La sélection est réalisée globalement parmi tous les recordings
 % et tous les plans de l'animal.
 %
-% Populations :
-%   - GCaMP : toujours
-%   - mTOR  : uniquement si include_electroporated_cells == true
+% gcamp_output_folders :
 %
-% Sauvegarde :
-%   current_gcamp_output_folder
+%   gcamp_output_folders{m}{p}
+%
+% avec :
+%   m = recording
+%   p = plan
+%
+% Aucun dossier n'est créé ici.
 
 
     %==============================================================%
@@ -73,6 +76,7 @@ function plot_representative_traces_by_burst_rate( ...
 
         return;
     end
+
 
     %==============================================================%
     % Données communes
@@ -134,7 +138,7 @@ end
 
 
 %==================================================================%
-% Une population : GCaMP ou mTOR
+% Une population
 %==================================================================%
 function plot_one_burst_branch( ...
         data, ...
@@ -152,6 +156,9 @@ function plot_one_burst_branch( ...
     all_traces = {};
     all_time = {};
     all_labels = {};
+
+
+    save_output_folder = '';
 
 
     %==============================================================%
@@ -205,7 +212,7 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Sampling rate doit être organisé par recording
+    % Sampling rate
     %==============================================================%
     if ~iscell(sampling_rate_group)
 
@@ -218,7 +225,7 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Nombre de recordings
+    % Nombre recordings
     %==============================================================%
     nRec = ...
         min( ...
@@ -238,29 +245,6 @@ function plot_one_burst_branch( ...
     % Recordings
     %==============================================================%
     for m = 1:nRec
-        
-        %==========================================================%
-        % Output du recording
-        %==========================================================%
-        current_gcamp_output_folder = '';
-
-
-        if m <= numel(gcamp_output_folders) && ...
-                ~isempty(gcamp_output_folders{m})
-
-            current_gcamp_output_folder = ...
-                char(string( ...
-                    gcamp_output_folders{m}));
-
-
-            if exist( ...
-                    current_gcamp_output_folder, ...
-                    'dir') ~= 7
-
-                mkdir( ...
-                    current_gcamp_output_folder);
-            end
-        end
 
         %==========================================================%
         % Sampling rate
@@ -269,7 +253,6 @@ function plot_one_burst_branch( ...
             sampling_rate_group{m};
 
 
-        % Petit déballage uniquement si nécessaire
         while iscell(sampling_rate) && ...
                 numel(sampling_rate) == 1
 
@@ -308,7 +291,7 @@ function plot_one_burst_branch( ...
 
 
         %==========================================================%
-        % Traces du recording
+        % Traces recording
         %==========================================================%
         if isempty(DF_all{m})
             continue;
@@ -327,7 +310,7 @@ function plot_one_burst_branch( ...
 
 
         %==========================================================%
-        % Burst rates du recording
+        % Burst recording
         %==========================================================%
         if iscell(burst_all)
 
@@ -371,6 +354,58 @@ function plot_one_burst_branch( ...
 
         for p = 1:nPlanes
 
+            %======================================================%
+            % Dossier GCaMP du plan
+            %======================================================%
+            if m > numel(gcamp_output_folders) || ...
+                    isempty(gcamp_output_folders{m}) || ...
+                    p > numel(gcamp_output_folders{m}) || ...
+                    isempty(gcamp_output_folders{m}{p})
+
+                warning( ...
+                    ['%s rec %d plane %d: GCaMP output folder ' ...
+                     'missing, plane skipped.'], ...
+                    label_name, ...
+                    m, ...
+                    p - 1);
+
+                continue;
+            end
+
+
+            current_gcamp_output_folder = ...
+                gcamp_output_folders{m}{p};
+
+
+            if exist( ...
+                    current_gcamp_output_folder, ...
+                    'dir') ~= 7
+
+                warning( ...
+                    ['%s rec %d plane %d: GCaMP output folder ' ...
+                     'does not exist, plane skipped: %s'], ...
+                    label_name, ...
+                    m, ...
+                    p - 1, ...
+                    current_gcamp_output_folder);
+
+                continue;
+            end
+
+
+            %------------------------------------------------------%
+            % Premier dossier valide pour sauvegarde finale
+            %------------------------------------------------------%
+            if isempty(save_output_folder)
+
+                save_output_folder = ...
+                    current_gcamp_output_folder;
+            end
+
+
+            %======================================================%
+            % Données du plan
+            %======================================================%
             DF = ...
                 DF_planes{p};
 
@@ -410,7 +445,7 @@ function plot_one_burst_branch( ...
 
 
             %======================================================%
-            % Harmoniser nombre de cellules
+            % Harmoniser cellules
             %======================================================%
             n_cells = ...
                 min( ...
@@ -437,7 +472,7 @@ function plot_one_burst_branch( ...
 
 
             %======================================================%
-            % Collecter les cellules
+            % Collecte
             %======================================================%
             for ii = 1:numel(valid_cells)
 
@@ -456,9 +491,6 @@ function plot_one_burst_branch( ...
                 end
 
 
-                %--------------------------------------------------%
-                % Recentrer la trace
-                %--------------------------------------------------%
                 trace_c = ...
                     trace_c - ...
                     median( ...
@@ -466,9 +498,6 @@ function plot_one_burst_branch( ...
                         'omitnan');
 
 
-                %--------------------------------------------------%
-                % Temps
-                %--------------------------------------------------%
                 n_frames = ...
                     numel(trace_c);
 
@@ -478,9 +507,6 @@ function plot_one_burst_branch( ...
                     sampling_rate;
 
 
-                %--------------------------------------------------%
-                % Stockage
-                %--------------------------------------------------%
                 all_burst(end + 1, 1) = ...
                     burst_rate(c); %#ok<AGROW>
 
@@ -505,7 +531,20 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Minimum de 3 cellules
+    % Aucun output valide
+    %==============================================================%
+    if isempty(save_output_folder)
+
+        fprintf( ...
+            '%s skipped: no valid GCaMP output folder.\n', ...
+            label_name);
+
+        return;
+    end
+
+
+    %==============================================================%
+    % Minimum 3 cellules
     %==============================================================%
     if numel(all_burst) < 3
 
@@ -518,7 +557,7 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Trier selon burst rate
+    % Trier burst rate
     %==============================================================%
     [~, idx_sort] = ...
         sort( ...
@@ -557,7 +596,7 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Traces sélectionnées
+    % Sélection
     %==============================================================%
     selected_traces = ...
         cell(3, 1);
@@ -603,6 +642,49 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
+    % Filename
+    %==============================================================%
+    if isempty(current_line)
+
+        filename = ...
+            sprintf( ...
+                '%s_%s_%s_representative_traces_by_burst_rate.png', ...
+                current_type, ...
+                current_animal, ...
+                label_name);
+
+    else
+
+        filename = ...
+            sprintf( ...
+                '%s_%s_%s_%s_representative_traces_by_burst_rate.png', ...
+                current_line, ...
+                current_animal, ...
+                current_type, ...
+                label_name);
+    end
+
+
+    save_path = ...
+        fullfile( ...
+            save_output_folder, ...
+            filename);
+
+
+    %==============================================================%
+    % Existe déjà
+    %==============================================================%
+    if exist(save_path, 'file') == 2
+
+        fprintf( ...
+            'Burst figure already exists, skip: %s\n', ...
+            save_path);
+
+        return;
+    end
+
+
+    %==============================================================%
     % Figure
     %==============================================================%
     figure_title = ...
@@ -643,9 +725,6 @@ function plot_one_burst_branch( ...
     end
 
 
-    %==============================================================%
-    % Axes
-    %==============================================================%
     yticks( ...
         ax, ...
         (0:2) * offset);
@@ -695,57 +774,6 @@ function plot_one_burst_branch( ...
 
 
     %==============================================================%
-    % Nom de sauvegarde
-    %
-    % Plusieurs recordings / dates / âges / plans sont poolés :
-    % on ne met donc pas date_age_plane dans le nom.
-    %==============================================================%
-    if isempty(current_line)
-
-        filename = ...
-            sprintf( ...
-                '%s_%s_%s_representative_traces_by_burst_rate.png', ...
-                char(string(current_type)), ...
-                char(string(current_animal)), ...
-                label_name);
-
-    else
-
-        filename = ...
-            sprintf( ...
-                '%s_%s_%s_%s_representative_traces_by_burst_rate.png', ...
-                char(string(current_line)), ...
-                char(string(current_animal)), ...
-                char(string(current_type)), ...
-                label_name);
-    end
-
-
-    save_path = ...
-        fullfile( ...
-            current_gcamp_output_folder, ...
-            filename);
-
-
-    %==============================================================%
-    % Ne pas recalculer/sauvegarder si existe
-    %==============================================================%
-    if exist(save_path, 'file') == 2
-
-        fprintf( ...
-            'Burst figure already exists, skip: %s\n', ...
-            save_path);
-
-
-        if isgraphics(fig)
-            close(fig);
-        end
-
-        return;
-    end
-
-
-    %==============================================================%
     % Sauvegarde
     %==============================================================%
     set( ...
@@ -776,7 +804,7 @@ end
 
 
 %==================================================================%
-% Helper : déballage numérique
+% Helper numérique
 %==================================================================%
 function out = unwrap_numeric(x)
 
@@ -831,7 +859,7 @@ end
 
 
 %==================================================================%
-% Helper : offset automatique
+% Offset automatique
 %==================================================================%
 function offset = compute_auto_trace_offset_from_cell( ...
         trace_cells)
@@ -875,9 +903,6 @@ function offset = compute_auto_trace_offset_from_cell( ...
     end
 
 
-    %==============================================================%
-    % Fallback
-    %==============================================================%
     if isempty(all_vals)
 
         offset = ...
@@ -887,9 +912,6 @@ function offset = compute_auto_trace_offset_from_cell( ...
     end
 
 
-    %==============================================================%
-    % Amplitude robuste
-    %==============================================================%
     amp = ...
         prctile(all_vals, 99) - ...
         prctile(all_vals, 1);
