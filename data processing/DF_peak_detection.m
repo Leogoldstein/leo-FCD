@@ -72,7 +72,7 @@ function [selected_groups, output_folders] = DF_peak_detection( ...
             %======================================================
             % Sampling rate + synchronous frames
             %======================================================
-            sampling_rate_group = metadata.SamplingRatePlane;
+            sampling_rate_group = metadata.gcamp_plane.SamplingRatePlane;
 
             synchronous_frames_group = ...
                 cell(size(sampling_rate_group));

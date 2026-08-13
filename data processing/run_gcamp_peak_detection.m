@@ -184,28 +184,45 @@ function data = run_gcamp_peak_detection( ...
             get_metadata_for_record( ...
                 metadata, ...
                 m);
-
+        
+        % ======================================================
+        % GCaMP metadata = référence pour peak detection
+        % ======================================================
+        
+        if ~isfield(metadata_m, 'gcamp_plane') || ...
+                isempty(metadata_m.gcamp_plane)
+        
+            error( ...
+                'GCaMP metadata missing for group %d.', ...
+                m);
+        end
+        
+        metadata_gcamp_m = ...
+            metadata_m.gcamp_plane;
+        
         [record_label_m, date_m] = ...
             make_record_label( ...
                 animal, ...
-                metadata_m, ...
+                metadata_gcamp_m, ...
                 m);
 
         % ======================================================
         % Number of planes
         % ======================================================
-        if ~isfield(metadata_m, 'NumPlanes') || ...
-                isempty(metadata_m.NumPlanes)
-
+        if ~isfield(metadata_gcamp_m, 'NumPlanes') || ...
+                isempty(metadata_gcamp_m.NumPlanes)
+        
             error( ...
-                'Metadata missing NumPlanes for group %d.', ...
+                'GCaMP metadata missing NumPlanes for group %d.', ...
                 m);
         end
-
+        
         nPlanes = ...
             max( ...
                 1, ...
-                round(double(metadata_m.NumPlanes)));
+                round( ...
+                    double( ...
+                        metadata_gcamp_m.NumPlanes)));
 
         % ======================================================
         % Initialize plane slots
@@ -1424,7 +1441,7 @@ function data = run_gcamp_peak_detection( ...
                     bad_frames, ...
                     focus_segs, ...
                     motion_energy, ...
-                    metadata_m, ...
+                    metadata_gcamp_m, ...
                     stim_frames_m, ...
                     gcamp_output_folder_p, ...
                     current_output_folder);
@@ -2764,7 +2781,9 @@ function metadata_m = get_metadata_for_record(metadata, idx)
 
     metadata_m = struct();
 
-    if isempty(metadata) || ~isstruct(metadata)
+    if isempty(metadata) || ...
+            ~isstruct(metadata)
+
         return;
     end
 
@@ -2775,16 +2794,44 @@ function metadata_m = get_metadata_for_record(metadata, idx)
         field = fields{f};
         value = metadata.(field);
 
-        if iscell(value)
+        % ==========================================================
+        % Sous-structure
+        % Exemple :
+        %   metadata.gcamp_plane
+        %   metadata.electroporated_plane
+        % ==========================================================
+
+        if isstruct(value)
+
+            metadata_m.(field) = ...
+                get_metadata_for_record( ...
+                    value, ...
+                    idx);
+
+        % ==========================================================
+        % Champ indexé par recording
+        % ==========================================================
+
+        elseif iscell(value)
 
             if numel(value) >= idx
-                metadata_m.(field) = value{idx};
+
+                metadata_m.(field) = ...
+                    value{idx};
+
             else
+
                 metadata_m.(field) = [];
             end
 
+        % ==========================================================
+        % Champ global
+        % ==========================================================
+
         else
-            metadata_m.(field) = value;
+
+            metadata_m.(field) = ...
+                value;
         end
     end
 end

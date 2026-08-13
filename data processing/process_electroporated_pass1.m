@@ -4,20 +4,18 @@ function [processing_cache, data] = process_electroporated_pass1( ...
     date_group_paths, ...
     TSeries_paths, ...
     suite2p_folders, ...
+    metadata, ...
     data)
 
     numFolders = numel(gcamp_output_folders);
 
     % ==============================================================
-    % Colonnes attendues dans TSeries_paths / suite2p_folders
+    % Colonnes attendues
     %
     %   1 = GCaMP
     %   2 = canal potentiel electroporated
     %   3 = canal potentiel electroporated
     %   4 = Green
-    %
-    % Le canal electroporated est automatiquement choisi comme
-    % le premier canal présent parmi les colonnes 2 et 3.
     % ==============================================================
 
     current_gcamp_folders_group = ...
@@ -32,83 +30,22 @@ function [processing_cache, data] = process_electroporated_pass1( ...
             4, ...
             numFolders);
 
-    current_electroporated_TSeries_path = ...
-        cell(numFolders, 1);
-
-    current_electroporated_folders_group = ...
-        cell(numFolders, 1);
-
     % ==============================================================
     % Déterminer automatiquement le canal electroporated
+    %
+    % Fonction externe :
+    % get_electroporated_channel.m
     % ==============================================================
 
-    for m = 1:numFolders
-
-        selected_column = [];
-
-        candidate_columns = [2 3];
-
-        for c = candidate_columns
-
-            if m > size(TSeries_paths, 1) || ...
-                    c > size(TSeries_paths, 2)
-
-                continue;
-            end
-
-            candidate_path = ...
-                TSeries_paths{m, c};
-
-            if isempty(candidate_path)
-                continue;
-            end
-
-            if ischar(candidate_path) || ...
-                    isstring(candidate_path)
-
-                candidate_path = ...
-                    char(candidate_path);
-
-                if ~isempty(strtrim(candidate_path))
-
-                    selected_column = c;
-                    break;
-                end
-            end
-        end
-
-        if isempty(selected_column)
-
-            current_electroporated_TSeries_path{m} = '';
-            current_electroporated_folders_group{m} = {};
-
-            fprintf( ...
-                'Group %d: no electroporated channel detected.\n', ...
-                m);
-
-            continue;
-        end
-
-        current_electroporated_TSeries_path{m} = ...
-            TSeries_paths{m, selected_column};
-
-        if m <= size(suite2p_folders, 1) && ...
-                selected_column <= size(suite2p_folders, 2)
-
-            current_electroporated_folders_group{m} = ...
-                suite2p_folders{m, selected_column};
-
-        else
-
-            current_electroporated_folders_group{m} = {};
-        end
-
-        fprintf( ...
-            ['Group %d: electroporated channel detected ' ...
-             'in column %d\n'], ...
-            m, ...
-            selected_column);
-    end
+    [ ...
+        current_electroporated_TSeries_path, ...
+        current_electroporated_folders_group, ...
+        electroporated_column_by_group ...
+    ] = ...
+        get_electroporated_channel( ...
+            TSeries_paths, ...
+            suite2p_folders, ...
+            numFolders);
 
     % ==============================================================
     % Champs electroporated sauvegardés
@@ -186,6 +123,8 @@ function [processing_cache, data] = process_electroporated_pass1( ...
         cache.skip_group = false;
         cache.nPlanes = 0;
 
+        cache.electroporated_column = NaN;
+
         cache.filePath_electroporated = '';
         cache.filePath_gcamp = '';
 
@@ -207,6 +146,87 @@ function [processing_cache, data] = process_electroporated_pass1( ...
             '\nPreparing recording group %d/%d...\n', ...
             m, ...
             numFolders);
+
+        % ==========================================================
+        % Canal electroporated
+        % ==========================================================
+
+        if m <= numel(electroporated_column_by_group)
+
+            cache.electroporated_column = ...
+                electroporated_column_by_group(m);
+        end
+
+        if ~isfinite(cache.electroporated_column)
+
+            warning( ...
+                'process_electroporated_pass1:NoElectroporatedChannel', ...
+                ['Recording group %d: no electroporated channel ' ...
+                 'detected. Recording skipped.'], ...
+                m);
+
+            cache.skip_group = true;
+            processing_cache{m} = cache;
+
+            continue;
+        end
+
+        % ==========================================================
+        % Processing désactivé
+        % ==========================================================
+
+        if include_electroporated ~= 1
+
+            fprintf( ...
+                ['Group %d: electroporated processing ' ...
+                 'disabled.\n'], ...
+                m);
+
+            cache.skip_group = true;
+            processing_cache{m} = cache;
+
+            continue;
+        end
+
+        % ==========================================================
+        % Validation métadonnées
+        %
+        % IMPORTANT :
+        % cette validation est réalisée AVANT tout traitement
+        % électroporé.
+        %
+        % Champs comparés :
+        %   PositionX_um
+        %   PositionY_um
+        %   PositionZ
+        %   OpticalZoom
+        %   NumPlanes
+        % ==========================================================
+
+        [metadata_match, mismatch_message] = ...
+            validate_gcamp_electroporated_metadata( ...
+                metadata, ...
+                m);
+
+        if ~metadata_match
+
+            warning( ...
+                'process_electroporated_pass1:MetadataMismatch', ...
+                ['GCaMP / electroporated metadata mismatch.\n' ...
+                 'Recording group %d will NOT be processed.\n%s'], ...
+                m, ...
+                mismatch_message);
+
+            cache.skip_group = true;
+            processing_cache{m} = cache;
+
+            continue;
+        end
+
+        fprintf( ...
+            ['Group %d: GCaMP / electroporated metadata ' ...
+             'compatible.\n'], ...
+            m);
 
         % ==========================================================
         % Output folder
@@ -266,6 +286,43 @@ function [processing_cache, data] = process_electroporated_pass1( ...
             fprintf( ...
                 'Group %d: no GCaMP planes, skipped.\n', ...
                 m);
+
+            cache.skip_group = true;
+            processing_cache{m} = cache;
+
+            continue;
+        end
+
+        % ==========================================================
+        % Vérification supplémentaire NumPlanes / suite2p
+        %
+        % Normalement déjà garanti par les métadonnées, mais permet
+        % d'éviter de poursuivre si le contenu suite2p ne correspond
+        % pas au nombre de plans annoncé.
+        % ==========================================================
+
+        metadata_nplanes = ...
+            get_metadata_recording_value( ...
+                metadata.gcamp_plane, ...
+                'NumPlanes', ...
+                m);
+
+        metadata_nplanes = ...
+            convert_metadata_numeric( ...
+                metadata_nplanes);
+
+        if isempty(metadata_nplanes) || ...
+                ~isscalar(metadata_nplanes) || ...
+                cache.nPlanes ~= metadata_nplanes
+
+            warning( ...
+                'process_electroporated_pass1:Suite2pPlaneMismatch', ...
+                ['Recording group %d skipped.\n' ...
+                 'GCaMP suite2p planes : %d\n' ...
+                 'GCaMP XML NumPlanes  : %s'], ...
+                m, ...
+                cache.nPlanes, ...
+                metadata_value_to_string(metadata_nplanes));
 
             cache.skip_group = true;
             processing_cache{m} = cache;
@@ -374,23 +431,6 @@ function [processing_cache, data] = process_electroporated_pass1( ...
         end
 
         % ==========================================================
-        % Processing désactivé
-        % ==========================================================
-
-        if include_electroporated ~= 1
-
-            fprintf( ...
-                ['Group %d: electroporated processing ' ...
-                 'disabled.\n'], ...
-                m);
-
-            cache.skip_group = true;
-            processing_cache{m} = cache;
-
-            continue;
-        end
-
-        % ==========================================================
         % Pas de fluorescence GCaMP
         % ==========================================================
 
@@ -479,6 +519,28 @@ function [processing_cache, data] = process_electroporated_pass1( ...
                 m);
 
         % ==========================================================
+        % Nombre de plans electroporated
+        % ==========================================================
+
+        if isempty(cache.electroporated_planes) || ...
+                numel(cache.electroporated_planes) ~= cache.nPlanes
+
+            warning( ...
+                'process_electroporated_pass1:ElectroporatedPlaneMismatch', ...
+                ['Recording group %d skipped.\n' ...
+                 'GCaMP suite2p planes         : %d\n' ...
+                 'Electroporated suite2p planes: %d'], ...
+                m, ...
+                cache.nPlanes, ...
+                numel(cache.electroporated_planes));
+
+            cache.skip_group = true;
+            processing_cache{m} = cache;
+
+            continue;
+        end
+
+        % ==========================================================
         % Cache plans
         % ==========================================================
 
@@ -509,7 +571,8 @@ function [processing_cache, data] = process_electroporated_pass1( ...
         cache = ...
             processing_cache{m};
 
-        if cache.skip_group || ...
+        if isempty(cache) || ...
+                cache.skip_group || ...
                 ~cache.valid_group
 
             continue;
@@ -661,14 +724,23 @@ function [processing_cache, data] = process_electroporated_pass1( ...
                     aligned_image_plane, ...
                     npy_file_path, ...
                     ~ ...
-                ] = load_or_process_cellpose_TSeries( ...
-                    cache.filePath_electroporated, ...
-                    date_group_paths{m}, ...
-                    get_plane_path(cache.gcamp_planes, p), ...
-                    get_plane_path(cache.electroporated_planes, p), ...
-                    get_plane_path(cache.green_planes, p), ...
-                    current_electroporated_TSeries_path_m, ...
-                    get_plane_path(gcamp_output_folders{m}, p));
+                ] = ...
+                    load_or_process_cellpose_TSeries( ...
+                        cache.filePath_electroporated, ...
+                        date_group_paths{m}, ...
+                        get_plane_path( ...
+                            cache.gcamp_planes, ...
+                            p), ...
+                        get_plane_path( ...
+                            cache.electroporated_planes, ...
+                            p), ...
+                        get_plane_path( ...
+                            cache.green_planes, ...
+                            p), ...
+                        current_electroporated_TSeries_path_m, ...
+                        get_plane_path( ...
+                            gcamp_output_folders{m}, ...
+                            p));
 
             catch ME
 
@@ -699,13 +771,13 @@ function [processing_cache, data] = process_electroporated_pass1( ...
             % ======================================================
             % Images
             % ======================================================
-            
+
             cache.planes{p}.meanImg_channels = ...
                 meanImg_channels;
-            
+
             cache.planes{p}.aligned_image = ...
                 aligned_image_plane;
-            
+
             data.electroporated_plane. ...
                 alignedImgs_electroporated{m}{p} = ...
                 aligned_image_plane;
@@ -809,6 +881,517 @@ end
 
 
 % ========================================================================
+% VALIDATE GCAMP / ELECTROPORATED METADATA
+% ========================================================================
+
+function [tf, message] = ...
+        validate_gcamp_electroporated_metadata( ...
+            metadata, ...
+            m)
+
+    tf = false;
+    message = '';
+
+    % ==============================================================
+    % Vérifier structure metadata
+    % ==============================================================
+
+    if isempty(metadata) || ...
+            ~isstruct(metadata) || ...
+            ~isfield(metadata, 'gcamp_plane') || ...
+            ~isfield(metadata, 'electroporated_plane')
+
+        message = ...
+            'GCaMP/electroporated metadata structure missing.';
+
+        return;
+    end
+
+    fields_to_compare = { ...
+        'PositionX_um', ...
+        'PositionY_um', ...
+        'PositionZ', ...
+        'OpticalZoom', ...
+        'NumPlanes'};
+
+    mismatch_lines = {};
+
+    % ==============================================================
+    % Comparaison
+    % ==============================================================
+
+    for f = 1:numel(fields_to_compare)
+
+        field_name = ...
+            fields_to_compare{f};
+
+        gcamp_value = ...
+            get_metadata_recording_value( ...
+                metadata.gcamp_plane, ...
+                field_name, ...
+                m);
+
+        electroporated_value = ...
+            get_metadata_recording_value( ...
+                metadata.electroporated_plane, ...
+                field_name, ...
+                m);
+
+        [values_match, reason] = ...
+            metadata_values_match( ...
+                gcamp_value, ...
+                electroporated_value);
+
+        if values_match
+            continue;
+        end
+
+        mismatch_lines{end+1,1} = ...
+            sprintf( ...
+                ['%s:\n' ...
+                 '    GCaMP          : %s\n' ...
+                 '    Electroporated : %s\n' ...
+                 '    Reason         : %s'], ...
+                field_name, ...
+                metadata_value_to_string(gcamp_value), ...
+                metadata_value_to_string(electroporated_value), ...
+                reason); %#ok<AGROW>
+    end
+
+    if ~isempty(mismatch_lines)
+
+        message = ...
+            strjoin( ...
+                mismatch_lines, ...
+                newline);
+
+        return;
+    end
+
+    tf = true;
+end
+
+
+% ========================================================================
+% GET ONE METADATA VALUE
+% ========================================================================
+
+function value = ...
+        get_metadata_recording_value( ...
+            branch, ...
+            field_name, ...
+            m)
+
+    value = [];
+
+    if isempty(branch) || ...
+            ~isstruct(branch) || ...
+            ~isfield(branch, field_name)
+
+        return;
+    end
+
+    values = ...
+        branch.(field_name);
+
+    if isempty(values)
+        return;
+    end
+
+    if iscell(values)
+
+        if numel(values) < m
+            return;
+        end
+
+        value = ...
+            values{m};
+
+    elseif isstring(values)
+
+        if numel(values) < m
+            return;
+        end
+
+        value = ...
+            values(m);
+
+    elseif isnumeric(values) || ...
+            islogical(values)
+
+        if isvector(values)
+
+            if numel(values) < m
+                return;
+            end
+
+            value = ...
+                values(m);
+
+        elseif size(values,1) >= m
+
+            value = ...
+                values(m,:);
+        end
+
+    else
+
+        try
+
+            if numel(values) >= m
+                value = values(m);
+            end
+
+        catch
+            value = [];
+        end
+    end
+end
+
+
+% ========================================================================
+% COMPARE METADATA VALUES
+% ========================================================================
+
+function [tf, reason] = ...
+        metadata_values_match( ...
+            value1, ...
+            value2)
+
+    tf = false;
+    reason = '';
+
+    % ==============================================================
+    % Valeur absente
+    % ==============================================================
+
+    if metadata_value_is_empty(value1) || ...
+            metadata_value_is_empty(value2)
+
+        reason = ...
+            'missing metadata value';
+
+        return;
+    end
+
+    % ==============================================================
+    % Essayer une comparaison numérique
+    % ==============================================================
+
+    num1 = ...
+        convert_metadata_numeric( ...
+            value1);
+
+    num2 = ...
+        convert_metadata_numeric( ...
+            value2);
+
+    if ~isempty(num1) && ...
+            ~isempty(num2)
+
+        if ~isequal(size(num1), size(num2))
+
+            reason = ...
+                'different value dimensions';
+
+            return;
+        end
+
+        tolerance = 1e-6;
+
+        difference = ...
+            abs( ...
+                double(num1) - ...
+                double(num2));
+
+        scale = ...
+            max( ...
+                1, ...
+                max( ...
+                    abs( ...
+                        [ ...
+                            double(num1(:)); ...
+                            double(num2(:)) ...
+                        ])));
+
+        tf = ...
+            all( ...
+                difference(:) <= ...
+                tolerance * scale);
+
+        if ~tf
+
+            reason = ...
+                'different numerical values';
+        end
+
+        return;
+    end
+
+    % ==============================================================
+    % Comparaison string
+    % ==============================================================
+
+    str1 = ...
+        string(value1);
+
+    str2 = ...
+        string(value2);
+
+    tf = ...
+        isequal( ...
+            str1, ...
+            str2);
+
+    if ~tf
+
+        reason = ...
+            'different values';
+    end
+end
+
+
+% ========================================================================
+% METADATA VALUE EMPTY
+% ========================================================================
+
+function tf = metadata_value_is_empty(value)
+
+    if isempty(value)
+
+        tf = true;
+        return;
+    end
+
+    if iscell(value)
+
+        if isempty(value)
+
+            tf = true;
+
+        elseif numel(value) == 1
+
+            tf = ...
+                metadata_value_is_empty( ...
+                    value{1});
+
+        else
+
+            tf = false;
+        end
+
+        return;
+    end
+
+    if isstring(value)
+
+        tf = ...
+            all( ...
+                ismissing(value) | ...
+                strlength(strtrim(value)) == 0);
+
+        return;
+    end
+
+    if ischar(value)
+
+        tf = ...
+            isempty( ...
+                strtrim(value));
+
+        return;
+    end
+
+    if isnumeric(value)
+
+        tf = ...
+            isempty(value) || ...
+            all(isnan(value(:)));
+
+        return;
+    end
+
+    tf = false;
+end
+
+
+% ========================================================================
+% CONVERT METADATA TO NUMERIC
+% ========================================================================
+
+function value_num = ...
+        convert_metadata_numeric(value)
+
+    value_num = [];
+
+    if isempty(value)
+        return;
+    end
+
+    % Cellule simple
+    if iscell(value)
+
+        if numel(value) == 1
+
+            value_num = ...
+                convert_metadata_numeric( ...
+                    value{1});
+        end
+
+        return;
+    end
+
+    % Déjà numérique
+    if isnumeric(value) || ...
+            islogical(value)
+
+        value_num = ...
+            double(value);
+
+        return;
+    end
+
+    % String / char
+    if isstring(value) || ...
+            ischar(value)
+
+        value_string = ...
+            strtrim( ...
+                char( ...
+                    string(value)));
+
+        % ----------------------------------------------------------
+        % Essayer d'abord une valeur simple
+        % ----------------------------------------------------------
+
+        simple_value = ...
+            str2double(value_string);
+
+        if ~isnan(simple_value)
+
+            value_num = ...
+                simple_value;
+
+            return;
+        end
+
+        % ----------------------------------------------------------
+        % Essayer un vecteur numérique
+        %
+        % Compatible par exemple avec :
+        %   "[100 200 300]"
+        %   "100, 200, 300"
+        % ----------------------------------------------------------
+
+        value_string = ...
+            strrep( ...
+                value_string, ...
+                '[', ...
+                '');
+
+        value_string = ...
+            strrep( ...
+                value_string, ...
+                ']', ...
+                '');
+
+        value_string = ...
+            strrep( ...
+                value_string, ...
+                ',', ...
+                ' ');
+
+        tokens = ...
+            regexp( ...
+                value_string, ...
+                '\s+', ...
+                'split');
+
+        tokens = ...
+            tokens( ...
+                ~cellfun( ...
+                    @isempty, ...
+                    tokens));
+
+        if isempty(tokens)
+            return;
+        end
+
+        nums = ...
+            cellfun( ...
+                @str2double, ...
+                tokens);
+
+        if all(~isnan(nums))
+
+            value_num = ...
+                nums;
+        end
+    end
+end
+
+
+% ========================================================================
+% METADATA VALUE TO STRING
+% ========================================================================
+
+function txt = ...
+        metadata_value_to_string(value)
+
+    if metadata_value_is_empty(value)
+
+        txt = '<missing>';
+        return;
+    end
+
+    if iscell(value)
+
+        if numel(value) == 1
+
+            txt = ...
+                metadata_value_to_string( ...
+                    value{1});
+
+        else
+
+            parts = ...
+                cellfun( ...
+                    @metadata_value_to_string, ...
+                    value, ...
+                    'UniformOutput', ...
+                    false);
+
+            txt = ...
+                ['{' strjoin(parts, ', ') '}'];
+        end
+
+        return;
+    end
+
+    if isnumeric(value) || ...
+            islogical(value)
+
+        txt = ...
+            mat2str(value);
+
+        return;
+    end
+
+    try
+
+        txt = ...
+            char( ...
+                string(value));
+
+    catch
+
+        txt = ...
+            '<unprintable>';
+    end
+end
+
+
+% ========================================================================
 % MIGRATION OLD RESULTS
 % ========================================================================
 
@@ -858,6 +1441,10 @@ function migrate_old_electroporated_results(root_folder)
     end
 end
 
+
+% ========================================================================
+% NORMALIZE OLD ELECTROPORATED FIELDS
+% ========================================================================
 
 function loaded = normalize_electroporated_loaded_fields(loaded)
 
@@ -1062,7 +1649,7 @@ function data = init_electroporated_plane_struct_if_needed( ...
     end
 
     % ==============================================================
-    % Migration data.blue_plane déjà présent en mémoire
+    % Migration data.blue_plane
     % ==============================================================
 
     if isfield(data, 'blue_plane')
@@ -1584,7 +2171,7 @@ function data = set_empty_electroporated_plane( ...
 
     data.electroporated_plane. ...
         mask_cellpose_by_plane{m}{p} = ...
-        false(0, 0, 0);
+        false(0,0,0);
 
     data.electroporated_plane. ...
         props_cellpose_by_plane{m}{p} = ...
@@ -1601,7 +2188,7 @@ function data = set_empty_electroporated_plane( ...
 
     data.electroporated_plane. ...
         electroporated_match_mask_by_plane{m}{p} = ...
-        false(0, 1);
+        false(0,1);
 
     data.electroporated_plane. ...
         ops_suite2p_electroporated_by_plane{m}{p} = [];
