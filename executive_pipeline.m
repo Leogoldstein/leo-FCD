@@ -8,11 +8,10 @@ setup_python_env()
 
 % Choix du type (jm, FCD, SHAM)
 [choices, group_order] = choose_group_selection();
-
+%%
 % Choix du ou des animaux
 [root_folders, dataFolders_by_group, include_electroporated, automatic_selection] = select_data_folders_by_group(choices, group_order);
 
-%%
 [selected_groups, animal_date_list] = folder_selection(choices, group_order, dataFolders_by_group, selected_groups);
 
 output_folders = build_output_folders(selected_groups, root_folders, automatic_selection, include_electroporated);
@@ -31,7 +30,7 @@ selected_groups = process_selected_groups(selected_groups, include_electroporate
 %selected_groups = data_checking(selected_groups, include_electroporated);
 
 [selected_groups, results_table] = compute_DF(selected_groups, include_electroporated);
-
+%%
 [ ...
     selected_groups_development, ...
     selected_groups_adult, ...
