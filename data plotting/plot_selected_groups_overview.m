@@ -384,7 +384,11 @@ function day_table = extract_branch_counts( ...
             end
 
             position_z_by_plane(p) = ...
-                get_position_z_for_plane(metadata, m, p);
+                get_position_z_for_plane( ...
+                    metadata, ...
+                    branch_name, ...
+                    m, ...
+                    p);
         end
 
         valid_planes = isfinite(cells_by_plane);
@@ -1634,47 +1638,241 @@ end
 
 %% ========================================================================
 % Position Z for one recording and plane
+%
+% Nouvelle structure :
+%
+% metadata.gcamp_plane.PositionZ{recording}
+% metadata.electroporated_plane.PositionZ{recording}
+%
+% Chaque entrée de recording peut contenir :
+%   - un scalaire ;
+%   - un vecteur avec une position par plan ;
+%   - une cellule contenant ces valeurs ;
+%   - une chaîne provenant d'un fichier Excel.
 % =========================================================================
-function z = get_position_z_for_plane(metadata, recording_index, plane_index)
+function z = get_position_z_for_plane( ...
+        metadata, ...
+        branch_name, ...
+        recording_index, ...
+        plane_index)
 
     z = NaN;
 
-    if isempty(metadata) || ~isstruct(metadata) || ...
-            ~isfield(metadata, 'PositionZ') || ...
-            isempty(metadata.PositionZ)
+    if isempty(metadata) || ~isstruct(metadata)
         return;
     end
 
-    position_z = metadata.PositionZ;
-    raw = [];
+    %==============================================================%
+    % Déterminer la branche metadata
+    %==============================================================%
+    metadata_branch_name = '';
+
+    switch lower(char(string(branch_name)))
+
+        case 'gcamp_plane'
+
+            metadata_branch_name = 'gcamp_plane';
+
+        case {'blue_plane', 'electroporated_plane'}
+
+            metadata_branch_name = 'electroporated_plane';
+
+        otherwise
+
+            % Si une branche portant exactement le même nom existe,
+            % on peut quand même l'utiliser.
+            if isfield(metadata, branch_name)
+                metadata_branch_name = branch_name;
+            end
+    end
+
+    if isempty(metadata_branch_name) || ...
+            ~isfield(metadata, metadata_branch_name) || ...
+            ~isstruct(metadata.(metadata_branch_name))
+
+        return;
+    end
+
+    metadata_branch = ...
+        metadata.(metadata_branch_name);
+
+    %==============================================================%
+    % PositionZ absent
+    %==============================================================%
+    if ~isfield(metadata_branch, 'PositionZ') || ...
+            isempty(metadata_branch.PositionZ)
+
+        return;
+    end
+
+    position_z = ...
+        metadata_branch.PositionZ;
+
+    %==============================================================%
+    % Extraire la valeur du recording
+    %==============================================================%
+    recording_value = [];
 
     if iscell(position_z)
 
-        if size(position_z, 1) >= recording_index && ...
-                size(position_z, 2) >= plane_index
-            raw = position_z{recording_index, plane_index};
-        elseif isvector(position_z) && recording_index == 1 && ...
-                numel(position_z) >= plane_index
-            raw = position_z{plane_index};
+        if numel(position_z) >= recording_index
+            recording_value = ...
+                position_z{recording_index};
+        end
+
+    elseif isstring(position_z)
+
+        if numel(position_z) >= recording_index
+            recording_value = ...
+                position_z(recording_index);
+        elseif isscalar(position_z)
+            recording_value = ...
+                position_z;
+        end
+
+    elseif ischar(position_z)
+
+        % Cas exceptionnel : une seule valeur texte.
+        if recording_index == 1
+            recording_value = ...
+                position_z;
         end
 
     elseif isnumeric(position_z) || islogical(position_z)
 
+        % Compatibilité avec d'anciennes structures éventuelles.
         if isvector(position_z)
-            if recording_index == 1 && numel(position_z) >= plane_index
-                raw = position_z(plane_index);
-            elseif plane_index == 1 && numel(position_z) >= recording_index
-                raw = position_z(recording_index);
+
+            if recording_index == 1
+                recording_value = ...
+                    position_z;
+            elseif numel(position_z) >= recording_index
+                recording_value = ...
+                    position_z(recording_index);
             end
-        elseif size(position_z, 1) >= recording_index && ...
-                size(position_z, 2) >= plane_index
-            raw = position_z(recording_index, plane_index);
+
+        elseif size(position_z,1) >= recording_index
+
+            recording_value = ...
+                position_z(recording_index,:);
         end
     end
 
-    z = parse_position_z_value_local(raw);
+    if isempty(recording_value)
+        return;
+    end
+
+    %==============================================================%
+    % Extraire la position correspondant au plan demandé
+    %==============================================================%
+    z = extract_position_z_plane_local( ...
+        recording_value, ...
+        plane_index);
 end
 
+
+%% ========================================================================
+% Extract one plane from PositionZ
+% =========================================================================
+function z = extract_position_z_plane_local(raw, plane_index)
+
+    z = NaN;
+
+    if isempty(raw) || ...
+            nargin < 2 || ...
+            ~isfinite(plane_index) || ...
+            plane_index < 1
+
+        return;
+    end
+
+    plane_index = round(plane_index);
+
+    %==============================================================%
+    % Cell
+    %==============================================================%
+    if iscell(raw)
+
+        if isscalar(raw)
+
+            z = extract_position_z_plane_local( ...
+                raw{1}, ...
+                plane_index);
+
+            return;
+        end
+
+        if numel(raw) >= plane_index
+
+            z = parse_position_z_value_local( ...
+                raw{plane_index});
+        end
+
+        return;
+    end
+
+    %==============================================================%
+    % Numeric
+    %==============================================================%
+    if isnumeric(raw) || islogical(raw)
+
+        values = double(raw(:));
+        values = values(isfinite(values));
+
+        if isempty(values)
+            return;
+        end
+
+        % Cas normal : une position pour chaque plan.
+        if numel(values) >= plane_index
+
+            z = values(plane_index);
+
+        % Si une seule position existe, elle n'est valable que
+        % pour le premier plan.
+        elseif numel(values) == 1 && plane_index == 1
+
+            z = values(1);
+        end
+
+        return;
+    end
+
+    %==============================================================%
+    % String / char
+    %
+    % Important pour les valeurs relues depuis Excel.
+    % Exemple :
+    %
+    %   "-350 -362 -374"
+    %   "[-350,-362,-374]"
+    %
+    %==============================================================%
+    if isstring(raw) || ischar(raw) || iscategorical(raw)
+
+        txt = char(string(raw));
+        txt = strrep(txt, ',', '.');
+
+        tokens = regexp( ...
+            txt, ...
+            '[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?', ...
+            'match');
+
+        if isempty(tokens)
+            return;
+        end
+
+        values = ...
+            str2double(tokens);
+
+        values = ...
+            values(isfinite(values));
+
+        if numel(values) >= plane_index
+            z = values(plane_index);
+        end
+    end
+end
 function z = parse_position_z_value_local(raw)
 
     z = NaN;

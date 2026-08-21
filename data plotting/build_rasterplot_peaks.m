@@ -1,4 +1,4 @@
-function build_rasterplot_peaks(data, metadata, gcamp_output_folders, gcamp_root_folders, animal_path, current_line, current_animal_group, current_dates_group, current_ages_group, sampling_rate_group)
+function build_rasterplot_peaks(data, gcamp_output_folders, gcamp_root_folders, animal_path, current_line, current_animal_group, current_dates_group, current_ages_group, sampling_rate_group)
 
     numFolders = numel(gcamp_output_folders);
 
@@ -546,9 +546,45 @@ function build_rasterplot_peaks(data, metadata, gcamp_output_folders, gcamp_root
                     
                             ylabel(ax, sprintf('%d neurons', NCell));
                     
-                            title(ax, sprintf('%s - %s', ...
-                                char(string(metadata.DateName{mm})), ...
-                                char(string(current_ages_group{mm}))));
+                            %--------------------------------------
+                            % Date
+                            %--------------------------------------
+                            if numel(current_dates_group) >= mm && ...
+                                    ~isempty(current_dates_group{mm})
+                            
+                                date_text = char(string( ...
+                                    current_dates_group{mm}));
+                            
+                            else
+                            
+                                date_text = sprintf( ...
+                                    'Date_%d', ...
+                                    mm);
+                            end
+                            
+                            %--------------------------------------
+                            % Âge
+                            %--------------------------------------
+                            if numel(current_ages_group) >= mm && ...
+                                    ~isempty(current_ages_group{mm})
+                            
+                                age_text = char(string( ...
+                                    current_ages_group{mm}));
+                            
+                            else
+                            
+                                age_text = sprintf( ...
+                                    'Age_%d', ...
+                                    mm);
+                            end
+                            
+                            title( ...
+                                ax, ...
+                                sprintf('%s - %s', ...
+                                    date_text, ...
+                                    age_text), ...
+                                'Interpreter', ...
+                                'none');
                     
                             if idx == nRows
                                 xlabel(ax, 'Time (s)');

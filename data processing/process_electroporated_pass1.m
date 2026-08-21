@@ -563,11 +563,39 @@ function [processing_cache, data] = process_electroporated_pass1( ...
         end
 
         fprintf( ...
-            '\nCellpose | Recording group %d/%d | %d planes\n', ...
+            '\nCellpose | Group %d/%d | Plane %d/%d\n', ...
             m, ...
             numFolders, ...
+            p, ...
             cache.nPlanes);
 
+        % ======================================================
+        % Afficher les TSeries utilisés
+        % ======================================================
+        
+        current_gcamp_TSeries_path_m = ...
+            get_TSeries_path_from_column( ...
+                TSeries_paths, ...
+                m, ...
+                1);
+        
+        fprintf( ...
+            'GCaMP TSeries          : %s\n', ...
+            display_path_or_missing( ...
+                current_gcamp_TSeries_path_m));
+        
+        if include_electroporated == 1
+        
+            current_electroporated_TSeries_path_m = ...
+                get_group_entry( ...
+                    current_electroporated_TSeries_path, ...
+                    m);
+        
+            fprintf( ...
+                'Electroporated TSeries : %s\n', ...
+                display_path_or_missing( ...
+                    current_electroporated_TSeries_path_m));
+        end
         % ==========================================================
         % Metadata mismatch decision: ONCE per recording
         % ==========================================================
@@ -720,15 +748,6 @@ function [processing_cache, data] = process_electroporated_pass1( ...
 
                 continue;
             end
-
-            % ======================================================
-            % TSeries electroporated
-            % ======================================================
-
-            current_electroporated_TSeries_path_m = ...
-                get_group_entry( ...
-                    current_electroporated_TSeries_path, ...
-                    m);
 
             % ======================================================
             % Charger / traiter Cellpose
@@ -2314,5 +2333,90 @@ function plane_path = get_plane_path( ...
 
         plane_path = ...
             char(candidate);
+    end
+end
+
+% ========================================================================
+% GET TSERIES PATH FROM COLUMN
+% ========================================================================
+
+function path_out = get_TSeries_path_from_column( ...
+        TSeries_paths, ...
+        m, ...
+        column_idx)
+
+    path_out = '';
+
+    if isempty(TSeries_paths) || ...
+            ~iscell(TSeries_paths) || ...
+            m > size(TSeries_paths, 1) || ...
+            column_idx > size(TSeries_paths, 2)
+
+        return;
+    end
+
+    candidate = ...
+        TSeries_paths{m, column_idx};
+
+    % Certaines structures contiennent directement le chemin
+    if ischar(candidate) || ...
+            (isstring(candidate) && isscalar(candidate))
+
+        path_out = ...
+            char(candidate);
+
+        return;
+    end
+
+    % Ou une cellule contenant le chemin
+    if iscell(candidate) && ...
+            ~isempty(candidate)
+
+        candidate = ...
+            candidate{1};
+
+        if ischar(candidate) || ...
+                (isstring(candidate) && isscalar(candidate))
+
+            path_out = ...
+                char(candidate);
+        end
+    end
+end
+
+
+% ========================================================================
+% DISPLAY PATH OR MISSING
+% ========================================================================
+
+function txt = display_path_or_missing(path_in)
+
+    txt = '<missing>';
+
+    if isempty(path_in)
+        return;
+    end
+
+    if iscell(path_in)
+
+        if isempty(path_in)
+            return;
+        end
+
+        path_in = ...
+            path_in{1};
+    end
+
+    if ischar(path_in) || ...
+            (isstring(path_in) && isscalar(path_in))
+
+        path_in = ...
+            char(path_in);
+
+        if ~isempty(strtrim(path_in))
+
+            txt = ...
+                path_in;
+        end
     end
 end
