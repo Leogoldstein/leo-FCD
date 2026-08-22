@@ -12,6 +12,10 @@ setup_python_env()
 % Choix du ou des animaux
 [root_folders, dataFolders_by_group, include_electroporated, automatic_selection] = select_data_folders_by_group(choices, group_order);
 
+if ~exist('selected_groups','var')
+    selected_groups = [];
+end
+
 [selected_groups, animal_date_list] = folder_selection(choices, group_order, dataFolders_by_group, selected_groups);
 
 output_folders = build_output_folders(selected_groups, root_folders, automatic_selection, include_electroporated);
@@ -24,7 +28,7 @@ selected_groups = create_data(selected_groups);
 
 % Data processing
 selected_groups = process_selected_groups(selected_groups, include_electroporated);
-%%
+
 [selected_groups, output_folders] = DF_peak_detection(selected_groups, include_electroporated, automatic_selection, output_folders);
 %%
 %selected_groups = data_checking(selected_groups, include_electroporated);

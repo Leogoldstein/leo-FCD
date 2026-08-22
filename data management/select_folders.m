@@ -496,11 +496,26 @@ function folder_names = get_folder_list( ...
                         case 'gcamp'
 
                             folder_names = {
-                                % Add FCD Adult GCaMP
-                                % recordings here.
-                                %
-                                % Example:
-                                % 'mtorXX\animal\01-01-2026';
+
+                                'mtor29\1917\27-08-2025';
+                            
+                                'mtor31\1989\02-12-2025';
+                                'mtor31\1989\09-01-2026';
+                                'mtor31\1989\11-12-2025';
+                                'mtor31\1989\16-01-2026';
+                                'mtor31\1989\17-12-2025';
+                                'mtor31\1989\21-01-2026';
+                                'mtor31\1989\27-11-2025';
+                            
+                                'mtor31\1992\03-12-2025';
+                                'mtor31\1992\09-01-2026';
+                                'mtor31\1992\10-11-2025';
+                                'mtor31\1992\11-12-2025';
+                                'mtor31\1992\28-11-2025';
+                            
+                                'mtor31\1995\01-12-2025';
+                                'mtor31\1995\06-11-2025';
+                                'mtor31\1995\11-12-2025';
                             };
 
                         %------------------------------------------%
@@ -509,11 +524,19 @@ function folder_names = get_folder_list( ...
                         case 'electroporated'
 
                             folder_names = {
-                                % Add FCD Adult electroporated
-                                % recordings here.
-                                %
-                                % Example:
-                                % 'mtorXX\animal\01-01-2026';
+
+                                'mtor31\1989\14-11-2025';
+                                'mtor31\1989\17-11-2025';
+                                'mtor31\1989\24-11-2025';
+                            
+                                'mtor31\1992\14-11-2025';
+                                'mtor31\1992\15-01-2026';
+                                'mtor31\1992\17-12-2025';
+                                'mtor31\1992\26-11-2025';
+                            
+                                'mtor31\1995\07-11-2025';
+                                'mtor31\1995\17-11-2025';
+                                'mtor31\1995\25-11-2025';
                             };
 
                         otherwise
