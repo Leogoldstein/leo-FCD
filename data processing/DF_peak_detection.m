@@ -8,6 +8,10 @@ function [selected_groups, output_folders] = DF_peak_detection( ...
     type_names = fieldnames(selected_groups);
     peak_detection_mode = ask_initial_peak_detection_mode();
 
+    if isempty(peak_detection_mode)
+        return;
+    end
+
     for t = 1:numel(type_names)
 
         current_type = type_names{t};
@@ -183,17 +187,22 @@ function mode = ask_initial_peak_detection_mode()
     answer = questdlg( ...
         ['Choose peak detection mode for ALL animals / recordings / planes:' newline newline ...
          'Viewer mode: load existing detection and open the viewer.' newline ...
-         'Load data: load existing detection only, without opening the viewer.'], ...
+         'Process or load data: process or load existing detection only, without opening the viewer.'], ...
         'Peak detection mode', ...
         'Viewer mode', ...
-        'Load data', ...
-        'Load data');
+        'Process or load data', ...
+        'Cancel', ...
+        'Process or load data');
 
     switch answer
+
         case 'Viewer mode'
             mode = 'viewer';
 
-        otherwise
+        case 'Process or load data'
             mode = 'load_only';
+
+        otherwise
+            mode = [];
     end
 end
