@@ -65,28 +65,22 @@ function plot_recording_metrics_summary( ...
 
     %==============================================================%
     % Copie dans output global ?
+    %
+    % current_output_folder contient déjà Adult/Development.
     %==============================================================%
     save_in_current_output = ...
         current_automatic_selection ~= 0;
-
-
-    if save_in_current_output
-
-        if isempty(current_output_folder) || ...
-                exist( ...
-                    current_output_folder, ...
-                    'dir') ~= 7
-
-            warning( ...
-                ['Recording metrics summary: current_output_folder ' ...
-                 'missing or invalid. Global copies will be skipped.']);
-
-
-            save_in_current_output = ...
-                false;
-        end
+    
+    
+    if save_in_current_output && ...
+            isempty(current_output_folder)
+    
+        warning( ...
+            ['Recording metrics summary: current_output_folder ' ...
+             'is empty. Global copies will be skipped.']);
+    
+        save_in_current_output = false;
     end
-
 
     %==============================================================%
     % Nombre de recordings
@@ -188,6 +182,30 @@ function plot_recording_metrics_summary( ...
                     '';
             end
 
+            
+            %======================================================%
+            % Dossier de résumé
+            %
+            % current_output_folder/
+            %   line/
+            %       animal/
+            %           date/
+            %======================================================%
+            summary_output_folder = '';
+            
+            if save_in_current_output
+            
+                summary_output_folder = ...
+                    fullfile( ...
+                        current_output_folder, ...
+                        char(string(current_line)), ...
+                        char(string(current_animal)), ...
+                        char(string(current_date)));
+            
+                if exist(summary_output_folder,'dir') ~= 7
+                    mkdir(summary_output_folder);
+                end
+            end
 
             %======================================================%
             % FREQUENCY
@@ -389,7 +407,7 @@ function plot_recording_metrics_summary( ...
 
                 save_path_output = ...
                     fullfile( ...
-                        current_output_folder, ...
+                        summary_output_folder, ...
                         filename);
 
 

@@ -9,7 +9,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         age, ...
         plane, ...
         F, ...
-        fs, ...
+        fs_plane, ...
+        fs_motion, ...
         synchronous_frames, ...
         viewer_mode, ...
         DF_sg, ...
@@ -33,7 +34,6 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         focus_segs, ...
         motion_energy, ...
         metadata, ...
-        stim_frames, ...
         gcamp_output_folder, ...
         output_folder)
 
@@ -54,7 +54,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     opts = ...
         convert_opts_ms_to_frames( ...
             opts, ...
-            fs);
+            fs_plane);
 
     request_reprocess = false;
 
@@ -126,7 +126,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             F_processing( ...
                 F, ...
                 bad_frames, ...
-                fs, ...
+                fs_plane, ...
                 window_size);
 
         DF_sg = ...
@@ -260,7 +260,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     % APPDATA GLOBAL
     %==============================================================
 
-    setappdata(fig, 'fs', fs);
+    setappdata(fig, 'fs_plane', fs_plane);
+    setappdata(fig, 'fs_motion', fs_motion);
 
     setappdata(fig, 'F_raw', F);
 
@@ -366,8 +367,6 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'deviation', deviation);
     setappdata(fig, 'bad_frames', bad_frames);
     setappdata(fig, 'focus_segs', focus_segs);
-
-    setappdata(fig, 'stim_frames', stim_frames);
 
     setappdata( ...
         fig, ...
@@ -871,7 +870,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     box(ax1,'on');
 
-    xlabel(ax1,'Frames');
+    xlabel(ax1,'Time (s)');
     ylabel(ax1,'\DeltaF/F (SavGol)');
 
     plot(ax1,NaN,NaN,'k-');
@@ -942,11 +941,12 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     if ~isempty(dev)
 
-        plot( ...
-            axDev, ...
-            1:numel(dev), ...
-            dev, ...
-            'k-', ...
+        t_dev = (0:numel(dev)-1) / fs_plane;
+
+        plot(axDev,...
+            t_dev,...
+            dev,...
+            'k-',...
             'HitTest','off');
 
         dv = ...
@@ -987,11 +987,12 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         motion_energy = ...
             motion_energy(:).';
 
-        plot( ...
-            axMotion, ...
-            1:numel(motion_energy), ...
-            motion_energy, ...
-            'k-', ...
+        t_motion = (0:numel(motion_energy)-1) / fs_motion;
+
+        plot(axMotion,...
+            t_motion,...
+            motion_energy,...
+            'k-',...
             'HitTest','off');
 
     else
@@ -1005,35 +1006,54 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             'HorizontalAlignment','center');
     end
 
+    %==============================================================
+    % BAD-FRAME SEGMENTS FOR DISPLAY
+    %
+    % focus_segs is expressed in PLANE frames.
+    % Convert once to seconds because all linked X axes are in time.
+    %==============================================================
+
+    focus_segs_time = [];
+
     if ~isempty(focus_segs)
+
+        focus_segs_time = ...
+            double(focus_segs);
+
+        focus_segs_time(:,1) = ...
+            (focus_segs_time(:,1) - 1) / fs_plane;
+
+        focus_segs_time(:,2) = ...
+            focus_segs_time(:,2) / fs_plane;
+    end
+
+    setappdata( ...
+        fig, ...
+        'focus_segs_time', ...
+        focus_segs_time);
+
+    if ~isempty(focus_segs_time)
 
         hBad1 = ...
             create_badframe_patch( ...
                 ax1, ...
-                focus_segs);
+                focus_segs_time);
 
         setappdata(fig,'hBadPatch_ax1',hBad1);
 
         hBadF0 = ...
             create_badframe_patch( ...
                 axF0, ...
-                focus_segs);
+                focus_segs_time);
 
         setappdata(fig,'hBadPatch_axF0',hBadF0);
 
         hBadDev = ...
             create_badframe_patch( ...
                 axDev, ...
-                focus_segs);
+                focus_segs_time);
 
         setappdata(fig,'hBadPatch_axDev',hBadDev);
-
-        hBadMotion = ...
-            create_badframe_patch( ...
-                axMotion, ...
-                focus_segs);
-
-        setappdata(fig,'hBadPatch_axMotion',hBadMotion);
     end
 
     linkaxes( ...
@@ -1542,17 +1562,17 @@ end
 
 %% ===================== DETECTION PIPELINE =====================
 
-function opts = convert_opts_ms_to_frames(opts, fs)
+function opts = convert_opts_ms_to_frames(opts, fs_plane)
 
-    if nargin < 2 || isempty(fs) || ~isfinite(fs) || fs <= 0
-        error('convert_opts_ms_to_frames: fs invalide.');
+    if nargin < 2 || isempty(fs_plane) || ~isfinite(fs_plane) || fs_plane <= 0
+        error('convert_opts_ms_to_frames: fs_plane invalide.');
     end
 
-    opts.window_size  = max(1, round(opts.window_size_s * fs));
-    opts.refrac_fr    = max(1, round(opts.refrac_ms * fs / 1000));
+    opts.window_size  = max(1, round(opts.window_size_s * fs_plane));
+    opts.refrac_fr    = max(1, round(opts.refrac_ms * fs_plane / 1000));
 
     % SavGol maintenant normalisé au framerate par plan
-    sg = round(opts.savgol_win_ms * fs / 1000);
+    sg = round(opts.savgol_win_ms * fs_plane / 1000);
 
     % doit être impair et suffisamment grand pour le polynôme
     sg = max(opts.savgol_poly + 2, sg);
@@ -3326,41 +3346,19 @@ function refresh_data(fig)
     x = x(:).';
 
     T = numel(x);
-    t = 1:T;
 
-    xlim(ax,[1 max(1,T)]);
+    fs_plane = getappdata(fig,'fs_plane');
+    
+    t = (0:T-1)/fs_plane;
+
+    if T > 1
+        xlim(ax,[0 t(end)]);
+    else
+        xlim(ax,[0 1/fs_plane]);
+    end
+
     plot(ax,t,x,'k-');
     hold(ax,'on');
-
-    % ---- Stim frames ----
-    if isappdata(fig,'stim_frames')
-
-        stim_frames = getappdata(fig,'stim_frames');
-
-        if ~isempty(stim_frames)
-
-            stim_frames = round(stim_frames(:).');
-            stim_frames = stim_frames(isfinite(stim_frames));
-            stim_frames = stim_frames(stim_frames >= 1 & stim_frames <= T);
-
-            if ~isempty(stim_frames)
-
-                yl = ylim(ax);
-                y_stim = yl(1) + 0.03 * diff(yl);
-
-                plot(ax, ...
-                    stim_frames, ...
-                    repmat(y_stim, size(stim_frames)), ...
-                    'v', ...
-                    'LineStyle','none', ...
-                    'MarkerSize',8, ...
-                    'MarkerFaceColor',[0.45 0 0], ...
-                    'MarkerEdgeColor',[0.20 0 0], ...
-                    'LineWidth',1, ...
-                    'Clipping','on');
-            end
-        end
-    end
 
     % ---- Trace F0 ----
     if ~isempty(F0) && cell_id >= 1 && cell_id <= size(F0,1)
@@ -3377,12 +3375,26 @@ function refresh_data(fig)
         t_f0 = t(1:L);
         f0   = f0(1:L);
 
-        xlim(axF0,[1 max(1,T)]);
+        if T > 1
+            xlim(axF0,[0 t(end)]);
+        else
+            xlim(axF0,[0 1/fs_plane]);
+        end
+
         plot(axF0, t_f0, f0, 'b-');
 
-        if ~isempty(hBadF0) && isgraphics(hBadF0) && isappdata(fig,'focus_segs')
-            focus_segs = getappdata(fig,'focus_segs');
-            update_badframe_patch(hBadF0, focus_segs, ylim(axF0));
+        if ~isempty(hBadF0) && ...
+                isgraphics(hBadF0) && ...
+                isappdata(fig,'focus_segs_time')
+
+            focus_segs_time = ...
+                getappdata(fig,'focus_segs_time');
+
+            update_badframe_patch( ...
+                hBadF0, ...
+                focus_segs_time, ...
+                ylim(axF0));
+
             uistack(hBadF0,'bottom');
         end
 
@@ -3397,13 +3409,22 @@ function refresh_data(fig)
         set(axF0,'XTickLabel',[]);
     end
 
-    if ~isempty(hBad) && isgraphics(hBad) && isappdata(fig,'focus_segs')
-        focus_segs = getappdata(fig,'focus_segs');
-        update_badframe_patch(hBad, focus_segs, ylim(ax));
+    if ~isempty(hBad) && ...
+            isgraphics(hBad) && ...
+            isappdata(fig,'focus_segs_time')
+
+        focus_segs_time = ...
+            getappdata(fig,'focus_segs_time');
+
+        update_badframe_patch( ...
+            hBad, ...
+            focus_segs_time, ...
+            ylim(ax));
+
         uistack(hBad,'bottom');
     end
 
-    xlabel(ax,'Frames');
+    xlabel(ax,'Time (s)');
     ylabel(ax,'\DeltaF/F raw (SavGol)');
 
     % ---- Seuil ----
@@ -3411,7 +3432,14 @@ function refresh_data(fig)
         seuil_detection = getappdata(fig,'seuil_detection_last');
 
         if isfinite(seuil_detection)
-            plot(ax,[1 max(1,T)],[seuil_detection seuil_detection],':', ...
+
+            if T > 1
+                x_end = t(end);
+            else
+                x_end = 1/fs_plane;
+            end
+
+            plot(ax,[0 x_end],[seuil_detection seuil_detection],':', ...
                 'Color',[.7 .1 .1], ...
                 'LineWidth',1);
         end
@@ -3425,7 +3453,12 @@ function refresh_data(fig)
         pk = pk(isfinite(pk) & pk >= 1 & pk <= T);
 
         if ~isempty(pk)
-            plot(ax, pk, x(pk), '*', ...
+            t_pk = (pk-1)/fs_plane;
+
+            plot(ax,...
+                t_pk,...
+                x(pk),...
+                '*', ...
                 'Color', [0.85 0.1 0.1], ...
                 'MarkerSize', 5, ...
                 'LineWidth', 1);
@@ -3921,7 +3954,7 @@ function update_param(fig, field, value)
     viewer_mode = isappdata(fig,'viewer_mode') && getappdata(fig,'viewer_mode');
 
     opts = getappdata(fig,'opts');
-    fs   = getappdata(fig,'fs');
+    fs_plane   = getappdata(fig,'fs_plane');
 
     intFields = {'savgol_win_ms','window_size_s','refrac_ms'};
 
@@ -3933,7 +3966,7 @@ function update_param(fig, field, value)
     end
 
     opts.(field) = value;
-    opts = convert_opts_ms_to_frames(opts, fs);
+    opts = convert_opts_ms_to_frames(opts, fs_plane);
     setappdata(fig,'opts',opts);
 
     lbl = findobj(fig,'Tag',['lbl_' field]);
@@ -3996,7 +4029,7 @@ function update_param(fig, field, value)
 
         F_cell = F(cid,:);
 
-        [DF_raw_cell, F0_cell] = F_processing(F_cell, bad_frames, fs, opts.window_size);
+        [DF_raw_cell, F0_cell] = F_processing(F_cell, bad_frames, fs_plane, opts.window_size);
 
         DF_sg_cell = savgol_transform(DF_raw_cell, opts);
         noise_cell = estimate_noise(DF_raw_cell);

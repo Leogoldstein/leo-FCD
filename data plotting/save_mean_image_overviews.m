@@ -303,74 +303,58 @@ function save_mean_image_overviews( ...
         % =========================================================
         % Destination summary
         %
-        % Uniquement pour automatic selection.
+        % current_output_folder contient déjà Adult/Development.
+        % On crée uniquement :
+        %
+        %   line/
+        %       animal/
+        %           date/
         % =========================================================
-
+        
         summary_png_path = '';
         summary_destination_available = false;
-
-
+        
         if current_automatic_selection
-
+        
+            summary_folder = ...
+                fullfile( ...
+                    current_output_folder, ...
+                    line_clean, ...
+                    animal_clean, ...
+                    date_clean);
+        
+            if exist(summary_folder, 'dir') ~= 7
+                mkdir(summary_folder);
+            end
+        
             name_parts = { ...
                 line_clean, ...
                 animal_clean, ...
                 date_clean, ...
                 age_clean};
-
+        
             name_parts = ...
-                name_parts( ...
-                    ~cellfun( ...
-                        @isempty, ...
-                        name_parts));
-
-
+                name_parts(~cellfun(@isempty, name_parts));
+        
             if isempty(name_parts)
-
+        
                 summary_base_name = ...
                     'mean_images_overview';
-
+        
             else
-
-                summary_base_name = [ ...
-                    strjoin( ...
-                        name_parts, ...
-                        '_'), ...
-                    '_mean_images_overview'];
+        
+                summary_base_name = ...
+                    [strjoin(name_parts, '_') ...
+                     '_mean_images_overview'];
             end
-
-
-            if ~isempty(current_output_folder)
-
-                if ~isfolder(current_output_folder)
-
-                    try
-
-                        mkdir(current_output_folder);
-
-                    catch ME
-
-                        warning( ...
-                            'save_mean_image_overviews:SummaryFolderFailed', ...
-                            ['Unable to create current_output_folder: ' ...
-                             '%s'], ...
-                            ME.message);
-                    end
-                end
-
-
-                if isfolder(current_output_folder)
-
-                    summary_png_path = ...
-                        fullfile( ...
-                            current_output_folder, ...
-                            [summary_base_name '.png']);
-
-                    summary_destination_available = true;
-                end
-            end
+        
+            summary_png_path = ...
+                fullfile( ...
+                    summary_folder, ...
+                    [summary_base_name '.png']);
+        
+            summary_destination_available = true;
         end
-
 
         % =========================================================
         % Vérification indépendante des destinations

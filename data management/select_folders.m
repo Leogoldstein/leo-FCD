@@ -528,6 +528,12 @@ function folder_names = get_folder_list( ...
                                 'mtor35\2134\05-02-2026(2)'; %deuxieme enregistrement vers 230, plus profond par rapport au 1er du meme jour
                                 'mtor35\2134\19-01-2026';
                                 'mtor35\2134\27-01-2026';
+
+                                'mtor40\2308\26-02-2026';
+
+                                'mtor40\2309\05-03-2026';
+                                'mtor40\2309\05-03-2026(2)';
+                              
                             };
 
                         %------------------------------------------%
@@ -551,6 +557,12 @@ function folder_names = get_folder_list( ...
                                 'mtor31\1995\25-11-2025';
 
                                 'mtor35\2133\27-01-2026';
+
+                                'mtor40\2314\05-03-2026';
+                                'mtor40\2314\05-03-2026(2)';
+                                'mtor40\2314\20-02-2026';
+                                'mtor40\2314\25-02-2026';
+
                             };
 
                         otherwise

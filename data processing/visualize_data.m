@@ -345,7 +345,6 @@ function visualize_data( ...
                 gcamp_root_folders, ...
                 current_animal);
 
-
             %======================================================%
             % Couplage fonctionnel
             %
