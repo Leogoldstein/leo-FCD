@@ -634,17 +634,42 @@ function processedFolders = process_folder(folderPath)
                         secondLevelSubFolders(k).name;
 
                     if secondLevelSubFolders(k).isdir && ...
-                            ~ismember(secondName, {'.', '..'}) && ...
-                            is_date_format(secondName)
-
-                        processedFolders{end + 1} = ...
-                            fullfile( ...
-                                subFolderPath, ...
-                                secondName, ...
-                                filesep);
+                        ~ismember(secondName, {'.', '..'}) && ...
+                        is_date_format(secondName)
+                
+                        dateFolder = fullfile(subFolderPath, secondName);
+                    
+                        %==========================================================%
+                        % Autre structure:
+                        %
+                        % mTorXX
+                        %   animal
+                        %      date
+                        %         before
+                        %         after
+                        %==========================================================%
+                        beforeFolder = fullfile(dateFolder, 'before');
+                        afterFolder  = fullfile(dateFolder, 'after');
+                    
+                        if isfolder(beforeFolder)
+                    
+                            processedFolders{end + 1} = ...
+                                [beforeFolder filesep];
+                    
+                        elseif isfolder(afterFolder)
+                    
+                            processedFolders{end + 1} = ...
+                                [afterFolder filesep];
+                    
+                        else
+                    
+                            processedFolders{end + 1} = ...
+                                [dateFolder filesep];
+                    
+                        end
                     end
                 end
-
+                
             %------------------------------------------------------%
             % Standard animal/date structure
             %------------------------------------------------------%

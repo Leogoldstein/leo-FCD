@@ -72,7 +72,7 @@ function output_folders = build_output_folders( ...
         fprintf('Output folders: selected_groups vide.\n');
 
         output_folders = {};
-        return;
+        %return;
     end
 
     if ~isstruct(selected_groups)

@@ -86,8 +86,28 @@ function [selected_groups, animal_date_list] = folder_selection( ...
 
     new_selected_groups = group_selected_groups_by_type(selected_groups_flat);
 
-    [new_selected_groups, ~] = create_gcamp_output_folders(new_selected_groups);
-
+    % ==========================================================
+    % Les dossiers Suite2p sont optionnels à ce stade.
+    % Leur absence ne doit pas supprimer la sélection.
+    % ==========================================================
+    if has_any_suite2p_in_selected_groups(new_selected_groups)
+    
+        [new_selected_groups, ~] = ...
+            create_gcamp_output_folders(new_selected_groups);
+    
+    else
+    
+        fprintf('\n============================================\n');
+        fprintf('AUCUN DOSSIER SUITE2P TROUVÉ\n');
+        fprintf('============================================\n');
+        fprintf(['Les recordings sont conservés.\n' ...
+                 'gcamp_root et gcamp_output restent vides.\n' ...
+                 'Le pipeline peut continuer vers create_metadata.\n\n']);
+    
+        new_selected_groups = ...
+            initialize_empty_gcamp_paths(new_selected_groups);
+    end
+    
     selected_groups = update_selected_groups_in_place( ...
         selected_groups, ...
         new_selected_groups);
@@ -204,14 +224,38 @@ function selected_groups = build_selected_groups_minimal( ...
             this_tseries = get_cell_safe(TSeriesPaths, idx(j), 1);
 
             if ~isempty(this_tseries)
-                [date_path, ~, ~] = fileparts( ...
-                    force_char_path(this_tseries));
 
+                this_tseries = ...
+                    force_char_path(this_tseries);
+            
+                tseries_parent = ...
+                    fileparts(this_tseries);
+            
+                [parent_path, parent_name] = ...
+                    fileparts(tseries_parent);
+            
+                if strcmpi(parent_name, 'before') || ...
+                   strcmpi(parent_name, 'after')
+            
+                    % Exemple :
+                    % ...\2469\10-06-2026\after\TSeries...
+                    %
+                    % La vraie date est :
+                    % ...\2469\10-06-2026
+                    date_path = parent_path;
+            
+                else
+            
+                    % Structure classique :
+                    % ...\2469\10-06-2026\TSeries...
+                    date_path = tseries_parent;
+                end
+            
                 date_group_path{j} = date_path;
-
-                [~, date_name] = fileparts( ...
-                    force_char_path(date_path));
-
+            
+                [~, date_name] = ...
+                    fileparts(date_path);
+            
                 dates{j} = date_name;
 
             elseif ~isempty(animal_path) && ~isempty(dates_group{j})
@@ -253,21 +297,35 @@ end
 function selected_groups = update_selected_groups_in_place( ...
         old_selected_groups, new_selected_groups)
 
-    if isempty(new_selected_groups) || ...
+    % ==========================================================
+    % IMPORTANT :
+    % L'absence de Suite2p / gcamp_output / fallmat ne signifie
+    % PAS qu'aucun recording n'a été sélectionné.
+    %
+    % On ne doit donc jamais effacer une sélection existante
+    % simplement parce que new_selected_groups est vide.
+    % ==========================================================
+
+    if nargin < 2 || ...
             ~isstruct(new_selected_groups) || ...
             isempty(fieldnames(new_selected_groups))
 
-        selected_groups = struct();
-        fprintf('\nAucune donnée sélectionnée : selected_groups vidé.\n');
-        return;
-    end
+        if nargin >= 1 && ...
+                isstruct(old_selected_groups) && ...
+                ~isempty(fieldnames(old_selected_groups))
 
-    if nargin < 1 || ...
-            isempty(old_selected_groups) || ...
-            ~isstruct(old_selected_groups)
+            selected_groups = old_selected_groups;
 
-        selected_groups = new_selected_groups;
-        fprintf('\nNouvelle sélection créée sans historique précédent.\n');
+            fprintf(['\nAucun nouveau groupe à fusionner : ' ...
+                     'selected_groups existant conservé.\n']);
+
+        else
+
+            selected_groups = struct();
+
+            fprintf('\nAucun groupe disponible.\n');
+        end
+
         return;
     end
 
@@ -1159,10 +1217,39 @@ function animal_path = infer_animal_path_from_tseries(TSeriesPaths, idx)
         return;
     end
 
-    [date_path, ~, ~] = fileparts(firstPath);
-    [animal_path, ~, ~] = fileparts(date_path);
-end
+    firstPath = force_char_path(firstPath);
 
+    % Dossier contenant le TSeries
+    tseries_parent = fileparts(firstPath);
+
+    % ======================================================
+    % Structure possible :
+    %
+    % animal\date\TSeries...
+    %
+    % ou
+    %
+    % animal\date\before\TSeries...
+    % animal\date\after\TSeries...
+    % ======================================================
+
+    [parent_path, parent_name] = fileparts(tseries_parent);
+
+    if strcmpi(parent_name, 'before') || ...
+       strcmpi(parent_name, 'after')
+
+        % tseries_parent = ...\date\before|after
+        % parent_path    = ...\date
+        date_path = parent_path;
+
+    else
+
+        % tseries_parent = ...\date
+        date_path = tseries_parent;
+    end
+
+    animal_path = fileparts(date_path);
+end
 
 
 function out = subset_rows_safe_4col(C, idx)
@@ -1259,5 +1346,97 @@ function selected_groups_by_type = group_selected_groups_by_type(selected_groups
 
         selected_groups_by_type.(matlab.lang.makeValidName(current_type)) = ...
             selected_groups_flat(idx);
+    end
+end
+
+function tf = has_any_suite2p_in_selected_groups(selected_groups)
+
+    tf = false;
+
+    if isempty(selected_groups) || ...
+            ~isstruct(selected_groups) || ...
+            isempty(fieldnames(selected_groups))
+        return;
+    end
+
+    type_names = fieldnames(selected_groups);
+
+    for t = 1:numel(type_names)
+
+        current_type = type_names{t};
+
+        for k = 1:numel(selected_groups.(current_type))
+
+            group = selected_groups.(current_type)(k);
+
+            if ~isfield(group, 'paths') || ...
+               ~isstruct(group.paths) || ...
+               ~isfield(group.paths, 'suite2p') || ...
+               isempty(group.paths.suite2p)
+                continue;
+            end
+
+            suite2p_group = group.paths.suite2p;
+
+            if ~iscell(suite2p_group)
+                continue;
+            end
+
+            for r = 1:size(suite2p_group,1)
+                for c = 1:size(suite2p_group,2)
+
+                    value = suite2p_group{r,c};
+
+                    while iscell(value)
+
+                        if isempty(value)
+                            value = [];
+                            break;
+                        end
+
+                        value = value{1};
+                    end
+
+                    if ~isempty(value)
+                        tf = true;
+                        return;
+                    end
+                end
+            end
+        end
+    end
+end
+
+function selected_groups = initialize_empty_gcamp_paths(selected_groups)
+
+    if isempty(selected_groups) || ...
+            ~isstruct(selected_groups)
+        return;
+    end
+
+    type_names = fieldnames(selected_groups);
+
+    for t = 1:numel(type_names)
+
+        current_type = type_names{t};
+
+        for k = 1:numel(selected_groups.(current_type))
+
+            group = selected_groups.(current_type)(k);
+
+            nRecordings = get_recording_count(group);
+
+            if ~isfield(selected_groups.(current_type)(k), 'paths') || ...
+               ~isstruct(selected_groups.(current_type)(k).paths)
+
+                selected_groups.(current_type)(k).paths = struct();
+            end
+
+            selected_groups.(current_type)(k).paths.gcamp_root = ...
+                cell(nRecordings,1);
+
+            selected_groups.(current_type)(k).paths.gcamp_output = ...
+                cell(nRecordings,1);
+        end
     end
 end

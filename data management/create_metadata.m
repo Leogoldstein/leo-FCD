@@ -38,6 +38,13 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
             selected_groups.(current_type)(k).metadata = ...
                 empty_metadata_container();
 
+            if ~isfield(selected_groups.(current_type)(k), 'paths') || ...
+                    ~isstruct(selected_groups.(current_type)(k).paths)
+
+                fprintf('Aucun champ paths disponible -> skip animal.\n');
+                continue;
+            end
+
             current_paths = ...
                 selected_groups.(current_type)(k).paths;
 
@@ -45,7 +52,8 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
             % Dossier animal
             % ==========================================================
 
-            if isfield(current_paths, 'animal')
+            if isfield(current_paths, 'animal') && ...
+                    ~isempty(current_paths.animal)
 
                 current_ani_path_group = ...
                     force_char_path( ...
@@ -58,7 +66,15 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             % ==========================================================
             % TSeries
-            % ==============================================================
+            %
+            % Colonnes :
+            %   1 = GCaMP
+            %   2 = canal électroporé potentiel
+            %   3 = canal électroporé potentiel
+            %   4 = Green
+            %
+            % Suite2p n'est PAS nécessaire ici.
+            % ==========================================================
 
             if isfield(current_paths, 'TSeries') && ...
                     ~isempty(current_paths.TSeries)
@@ -75,7 +91,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             % ==========================================================
             % XML
-            % ==============================================================
+            % ==========================================================
 
             if isfield(current_paths, 'xml') && ...
                     ~isempty(current_paths.xml)
@@ -93,39 +109,24 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
             end
 
             % ==========================================================
-            % Suite2p
-            %
-            % Utilisé uniquement par get_electroporated_channel pour
-            % conserver exactement la même logique que le reste du
-            % pipeline.
-            % ==============================================================
-
-            if isfield(current_paths, 'suite2p') && ...
-                    ~isempty(current_paths.suite2p)
-
-                current_suite2p_group = ...
-                    force_4col( ...
-                        current_paths.suite2p);
-
-            else
-
-                current_suite2p_group = ...
-                    cell( ...
-                        size(current_TSeries_group,1), ...
-                        4);
-            end
-
-            % ==========================================================
             % Nombre d'enregistrements
-            % ==============================================================
+            %
+            % IMPORTANT :
+            % aucune dépendance à Suite2p.
+            % ==========================================================
 
             nRecordings = max([ ...
                 size(current_TSeries_group,1), ...
                 size(current_xml_group,1), ...
-                size(current_suite2p_group,1), ...
                 numel_safe_field( ...
                     selected_groups.(current_type)(k), ...
                     'dates')]);
+
+            if nRecordings == 0
+
+                fprintf('Aucun recording disponible -> skip animal.\n');
+                continue;
+            end
 
             current_TSeries_group = ...
                 resize_4col( ...
@@ -137,35 +138,29 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
                     current_xml_group, ...
                     nRecordings);
 
-            current_suite2p_group = ...
-                resize_4col( ...
-                    current_suite2p_group, ...
-                    nRecordings);
-
             % ==========================================================
             % Déterminer le canal électroporé
             %
-            % 1 = GCaMP
-            % 2 = Red
-            % 3 = Blue
-            % 4 = Green
+            % IMPORTANT :
+            % cette détection repose uniquement sur les TSeries.
+            % Elle fonctionne donc même si Suite2p n'existe pas encore.
             %
-            % get_electroporated_channel sélectionne 2 ou 3.
-            % ==============================================================
+            % Priorité :
+            %   colonne 2
+            %   puis colonne 3
+            % ==========================================================
 
-            [ ...
-                ~, ...
-                ~, ...
-                electroporated_column_by_group ...
-            ] = ...
-                get_electroporated_channel( ...
+            electroporated_column_by_group = ...
+                find_electroporated_column_from_tseries( ...
                     current_TSeries_group, ...
-                    current_suite2p_group, ...
                     nRecordings);
 
             % ==========================================================
             % GCaMP root
-            % ==============================================================
+            %
+            % Peut être totalement vide.
+            % Les metadata seront quand même extraites depuis XML.
+            % ==========================================================
 
             if isfield(current_paths, 'gcamp_root') && ...
                     ~isempty(current_paths.gcamp_root)
@@ -175,16 +170,27 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             else
 
-                this_group_folders = {};
+                this_group_folders = ...
+                    cell(nRecordings,1);
             end
 
             if isrow(this_group_folders)
                 this_group_folders = this_group_folders(:);
             end
 
+            if numel(this_group_folders) < nRecordings
+
+                tmp = cell(nRecordings,1);
+
+                tmp(1:numel(this_group_folders)) = ...
+                    this_group_folders(:);
+
+                this_group_folders = tmp;
+            end
+
             % ==========================================================
             % Fichiers Excel groupés
-            % ==============================================================
+            % ==========================================================
 
             group_output_path_gcamp = '';
             group_output_path_electroporated = '';
@@ -205,7 +211,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             % ==========================================================
             % Charger fichiers groupés existants
-            % ==============================================================
+            % ==========================================================
 
             [ ...
                 group_table_gcamp, ...
@@ -228,13 +234,13 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             % ==========================================================
             % BOUCLE RECORDINGS
-            % ==============================================================
+            % ==========================================================
 
             for idx = 1:nRecordings
 
                 % ======================================================
                 % Date
-                % ==============================================================
+                % ======================================================
 
                 date_name = '';
 
@@ -254,7 +260,9 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % GCaMP root du recording
-                % ==============================================================
+                %
+                % Peut être vide.
+                % ======================================================
 
                 this_folder = '';
 
@@ -268,7 +276,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % XML GCaMP = colonne 1
-                % ==============================================================
+                % ======================================================
 
                 gcamp_xml_file = ...
                     get_matrix_path( ...
@@ -278,10 +286,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % XML électroporé
-                %
-                % Utilise exactement la colonne retournée par
-                % get_electroporated_channel.
-                % ==============================================================
+                % ======================================================
 
                 electroporated_xml_file = '';
 
@@ -330,7 +335,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % GCaMP
-                % ==============================================================
+                % ======================================================
 
                 [ ...
                     selected_groups.(current_type)(k).metadata.gcamp_plane, ...
@@ -348,7 +353,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Electroporated
-                % ==============================================================
+                % ======================================================
 
                 if ~isempty(electroporated_xml_file)
 
@@ -374,7 +379,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Tableau global : GCaMP
-                % ==============================================================
+                % ======================================================
 
                 if ~isempty(rowTable_gcamp) && ...
                         height(rowTable_gcamp) >= 1
@@ -390,7 +395,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Tableau global : Electroporated
-                % ==============================================================
+                % ======================================================
 
                 if ~isempty(rowTable_electroporated) && ...
                         height(rowTable_electroporated) >= 1
@@ -406,7 +411,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Ajouter GCaMP au fichier groupé
-                % ==============================================================
+                % ======================================================
 
                 if ~isempty(rowTable_gcamp) && ...
                         height(rowTable_gcamp) >= 1
@@ -425,7 +430,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Ajouter electroporated au fichier groupé
-                % ==============================================================
+                % ======================================================
 
                 if ~isempty(rowTable_electroporated) && ...
                         height(rowTable_electroporated) >= 1
@@ -445,7 +450,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
             % ==========================================================
             % Sauvegarde groupée GCaMP
-            % ==============================================================
+            % ==========================================================
 
             if save_to_excel
 
@@ -461,7 +466,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
 
                 % ======================================================
                 % Sauvegarde groupée Electroporated
-                % ==============================================================
+                % ======================================================
 
                 save_group_metadata_table( ...
                     group_table_electroporated, ...
@@ -511,6 +516,9 @@ function [metadata_branch, rowTable] = ...
 
     % ==============================================================
     % Fichier local
+    %
+    % Facultatif :
+    % si gcamp_root est vide, aucune sauvegarde locale par recording.
     % ==============================================================
 
     output_path_single = '';
@@ -1104,6 +1112,51 @@ end
 
 
 %% ========================================================================
+% DÉTECTION CANAL ÉLECTROPORÉ SANS SUITE2P
+% ========================================================================
+
+function electroporated_column_by_group = ...
+        find_electroporated_column_from_tseries( ...
+            TSeries_group, ...
+            nRecordings)
+
+    electroporated_column_by_group = ...
+        nan(nRecordings,1);
+
+    TSeries_group = ...
+        resize_4col( ...
+            TSeries_group, ...
+            nRecordings);
+
+    for idx = 1:nRecordings
+
+        % ======================================================
+        % Colonne 2 prioritaire, puis colonne 3.
+        %
+        % Aucune vérification Suite2p ici :
+        % create_metadata doit fonctionner avant Suite2p.
+        % ======================================================
+
+        for col = [2 3]
+
+            current_path = ...
+                get_matrix_path( ...
+                    TSeries_group, ...
+                    idx, ...
+                    col);
+
+            if isempty(current_path)
+                continue;
+            end
+
+            electroporated_column_by_group(idx) = col;
+            break;
+        end
+    end
+end
+
+
+%% ========================================================================
 % HELPERS
 % ========================================================================
 
@@ -1156,6 +1209,12 @@ function path_char = force_char_path(path_in)
     end
 
     if iscell(path_char)
+
+        if isempty(path_char)
+            path_char = '';
+            return;
+        end
+
         path_char = path_char{1};
     end
 
@@ -1291,6 +1350,16 @@ function path = get_matrix_path(C, row, col)
 
     value = ...
         C{row,col};
+
+    while iscell(value)
+
+        if isempty(value)
+            value = '';
+            break;
+        end
+
+        value = value{1};
+    end
 
     if isempty(value)
         return;

@@ -1,7 +1,119 @@
 function [selected_groups, daytime] = create_gcamp_output_folders(selected_groups)
 
+    daytime = '';
+
     if nargin < 1 || isempty(selected_groups)
-        daytime = '';
+        return;
+    end
+
+    %==========================================================
+    % Vérifier s'il existe au moins un vrai dossier Suite2p
+    %==========================================================
+    has_any_suite2p = false;
+
+    type_names = fieldnames(selected_groups);
+
+    for t = 1:numel(type_names)
+
+        current_type = type_names{t};
+
+        for k = 1:numel(selected_groups.(current_type))
+
+            current_group = selected_groups.(current_type)(k);
+
+            if ~isfield(current_group, 'paths') || ...
+               ~isstruct(current_group.paths) || ...
+               ~isfield(current_group.paths, 'suite2p') || ...
+               isempty(current_group.paths.suite2p)
+
+                continue;
+            end
+
+            suite2p_group = current_group.paths.suite2p;
+
+            nDates = 0;
+
+            if isfield(current_group.paths, 'date') && ...
+                    iscell(current_group.paths.date)
+
+                nDates = size(current_group.paths.date, 1);
+
+                if nDates == 1 && isrow(current_group.paths.date)
+                    nDates = numel(current_group.paths.date);
+                end
+            end
+
+            suite2p_group = force_4col(suite2p_group, nDates);
+
+            for d = 1:size(suite2p_group,1)
+
+                this_path = suite2p_group{d,1};
+
+                while iscell(this_path)
+                    if isempty(this_path)
+                        this_path = '';
+                        break;
+                    end
+                    this_path = this_path{1};
+                end
+
+                if ~isempty(this_path)
+                    has_any_suite2p = true;
+                    break;
+                end
+            end
+
+            if has_any_suite2p
+                break;
+            end
+        end
+
+        if has_any_suite2p
+            break;
+        end
+    end
+
+    %==========================================================
+    % Aucun Suite2p dans toute la sélection
+    %
+    % Ce n'est PAS une erreur.
+    % On conserve les recordings pour pouvoir faire notamment
+    % create_metadata ensuite.
+    %==========================================================
+    if ~has_any_suite2p
+
+        fprintf('\n============================================\n');
+        fprintf('AUCUN DOSSIER SUITE2P TROUVÉ\n');
+        fprintf('============================================\n');
+        fprintf(['Aucun dossier de processing GCaMP ne sera créé.\n' ...
+                 'Les recordings sont conservés pour la suite du pipeline,\n' ...
+                 'notamment create_metadata.\n\n']);
+
+        for t = 1:numel(type_names)
+
+            current_type = type_names{t};
+
+            for k = 1:numel(selected_groups.(current_type))
+
+                current_group = selected_groups.(current_type)(k);
+
+                %----------------------------------------------
+                % Nombre de recordings / dates
+                %----------------------------------------------
+                nDates = get_number_of_dates_for_gcamp_paths( ...
+                    current_group);
+
+                %----------------------------------------------
+                % Toujours créer les champs, même vides
+                %----------------------------------------------
+                selected_groups.(current_type)(k).paths.gcamp_root = ...
+                    cell(nDates,1);
+
+                selected_groups.(current_type)(k).paths.gcamp_output = ...
+                    cell(nDates,1);
+            end
+        end
+
         return;
     end
 
@@ -54,9 +166,7 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
     end
 
     %==========================================================
-    % Si création d'une nouvelle version :
-    % demander une seule fois si les anciens résultats doivent
-    % être récupérés
+    % Si création d'une nouvelle version
     %==========================================================
     processing_choice = '';
 
@@ -79,9 +189,7 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
     end
 
     %==========================================================
-    % Si création d'une nouvelle version :
-    % demander une seule fois si les anciennes versions doivent
-    % être supprimées
+    % Suppression anciennes versions
     %==========================================================
     delete_choice = 'n';
 
@@ -106,25 +214,23 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
     %==========================================================
     % Traitement de tous les types et animaux
     %==========================================================
-    type_names = fieldnames(selected_groups);
-
     for t = 1:numel(type_names)
 
         current_type = type_names{t};
 
         for k = 1:numel(selected_groups.(current_type))
 
-            current_animal = ...
-                selected_groups.(current_type)(k).animal;
+            current_group = selected_groups.(current_type)(k);
+
+            current_animal = current_group.animal;
 
             %--------------------------------------------------
             % Chemins des dates
             %--------------------------------------------------
-            if isfield(selected_groups.(current_type)(k), 'paths') && ...
-               isfield(selected_groups.(current_type)(k).paths, 'date')
+            if isfield(current_group, 'paths') && ...
+               isfield(current_group.paths, 'date')
 
-                date_group_paths = ...
-                    selected_groups.(current_type)(k).paths.date;
+                date_group_paths = current_group.paths.date;
 
             else
                 date_group_paths = {};
@@ -140,12 +246,12 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
             %--------------------------------------------------
             % Chemins Suite2p
             %--------------------------------------------------
-            if isfield(selected_groups.(current_type)(k), 'paths') && ...
-               isfield(selected_groups.(current_type)(k).paths, 'suite2p') && ...
-               ~isempty(selected_groups.(current_type)(k).paths.suite2p)
+            if isfield(current_group, 'paths') && ...
+               isfield(current_group.paths, 'suite2p') && ...
+               ~isempty(current_group.paths.suite2p)
 
                 current_suite2p_group = ...
-                    selected_groups.(current_type)(k).paths.suite2p;
+                    current_group.paths.suite2p;
 
             else
                 current_suite2p_group = cell(nDates, 4);
@@ -155,7 +261,50 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
                 force_4col(current_suite2p_group, nDates);
 
             current_gcamp_folders_group = ...
-                current_suite2p_group(:, 1);
+                current_suite2p_group(:,1);
+
+            %--------------------------------------------------
+            % Vérifier si CET animal/date possède du Suite2p
+            %--------------------------------------------------
+            has_suite2p_this_group = false;
+
+            for d = 1:numel(current_gcamp_folders_group)
+
+                this_path = current_gcamp_folders_group{d};
+
+                while iscell(this_path)
+                    if isempty(this_path)
+                        this_path = '';
+                        break;
+                    end
+                    this_path = this_path{1};
+                end
+
+                if ~isempty(this_path)
+                    has_suite2p_this_group = true;
+                    break;
+                end
+            end
+
+            %--------------------------------------------------
+            % Aucun Suite2p pour cet animal :
+            % NE PAS BLOQUER
+            %--------------------------------------------------
+            if ~has_suite2p_this_group
+
+                fprintf( ...
+                    ['  %s : aucun Suite2p -> ' ...
+                     'gcamp_root/gcamp_output laissés vides.\n'], ...
+                    char(string(current_animal)));
+
+                selected_groups.(current_type)(k).paths.gcamp_root = ...
+                    cell(nDates,1);
+
+                selected_groups.(current_type)(k).paths.gcamp_output = ...
+                    cell(nDates,1);
+
+                continue;
+            end
 
             %--------------------------------------------------
             % Renommage éventuel des anciens dossiers
@@ -182,6 +331,53 @@ function [selected_groups, daytime] = create_gcamp_output_folders(selected_group
 
             selected_groups.(current_type)(k).paths.gcamp_output = ...
                 gcamp_output_folders;
+        end
+    end
+end
+
+
+function nDates = get_number_of_dates_for_gcamp_paths(group)
+
+    nDates = 0;
+
+    if isfield(group, 'dates') && iscell(group.dates)
+        nDates = max(nDates, numel(group.dates));
+    end
+
+    if isfield(group, 'ages') && iscell(group.ages)
+        nDates = max(nDates, numel(group.ages));
+    end
+
+    if isfield(group, 'paths') && isstruct(group.paths)
+
+        fields = {'date', 'TSeries', 'xml', 'suite2p', 'fallmat'};
+
+        for i = 1:numel(fields)
+
+            fn = fields{i};
+
+            if ~isfield(group.paths, fn) || ...
+                    ~iscell(group.paths.(fn))
+                continue;
+            end
+
+            C = group.paths.(fn);
+
+            if isempty(C)
+                continue;
+            end
+
+            if size(C,1) == 1 && size(C,2) > 1 && ...
+                    ~strcmp(fn, 'TSeries') && ...
+                    ~strcmp(fn, 'xml') && ...
+                    ~strcmp(fn, 'suite2p') && ...
+                    ~strcmp(fn, 'fallmat')
+
+                nDates = max(nDates, numel(C));
+
+            else
+                nDates = max(nDates, size(C,1));
+            end
         end
     end
 end
