@@ -26,9 +26,9 @@ selected_groups = create_data(selected_groups);
 
 %recap_all = create_summary_sheets(selected_groups);
 
-%% Data processing
+% Data processing
 selected_groups = process_selected_groups(selected_groups, include_electroporated);
-
+%%
 [selected_groups, output_folders] = DF_peak_detection(selected_groups, include_electroporated, automatic_selection, output_folders);
 %%
 %%selected_groups = data_checking(selected_groups, include_electroporated);

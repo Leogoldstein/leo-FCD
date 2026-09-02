@@ -59,6 +59,8 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
     % pas redéclencher le contrôle une seconde fois.
     aligned_was_loaded_existing = false;
 
+    open_gcamp_after_masks_check = false;
+
     % ==============================================================
     % Paths du plan courant
     % ==============================================================
@@ -1392,10 +1394,33 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
         end
 
         % ==========================================================
-        % CHECK GCAMP REFERENCE MASKS
+        % CHECK / MODIFY ELECTROPORATED MASKS
+        %
+        % Si les masques Electroporated sont modifiés :
+        %
+        %   1) conserver le nouveau *_seg.npy Electroporated
+        %   2) supprimer l'ancienne référence GCaMP TIFF
+        %   3) supprimer l'ancien *_seg.npy GCaMP
+        %   4) supprimer results_electroporated.mat
+        %   5) supprimer results_combined.mat
+        %
+        % Le FLUX CELLPOSE FINAL reconstruira ensuite :
+        %
+        %   Electroporated masks
+        %          ↓
+        %   nouvelle gcamp_reference.tif
+        %          ↓
+        %   nouveau gcamp_reference_seg.npy
+        %          ↓
+        %   demande à l'utilisateur s'il veut ouvrir Cellpose
+        %
         % ==========================================================
 
         if strcmp(answer_control, 'Masks')
+
+            % Après contrôle des masques Electroporated,
+            % proposer systématiquement le contrôle GCaMP.
+            open_gcamp_after_masks_check = true;
 
             [ ...
                 aligned_folder, ...
@@ -1405,116 +1430,105 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
                 fileparts( ...
                     aligned_image_path);
 
-            if isempty(gcamp_output_folder_plane)
-
-                gcamp_reference_folder = ...
-                    aligned_folder;
-
-            else
-
-                gcamp_reference_folder = ...
-                    gcamp_output_folder_plane;
-            end
-
-            electroporated_name = ...
-                regexprep( ...
-                    aligned_name, ...
-                    '^aligned_', ...
-                    '');
-
-            gcamp_reference_name = ...
-                [ ...
-                    'gcamp_reference_' ...
-                    electroporated_name ...
-                ];
-
-            gcamp_reference_path = ...
+            electroporated_seg_path = ...
                 fullfile( ...
-                    gcamp_reference_folder, ...
-                    [gcamp_reference_name '.tif']);
-
-            gcamp_seg_path = ...
-                fullfile( ...
-                    gcamp_reference_folder, ...
-                    [gcamp_reference_name '_seg.npy']);
+                    aligned_folder, ...
+                    [aligned_name '_seg.npy']);
 
             % ------------------------------------------------------
-            % Les masques à vérifier sont les masques FINAUX de la
-            % référence GCaMP, pas ceux de l'image Electroporated
-            % alignée.
+            % Pas de masques Electroporated existants
             % ------------------------------------------------------
 
-            if ~isfile(gcamp_reference_path) || ...
-                    ~isfile(gcamp_seg_path)
+            if ~isfile(electroporated_seg_path)
 
                 fprintf('\n');
                 fprintf('============================================\n');
-                fprintf('NO EXISTING GCAMP REFERENCE MASKS\n');
+                fprintf('NO EXISTING ELECTROPORATED MASKS\n');
                 fprintf('Plane: %d\n', p);
                 fprintf('============================================\n');
+
                 fprintf( ...
-                    ['No existing GCaMP reference masks were found.\n' ...
+                    ['No existing Electroporated masks were found.\n' ...
                      'The normal Cellpose workflow will be used.\n']);
 
             else
 
                 fprintf('\n');
                 fprintf('============================================\n');
-                fprintf('CHECK GCAMP REFERENCE MASKS\n');
+                fprintf('CHECK ELECTROPORATED MASKS\n');
                 fprintf('Plane: %d\n', p);
                 fprintf('============================================\n');
-                fprintf('GCaMP reference:\n%s\n', gcamp_reference_path);
-                fprintf('Masks:\n%s\n', gcamp_seg_path);
-                fprintf('Save with Ctrl+S only if masks are modified.\n');
+
+                fprintf( ...
+                    'Aligned Electroporated image:\n%s\n', ...
+                    aligned_image_path);
+
+                fprintf( ...
+                    'Masks:\n%s\n', ...
+                    electroporated_seg_path);
+
+                fprintf( ...
+                    'Save with Ctrl+S only if masks are modified.\n');
 
                 % --------------------------------------------------
-                % Le fichier *_seg.npy existe déjà.
-                % launch_cellpose_from_matlab renvoie son chemin
-                % uniquement s'il a réellement été modifié.
+                % Ouvrir les masques ELECTROPORATED
                 % --------------------------------------------------
 
-                modified_gcamp_seg_path = ...
+                modified_electroporated_seg_path = ...
                     launch_cellpose_from_matlab( ...
-                        gcamp_reference_path, ...
+                        aligned_image_path, ...
                         false, ...
-                        'Check GCaMP reference masks');
+                        'Check Electroporated masks');
 
                 % ==================================================
-                % MASQUES GCAMP MODIFIES ET SAUVEGARDES
+                % MASQUES ELECTROPORATED MODIFIES
                 % ==================================================
 
-                if ~isempty(modified_gcamp_seg_path)
+                if ~isempty(modified_electroporated_seg_path)
 
                     fprintf('\n');
                     fprintf('============================================\n');
-                    fprintf('GCAMP REFERENCE MASKS MODIFIED\n');
+                    fprintf('ELECTROPORATED MASKS MODIFIED\n');
                     fprintf('Plane: %d\n', p);
                     fprintf('============================================\n');
 
-                    npy_file_path = ...
+                    electroporated_seg_path = ...
                         validate_existing_file( ...
-                            modified_gcamp_seg_path);
+                            modified_electroporated_seg_path);
 
-                    % ----------------------------------------------
-                    % Le nouveau masque GCaMP est le masque FINAL :
-                    % il doit être conservé.
-                    % Le masque Electroporated n'est pas modifié.
-                    % Seuls les résultats calculés avec les anciens
-                    % masques doivent être invalidés.
-                    % ----------------------------------------------
+                    % ------------------------------------------------
+                    % Supprimer complètement l'ancienne référence
+                    % GCaMP :
+                    %
+                    %   gcamp_reference_*.tif
+                    %   gcamp_reference_*_seg.npy
+                    %
+                    % Elle sera reconstruite plus bas à partir des
+                    % nouveaux masques Electroporated.
+                    % ------------------------------------------------
+
+                    delete_gcamp_reference_for_alignment( ...
+                        aligned_image_path, ...
+                        gcamp_output_folder_plane);
+
+                    % ------------------------------------------------
+                    % Les résultats calculés avec les anciens masques
+                    % deviennent invalides.
+                    % ------------------------------------------------
 
                     delete_electroporated_and_combined_results( ...
                         filePath);
 
                     fprintf( ...
-                        ['Updated GCaMP reference masks are kept.\n' ...
-                         'Electroporated and Combined results will be reprocessed.\n']);
+                        ['Electroporated masks were modified.\n' ...
+                         'Old GCaMP reference and masks were deleted.\n' ...
+                         'A new GCaMP reference will now be created.\n']);
 
                 else
 
                     fprintf( ...
-                        ['GCaMP reference masks were not modified.\n' ...
-                         'Existing masks and results are kept.\n']);
+                        ['Electroporated masks were not modified.\n' ...
+                         'Existing GCaMP reference and results are kept.\n']);
                 end
             end
         end
@@ -1609,7 +1623,9 @@ function [meanImg_channels, aligned_image, npy_file_path, meanImg] = ...
                         aligned_image_path, ...
                         meanImg_channels{1}, ...
                         gcamp_output_folder_plane, ...
-                        electroporated_seg_path);
+                        electroporated_seg_path, ...
+                        open_gcamp_after_masks_check, ...
+                        filePath);
 
                 npy_file_path = ...
                     validate_existing_file( ...
@@ -2102,17 +2118,26 @@ end
 
 
 % ========================================================================
-% DELETE GCAMP SEGMENTATION ASSOCIATED WITH ALIGNMENT
+% DELETE GCAMP REFERENCE ASSOCIATED WITH ALIGNMENT
 %
-% Utilisé lorsqu'un masque Electroporated EXISTANT a été corrigé dans
-% Cellpose sans refaire le recalage.
+% Utilisé lorsque les masques Electroporated existants ont été modifiés.
 %
-% Le nouveau *_seg.npy Electroporated est conservé.
-% Seul le *_seg.npy GCaMP dérivé de l'ancien masque est supprimé afin
-% qu'il soit reconstruit depuis le nouveau masque Electroporated.
+% Les nouveaux masques Electroporated sont conservés.
+%
+% En revanche la référence GCaMP dérivée des anciens masques devient
+% obsolète :
+%
+%   - gcamp_reference_*.tif
+%   - gcamp_reference_*_seg.npy
+%
+% Les deux sont donc supprimés.
+%
+% create_and_refine_masks_on_gcamp reconstruira ensuite automatiquement
+% une nouvelle référence GCaMP et demandera à l'utilisateur s'il souhaite
+% l'ouvrir dans Cellpose.
 % ========================================================================
 
-function delete_gcamp_segmentation_for_alignment( ...
+function delete_gcamp_reference_for_alignment( ...
         aligned_image_path, ...
         gcamp_output_folder_plane)
 
@@ -2145,6 +2170,23 @@ function delete_gcamp_segmentation_for_alignment( ...
             'gcamp_reference_' ...
             electroporated_name ...
         ];
+
+    % ==============================================================
+    % GCaMP reference TIFF
+    % ==============================================================
+
+    gcamp_reference_path = ...
+        fullfile( ...
+            gcamp_output_folder_plane, ...
+            [gcamp_reference_name '.tif']);
+
+    delete_file_if_present( ...
+        gcamp_reference_path, ...
+        'GCaMP reference image');
+
+    % ==============================================================
+    % GCaMP reference segmentation
+    % ==============================================================
 
     gcamp_seg_path = ...
         fullfile( ...
@@ -6027,7 +6069,17 @@ function final_npy_path = ...
             aligned_electroporated_path, ...
             gcamp_image, ...
             output_folder, ...
-            electroporated_seg_path)
+            electroporated_seg_path, ...
+            open_existing_gcamp_masks, ...
+            filePath)
+
+    if nargin < 5 || isempty(open_existing_gcamp_masks)
+        open_existing_gcamp_masks = false;
+    end
+
+    if nargin < 6
+        filePath = [];
+    end
 
     final_npy_path = [];
 
@@ -6075,12 +6127,12 @@ function final_npy_path = ...
                 electroporated_name ...
                 '.tif' ...
             ]);
-    
+
     fprintf( ...
-    ['Existing aligned-electroporated masks found.\n' ...
-     'Continuing with GCaMP reference:\n%s\n'], ...
-    gcamp_reference_path);
-    
+        ['Existing aligned-electroporated masks found.\n' ...
+         'Continuing with GCaMP reference:\n%s\n'], ...
+        gcamp_reference_path);
+
     [gcamp_folder, gcamp_name, ~] = ...
         fileparts( ...
             gcamp_reference_path);
@@ -6091,7 +6143,16 @@ function final_npy_path = ...
             [gcamp_name '_seg.npy']);
 
     % ==============================================================
-    % Déjà corrigé
+    % GCAMP DEJA CORRIGE
+    %
+    % Si on arrive ici apres le choix "Masks", les masques
+    % Electroporated viennent d'etre controles.
+    %
+    % La reference GCaMP existe deja :
+    %   - proposer son ouverture dans Cellpose ;
+    %   - si elle est modifiee, conserver le nouveau masque et
+    %     supprimer results_electroporated.mat / results_combined.mat ;
+    %   - sinon conserver le masque et les resultats existants.
     % ==============================================================
 
     if isfile(existing_gcamp_seg_path)
@@ -6104,11 +6165,82 @@ function final_npy_path = ...
             'Existing corrected GCaMP masks found:\n%s\n', ...
             final_npy_path);
 
+        if open_existing_gcamp_masks && ...
+                isfile(gcamp_reference_path)
+
+            answer = ...
+                questdlg( ...
+                    ['Electroporated masks check completed.' ...
+                     newline newline ...
+                     'Do you want to open the GCaMP reference in Cellpose?'], ...
+                    'GCaMP reference', ...
+                    'Yes', ...
+                    'No', ...
+                    'Yes');
+
+            if strcmp(answer, 'Yes')
+
+                fprintf('\n');
+                fprintf('============================================\n');
+                fprintf('CHECK GCAMP REFERENCE MASKS\n');
+                fprintf('============================================\n');
+                fprintf('GCaMP reference:\n%s\n', ...
+                    gcamp_reference_path);
+
+                modified_gcamp_seg_path = ...
+                    launch_cellpose_from_matlab( ...
+                        gcamp_reference_path, ...
+                        false, ...
+                        'Check GCaMP reference masks');
+
+                if ~isempty(modified_gcamp_seg_path)
+
+                    fprintf('\n');
+                    fprintf('============================================\n');
+                    fprintf('GCAMP REFERENCE MASKS MODIFIED\n');
+                    fprintf('============================================\n');
+
+                    final_npy_path = ...
+                        validate_existing_file( ...
+                            modified_gcamp_seg_path);
+
+                    delete_electroporated_and_combined_results( ...
+                        filePath);
+
+                    fprintf( ...
+                        ['GCaMP reference masks were modified.\n' ...
+                         'Updated GCaMP masks are kept.\n' ...
+                         'Electroporated and Combined results were deleted ' ...
+                         'and will be reprocessed.\n']);
+
+                else
+
+                    final_npy_path = ...
+                        validate_existing_file( ...
+                            existing_gcamp_seg_path);
+
+                    fprintf( ...
+                        ['GCaMP reference masks were not modified.\n' ...
+                         'Existing masks and results are kept.\n']);
+                end
+
+            else
+
+                final_npy_path = ...
+                    validate_existing_file( ...
+                        existing_gcamp_seg_path);
+
+                fprintf( ...
+                    ['GCaMP reference check skipped.\n' ...
+                     'Existing GCaMP masks are kept.\n']);
+            end
+        end
+
         return;
     end
 
     % ==============================================================
-    % Vérifier source masks
+    % Verifier source masks
     % ==============================================================
 
     if isempty(electroporated_seg_path) || ...
@@ -6131,7 +6263,7 @@ function final_npy_path = ...
     end
 
     % ==============================================================
-    % Créer référence GCaMP
+    % Creer reference GCaMP
     % ==============================================================
 
     if ~isfile(gcamp_reference_path)
@@ -6147,6 +6279,10 @@ function final_npy_path = ...
                 gcamp_reference_path, ...
                 'tif');
 
+            fprintf( ...
+                'New GCaMP reference created:\n%s\n', ...
+                gcamp_reference_path);
+
         catch ME
 
             warning( ...
@@ -6159,7 +6295,7 @@ function final_npy_path = ...
     end
 
     % ==============================================================
-    % Copier masques electroporated vers GCaMP
+    % Copier masques Electroporated vers GCaMP
     % ==============================================================
 
     success = ...
@@ -6178,42 +6314,74 @@ function final_npy_path = ...
         return;
     end
 
+    % A ce stade, meme sans ouverture de Cellpose, le masque transfere
+    % est deja un masque GCaMP valide.
+    final_npy_path = ...
+        validate_existing_file( ...
+            existing_gcamp_seg_path);
+
     % ==============================================================
     % Correction GCaMP
     % ==============================================================
 
     fprintf('\n');
     fprintf('GCaMP mask correction\n');
-    fprintf('Save with Ctrl+S, then close Cellpose.\n');
-    
+    fprintf('Save with Ctrl+S only if masks are modified.\n');
+
     answer = ...
         questdlg( ...
             ['Do you want to launch Cellpose on the GCaMP reference?' ...
              newline newline ...
-             'Save with Ctrl+S, then close Cellpose.'], ...
+             'Save with Ctrl+S only if masks are modified, then close Cellpose.'], ...
             'GCaMP reference', ...
             'Yes', ...
             'No', ...
             'Yes');
-    
+
     if ~strcmp(answer, 'Yes')
-    
+
         fprintf( ...
-            'GCaMP Cellpose cancelled by user.\n');
-    
-        final_npy_path = [];
+            ['GCaMP Cellpose skipped by user.\n' ...
+             'Transferred GCaMP masks are kept.\n']);
+
         return;
     end
 
-    final_npy_path = ...
+    modified_gcamp_seg_path = ...
         launch_cellpose_from_matlab( ...
             gcamp_reference_path, ...
             false, ...
             'Correct masks on GCaMP');
 
-    final_npy_path = ...
-        validate_existing_file( ...
-            final_npy_path);
+    if ~isempty(modified_gcamp_seg_path)
+
+        fprintf('\n');
+        fprintf('============================================\n');
+        fprintf('GCAMP REFERENCE MASKS MODIFIED\n');
+        fprintf('============================================\n');
+
+        final_npy_path = ...
+            validate_existing_file( ...
+                modified_gcamp_seg_path);
+
+        delete_electroporated_and_combined_results( ...
+            filePath);
+
+        fprintf( ...
+            ['Updated GCaMP masks are kept.\n' ...
+             'Electroporated and Combined results were deleted ' ...
+             'and will be reprocessed.\n']);
+
+    else
+
+        final_npy_path = ...
+            validate_existing_file( ...
+                existing_gcamp_seg_path);
+
+        fprintf( ...
+            ['GCaMP reference masks were not modified.\n' ...
+             'Transferred masks are kept.\n']);
+    end
 end
 
 

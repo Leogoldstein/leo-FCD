@@ -589,18 +589,18 @@ function processedFolders = process_folder(folderPath)
     [~, folderName] = fileparts(folderPath);
 
     %==============================================================%
-    % Folder itself is already a date folder
+    % Le dossier sélectionné est déjà un dossier date
     %==============================================================%
     if is_date_format(folderName)
 
-        processedFolders{end + 1} = ...
-            [folderPath, filesep];
+        processedFolders = ...
+            resolve_before_after_for_date(folderPath);
 
         return;
     end
 
     %==============================================================%
-    % Search subfolders
+    % Recherche des sous-dossiers
     %==============================================================%
     subFolders = dir(folderPath);
 
@@ -608,86 +608,93 @@ function processedFolders = process_folder(folderPath)
 
         subFolderName = subFolders(j).name;
 
-        if subFolders(j).isdir && ...
-                ~ismember(subFolderName, {'.', '..'})
+        if ~subFolders(j).isdir || ...
+                ismember(subFolderName, {'.', '..'})
+            continue;
+        end
 
-            subFolderPath = fullfile( ...
-                folderPath, ...
-                subFolderName);
+        subFolderPath = fullfile( ...
+            folderPath, ...
+            subFolderName);
 
-            %------------------------------------------------------%
-            % mTOR structure:
-            %
-            % mTorXX
-            %   animal
-            %       date
-            %------------------------------------------------------%
-            if contains(folderName, 'mTor') || ...
-                    contains(folderName, 'mtor')
+        %------------------------------------------------------%
+        % Structure mTOR :
+        %
+        % mTorXX
+        %   animal
+        %       date
+        %
+        % ou :
+        %
+        % mTorXX
+        %   animal
+        %       date
+        %           before
+        %           after
+        %------------------------------------------------------%
+        if contains(folderName, 'mTor', 'IgnoreCase', true)
 
-                secondLevelSubFolders = ...
-                    dir(subFolderPath);
+            secondLevelSubFolders = ...
+                dir(subFolderPath);
 
-                for k = 1:numel(secondLevelSubFolders)
+            for k = 1:numel(secondLevelSubFolders)
 
-                    secondName = ...
-                        secondLevelSubFolders(k).name;
+                secondName = ...
+                    secondLevelSubFolders(k).name;
 
-                    if secondLevelSubFolders(k).isdir && ...
-                        ~ismember(secondName, {'.', '..'}) && ...
-                        is_date_format(secondName)
-                
-                        dateFolder = fullfile(subFolderPath, secondName);
-                    
-                        %==========================================================%
-                        % Autre structure:
-                        %
-                        % mTorXX
-                        %   animal
-                        %      date
-                        %         before
-                        %         after
-                        %==========================================================%
-                        beforeFolder = fullfile(dateFolder, 'before');
-                        afterFolder  = fullfile(dateFolder, 'after');
-                    
-                        if isfolder(beforeFolder)
-                    
-                            processedFolders{end + 1} = ...
-                                [beforeFolder filesep];
-                    
-                        elseif isfolder(afterFolder)
-                    
-                            processedFolders{end + 1} = ...
-                                [afterFolder filesep];
-                    
-                        else
-                    
-                            processedFolders{end + 1} = ...
-                                [dateFolder filesep];
-                    
-                        end
-                    end
+                if ~secondLevelSubFolders(k).isdir || ...
+                        ismember(secondName, {'.', '..'}) || ...
+                        ~is_date_format(secondName)
+
+                    continue;
                 end
-                
-            %------------------------------------------------------%
-            % Standard animal/date structure
-            %------------------------------------------------------%
-            elseif is_date_format(subFolderName)
 
-                processedFolders{end + 1} = ...
-                    [subFolderPath, filesep];
+                dateFolder = ...
+                    fullfile( ...
+                        subFolderPath, ...
+                        secondName);
+
+                folders_to_add = ...
+                    resolve_before_after_for_date( ...
+                        dateFolder);
+
+                processedFolders = [ ...
+                    processedFolders, ...
+                    folders_to_add]; %#ok<AGROW>
             end
+
+        %------------------------------------------------------%
+        % Structure standard :
+        %
+        % animal
+        %   date
+        %
+        % ou :
+        %
+        % animal
+        %   date
+        %       before
+        %       after
+        %------------------------------------------------------%
+        elseif is_date_format(subFolderName)
+
+            folders_to_add = ...
+                resolve_before_after_for_date( ...
+                    subFolderPath);
+
+            processedFolders = [ ...
+                processedFolders, ...
+                folders_to_add]; %#ok<AGROW>
         end
     end
 
     %==============================================================%
-    % Nothing found -> retain input folder
+    % Rien trouvé -> conserver le dossier fourni
     %==============================================================%
     if isempty(processedFolders)
 
         processedFolders{end + 1} = ...
-            [folderPath, filesep];
+            [folderPath filesep];
     end
 end
 
@@ -791,5 +798,145 @@ function ok = is_valid_ymd(y, m, d)
     catch
 
         ok = false;
+    end
+end
+
+function processedFolders = resolve_before_after_for_date(dateFolder)
+
+    processedFolders = {};
+
+    beforeFolder = ...
+        fullfile(dateFolder, 'before');
+
+    afterFolder = ...
+        fullfile(dateFolder, 'after');
+
+    has_before = ...
+        isfolder(beforeFolder);
+
+    has_after = ...
+        isfolder(afterFolder);
+
+    %==============================================================%
+    % Aucun before / after
+    %
+    % On conserve directement la date.
+    %==============================================================%
+    if ~has_before && ~has_after
+
+        processedFolders{1} = ...
+            [dateFolder filesep];
+
+        return;
+    end
+
+    %==============================================================%
+    % Uniquement BEFORE
+    %
+    % On demande si l'utilisateur veut utiliser before
+    % ou rester sur la date.
+    %==============================================================%
+    if has_before && ~has_after
+
+        choice = questdlg( ...
+            sprintf( ...
+                ['Le dossier sélectionné contient un sous-dossier "before".\n\n' ...
+                 '%s\n\n' ...
+                 'Quel dossier utiliser ?'], ...
+                dateFolder), ...
+            'Before / Date', ...
+            'before', ...
+            'Date', ...
+            'Cancel', ...
+            'before');
+
+        switch choice
+
+            case 'before'
+
+                processedFolders{1} = ...
+                    [beforeFolder filesep];
+
+            case 'Date'
+
+                processedFolders{1} = ...
+                    [dateFolder filesep];
+
+            otherwise
+
+                processedFolders = {};
+        end
+
+        return;
+    end
+
+    %==============================================================%
+    % Uniquement AFTER
+    %==============================================================%
+    if ~has_before && has_after
+
+        choice = questdlg( ...
+            sprintf( ...
+                ['Le dossier sélectionné contient un sous-dossier "after".\n\n' ...
+                 '%s\n\n' ...
+                 'Quel dossier utiliser ?'], ...
+                dateFolder), ...
+            'After / Date', ...
+            'after', ...
+            'Date', ...
+            'Cancel', ...
+            'after');
+
+        switch choice
+
+            case 'after'
+
+                processedFolders{1} = ...
+                    [afterFolder filesep];
+
+            case 'Date'
+
+                processedFolders{1} = ...
+                    [dateFolder filesep];
+
+            otherwise
+
+                processedFolders = {};
+        end
+
+        return;
+    end
+
+    %==============================================================%
+    % BEFORE + AFTER présents
+    %==============================================================%
+
+    choice = questdlg( ...
+        sprintf( ...
+            ['Le dossier sélectionné contient "before" et "after".\n\n' ...
+             '%s\n\n' ...
+             'Quel dossier utiliser ?'], ...
+            dateFolder), ...
+        'Before / After', ...
+        'before', ...
+        'after', ...
+        'Cancel', ...
+        'after');
+
+    switch choice
+
+        case 'before'
+
+            processedFolders{1} = ...
+                [beforeFolder filesep];
+
+        case 'after'
+
+            processedFolders{1} = ...
+                [afterFolder filesep];
+
+        otherwise
+
+            processedFolders = {};
     end
 end

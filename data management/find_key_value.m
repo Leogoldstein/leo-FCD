@@ -416,8 +416,13 @@ n_planes = 1;
 z_positions = [];
 bidirectionalZ = '';
 
-% Position Z globale, utile quand le plan du milieu n'est pas répété
-% dans les Frames
+% ==============================================================
+% Position Z globale
+%
+% Prairie peut ne pas répéter positionCurrent dans une Frame
+% lorsque la valeur est identique à l'état courant.
+% La position globale sert donc d'état initial.
+% ==============================================================
 global_z = NaN;
 
 pvNodesGlobal = xmlDoc.getElementsByTagName('PVStateValue');
@@ -427,6 +432,7 @@ for i = 0:pvNodesGlobal.getLength-1
     pvNode = pvNodesGlobal.item(i);
 
     if strcmp(char(pvNode.getAttribute('key')), 'positionCurrent')
+
         [~, ~, z_str] = get_position_xyz(pvNode);
 
         if ~isempty(z_str)
@@ -436,6 +442,10 @@ for i = 0:pvNodesGlobal.getLength-1
     end
 end
 
+
+% ==============================================================
+% Recherche de la première séquence ZSeries
+% ==============================================================
 seqNodes = xmlDoc.getElementsByTagName('Sequence');
 
 for s = 0:seqNodes.getLength-1
@@ -456,85 +466,102 @@ for s = 0:seqNodes.getLength-1
         continue;
     end
 
+
+    % ==========================================================
+    % Nombre de plans
+    % ==========================================================
     frameNodesSeq = seqNode.getElementsByTagName('Frame');
     n_planes = frameNodesSeq.getLength;
 
     z_positions = nan(1, n_planes);
 
+
+    % ==========================================================
+    % État Z courant
+    %
+    % On démarre avec positionCurrent globale.
+    %
+    % Si une Frame contient un nouveau positionCurrent :
+    %     -> on met à jour current_z
+    %
+    % Sinon :
+    %     -> elle conserve la dernière valeur connue.
+    %
+    % C'est important car Prairie n'écrit pas forcément
+    % positionCurrent dans chaque Frame.
+    % ==========================================================
+    current_z = global_z;
+
+
     for f = 0:n_planes-1
 
         frameNode = frameNodesSeq.item(f);
 
+        % ------------------------------------------------------
+        % Numéro du plan
+        % ------------------------------------------------------
         if frameNode.hasAttribute('index')
-            plane_idx = str2double(char(frameNode.getAttribute('index')));
+            plane_idx = str2double( ...
+                char(frameNode.getAttribute('index')));
         else
             plane_idx = f + 1;
         end
 
-        if isnan(plane_idx) || plane_idx < 1 || plane_idx > n_planes
+        if isnan(plane_idx) || ...
+                plane_idx < 1 || ...
+                plane_idx > n_planes
+
             plane_idx = f + 1;
         end
 
+
+        % ------------------------------------------------------
+        % Recherche d'une nouvelle position Z dans cette Frame
+        % ------------------------------------------------------
         pvNodes = frameNode.getElementsByTagName('PVStateValue');
+
+        frame_has_z = false;
 
         for p = 0:pvNodes.getLength-1
 
             pvNode = pvNodes.item(p);
 
-            if ~strcmp(char(pvNode.getAttribute('key')), 'positionCurrent')
+            if ~strcmp( ...
+                    char(pvNode.getAttribute('key')), ...
+                    'positionCurrent')
                 continue;
             end
 
             [~, ~, z_str] = get_position_xyz(pvNode);
 
             if ~isempty(z_str)
-                z_positions(plane_idx) = str2double(z_str);
+
+                current_z = str2double(z_str);
+                frame_has_z = true;
+                break;
             end
         end
-    end
 
-    % Si un ou plusieurs plans n'ont pas de position Z dans leur Frame,
-    % on reconstruit à partir de la position globale.
-    if any(isnan(z_positions)) && ~isnan(global_z)
 
-        missing_idx = find(isnan(z_positions));
-
-        if n_planes == 1
-            z_positions(1) = global_z;
-
-        elseif n_planes == 3
-            % Cas Prairie classique :
-            % plan 1 = global - dz
-            % plan 2 = global
-            % plan 3 = global + dz
-            known_idx = find(~isnan(z_positions));
-
-            if numel(known_idx) >= 1
-                dz_candidates = abs(z_positions(known_idx) - global_z);
-                dz_candidates = dz_candidates(dz_candidates > 1e-9);
-
-                if ~isempty(dz_candidates)
-                    dz = median(dz_candidates);
-                else
-                    dz = NaN;
-                end
-
-                if ~isnan(dz)
-                    z_positions = [global_z - dz, global_z, global_z + dz];
-                else
-                    z_positions(missing_idx) = global_z;
-                end
-            else
-                z_positions(missing_idx) = global_z;
-            end
-
-        else
-            % Fallback général : on remplit les absents avec global_z
-            z_positions(missing_idx) = global_z;
+        % ------------------------------------------------------
+        % Si positionCurrent n'est pas présente dans la Frame,
+        % on conserve current_z.
+        %
+        % Pour la première Frame, current_z = global_z.
+        % ------------------------------------------------------
+        if isfinite(current_z)
+            z_positions(plane_idx) = current_z;
         end
+
     end
 
+
+    % ==========================================================
+    % Nettoyage
+    % ==========================================================
     z_positions = z_positions(isfinite(z_positions));
+
+    % Une seule ZSeries suffit pour déterminer les plans.
     break;
 end
 

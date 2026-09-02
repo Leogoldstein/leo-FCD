@@ -136,12 +136,23 @@ function [xord, yord] = extract_cellpose_outline(outlines_py, idx)
 
     % Nx2 ou 2xN
     if size(contour,2) == 2
-        xord = contour(:,1);
-        yord = contour(:,2);
+
+        xord = ...
+            contour(:,1) + 1;
+    
+        yord = ...
+            contour(:,2) + 1;
+    
     elseif size(contour,1) == 2
-        xord = contour(1,:)';
-        yord = contour(2,:)';
+    
+        xord = ...
+            contour(1,:)' + 1;
+    
+        yord = ...
+            contour(2,:)' + 1;
+    
     else
+    
         return;
     end
 
