@@ -1,4 +1,4 @@
-function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
+function [suite2p_folders, TSeriesPaths, ZSeriesPaths, xml_paths_all, ...
     true_xml_paths, lastFolderNames, Fallmat_paths] = ...
     find_suite2p_folders(selectedFolders)
 
@@ -6,17 +6,19 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
     suite2p_folders = cell(0,4);
     TSeriesPaths    = cell(0,4);
+    ZSeriesPaths    = cell(0,1);
     Fallmat_paths   = cell(0,4);
 
     true_xml_paths  = cell(0,4);
     lastFolderNames = cell(0,4);
-    xml_paths_all   = cell(0,4);
+    xml_paths_all   = cell(0,5);
 
     output_idx = 0;
 
     for idx = 1:numel(selectedFolders)
 
-        selectedFolder = selectedFolders{idx};
+        selectedFolder = ...
+            selectedFolders{idx};
 
         if ~isfolder(selectedFolder)
 
@@ -27,10 +29,15 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
             continue;
         end
 
-        TSeriesFoldersList = dir( ...
-            fullfile( ...
-                selectedFolder, ...
-                'TSeries*'));
+        % ==========================================================
+        % Chercher les TSeries
+        % ==========================================================
+
+        TSeriesFoldersList = ...
+            dir( ...
+                fullfile( ...
+                    selectedFolder, ...
+                    'TSeries*'));
 
         TSeriesFoldersList = ...
             TSeriesFoldersList( ...
@@ -44,6 +51,20 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
             continue;
         end
+
+        % ==========================================================
+        % Chercher les ZSeries
+        % ==========================================================
+
+        ZSeriesFoldersList = ...
+            dir( ...
+                fullfile( ...
+                    selectedFolder, ...
+                    'ZSeries*'));
+
+        ZSeriesFoldersList = ...
+            ZSeriesFoldersList( ...
+                [ZSeriesFoldersList.isdir]);
 
         % ==========================================================
         % Identifier tous les TSeries GCaMP
@@ -123,7 +144,6 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
                 continue;
             end
 
-            % Ne conserver que le TSeries choisi
             gcamp_paths = ...
                 {selected_gcamp_path};
         end
@@ -145,6 +165,12 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
             % ======================================================
             % Numéro final du GCaMP
+            %
+            % Exemple :
+            %
+            % TSeries-06112026-1010-gcamp-001
+            %
+            % -> 001
             % ======================================================
 
             [~, gcamp_name] = ...
@@ -166,6 +192,71 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
             else
 
                 gcamp_num = '';
+            end
+
+            % ======================================================
+            % Matcher le ZSeries
+            %
+            % Même logique que les canaux électroporés :
+            % association par numéro final.
+            %
+            % Exemple :
+            %
+            % TSeries-...-gcamp-001
+            %              ↕
+            % ZSeries-...-001
+            %
+            % Une seule colonne :
+            %
+            % ZSeriesPaths{output_idx,1}
+            % ======================================================
+
+            matched_zseries_path = '';
+
+            if ~isempty(gcamp_num)
+
+                for z = 1:numel(ZSeriesFoldersList)
+
+                    zseries_name = ...
+                        ZSeriesFoldersList(z).name;
+
+                    zseries_num = ...
+                        regexp( ...
+                            zseries_name, ...
+                            '-(\d+)$', ...
+                            'tokens', ...
+                            'once');
+
+                    if isempty(zseries_num)
+                        continue;
+                    end
+
+                    if strcmp( ...
+                            zseries_num{1}, ...
+                            gcamp_num)
+
+                        matched_zseries_path = ...
+                            fullfile( ...
+                                selectedFolder, ...
+                                zseries_name);
+
+                        fprintf( ...
+                            'ZSeries matched: %s\n', ...
+                            zseries_name);
+
+                        break;
+                    end
+                end
+            end
+
+            ZSeriesPaths{output_idx,1} = ...
+                matched_zseries_path;
+
+            if isempty(matched_zseries_path)
+
+                fprintf( ...
+                    'No ZSeries matched for GCaMP %s\n', ...
+                    gcamp_name);
             end
 
             % ======================================================
@@ -203,7 +294,6 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
                         case 'red'
 
-                            % Tout TSeries contenant "red"
                             label_match = ...
                                 contains( ...
                                     this_name_lower, ...
@@ -211,8 +301,6 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
 
                         case 'blue'
 
-                            % Blue uniquement
-                            % Exclut blue-transfert
                             label_match = ...
                                 ~isempty( ...
                                     regexp( ...
@@ -496,6 +584,44 @@ function [suite2p_folders, TSeriesPaths, xml_paths_all, ...
                 true_xml_paths{output_idx,j} = ...
                     xml_path;
             end
+            
+            % ======================================================
+            % XML ZSERIES
+            %
+            % Colonne :
+            %   5 = ZSeries
+            % ======================================================
+            
+            currentZSeriesPath = ...
+                ZSeriesPaths{output_idx,1};
+            
+            if isempty(currentZSeriesPath)
+            
+                xml_paths_all{output_idx,5} = {};
+                true_xml_paths{output_idx,5} = '';
+            
+            else
+            
+                [ ...
+                    xml_list_tmp, ...
+                    xml_path ...
+                ] = ...
+                    processEnvFile( ...
+                        currentZSeriesPath);
+            
+                xml_paths_all{output_idx,5} = ...
+                    xml_list_tmp;
+            
+                true_xml_paths{output_idx,5} = ...
+                    xml_path;
+            
+                if ~isempty(xml_path)
+            
+                    fprintf( ...
+                        'ZSeries XML found: %s\n', ...
+                        xml_path);
+                end
+            end
 
             % ======================================================
             % Suite2p / Fall.mat
@@ -603,21 +729,6 @@ function [xml_paths_all, xml_path] = ...
     TSeriesPath = ...
         char(TSeriesPath);
 
-    % ==============================================================
-    % Construire la liste des dossiers dans lesquels chercher
-    %
-    % Le XML peut être :
-    %   TSeries\raw_data\*.xml
-    %   TSeries\*.xml
-    %   TSeries\Blue\raw_data\*.xml
-    %   TSeries\Blue\*.xml
-    %   TSeries\Green\raw_data\*.xml
-    %   TSeries\Green\*.xml
-    %
-    % Si TSeriesPath pointe déjà vers Blue ou Green, on cherche
-    % également dans le TSeries parent.
-    % ==============================================================
-
     [parent_folder, current_name] = ...
         fileparts(TSeriesPath);
 
@@ -641,19 +752,11 @@ function [xml_paths_all, xml_path] = ...
 
     search_folders = {};
 
-    % ==============================================================
-    % 1) Priorité au chemin effectivement fourni
-    % ==============================================================
-
     search_folders{end+1} = ...
         fullfile(TSeriesPath, 'raw_data');
 
     search_folders{end+1} = ...
         TSeriesPath;
-
-    % ==============================================================
-    % 2) Si on est dans Blue/Green, chercher ensuite dans le parent
-    % ==============================================================
 
     if ~isempty(preferred_channel_folder)
 
@@ -664,10 +767,6 @@ function [xml_paths_all, xml_path] = ...
             tseries_root;
 
     else
-
-        % ==========================================================
-        % 3) Si on est au niveau TSeries, chercher aussi Blue/Green
-        % ==========================================================
 
         search_folders{end+1} = ...
             fullfile(tseries_root, 'Blue', 'raw_data');
@@ -682,18 +781,10 @@ function [xml_paths_all, xml_path] = ...
             fullfile(tseries_root, 'Green');
     end
 
-    % ==============================================================
-    % Supprimer les doublons en conservant l'ordre
-    % ==============================================================
-
     search_folders = ...
         unique( ...
             search_folders, ...
             'stable');
-
-    % ==============================================================
-    % Chercher le premier emplacement contenant un XML
-    % ==============================================================
 
     for i = 1:numel(search_folders)
 
@@ -736,10 +827,6 @@ function [xml_paths_all, xml_path] = ...
 
         return;
     end
-
-    % ==============================================================
-    % Aucun XML trouvé
-    % ==============================================================
 
     fprintf( ...
         'No XML found for TSeries:\n%s\n', ...
@@ -865,10 +952,6 @@ function selected_path = ...
                     [ ...
                     'Plusieurs TSeries GCaMP trouvés - ' ...
                     'sélectionnez le TSeries à utiliser']));
-
-        % ==========================================================
-        % Annulation
-        % ==========================================================
 
         if isequal( ...
                 chosen_folder, ...

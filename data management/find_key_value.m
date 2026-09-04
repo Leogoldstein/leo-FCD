@@ -170,16 +170,37 @@ try
     [meta.NumPlanes, z_positions, meta.BidirectionalZ] = get_zseries_info(xmlDoc);
 
     if ~isempty(z_positions)
-        meta.PositionZ = vector_to_string(z_positions);
-        meta.ZMin_um = min(z_positions);
-        meta.ZMax_um = max(z_positions);
-
-        if numel(z_positions) > 1
-            dz = diff(sort(z_positions));
-            dz = dz(abs(dz) > 1e-9);
-
-            if ~isempty(dz)
-                meta.ZStep_um = median(abs(dz));
+    
+        meta.PositionZ = ...
+            vector_to_string( ...
+                z_positions);
+    
+        valid_z = ...
+            z_positions(isfinite(z_positions));
+    
+        if ~isempty(valid_z)
+    
+            meta.ZMin_um = ...
+                min(valid_z);
+    
+            meta.ZMax_um = ...
+                max(valid_z);
+    
+            if numel(valid_z) > 1
+    
+                dz = ...
+                    diff( ...
+                        sort(valid_z));
+    
+                dz = ...
+                    dz(abs(dz) > 1e-9);
+    
+                if ~isempty(dz)
+    
+                    meta.ZStep_um = ...
+                        median( ...
+                            abs(dz));
+                end
             end
         end
     end
@@ -417,50 +438,31 @@ z_positions = [];
 bidirectionalZ = '';
 
 % ==============================================================
-% Position Z globale
-%
-% Prairie peut ne pas répéter positionCurrent dans une Frame
-% lorsque la valeur est identique à l'état courant.
-% La position globale sert donc d'état initial.
-% ==============================================================
-global_z = NaN;
-
-pvNodesGlobal = xmlDoc.getElementsByTagName('PVStateValue');
-
-for i = 0:pvNodesGlobal.getLength-1
-
-    pvNode = pvNodesGlobal.item(i);
-
-    if strcmp(char(pvNode.getAttribute('key')), 'positionCurrent')
-
-        [~, ~, z_str] = get_position_xyz(pvNode);
-
-        if ~isempty(z_str)
-            global_z = str2double(z_str);
-            break;
-        end
-    end
-end
-
-
-% ==============================================================
 % Recherche de la première séquence ZSeries
 % ==============================================================
-seqNodes = xmlDoc.getElementsByTagName('Sequence');
+
+seqNodes = ...
+    xmlDoc.getElementsByTagName('Sequence');
 
 for s = 0:seqNodes.getLength-1
 
-    seqNode = seqNodes.item(s);
+    seqNode = ...
+        seqNodes.item(s);
 
     if seqNode.hasAttribute('bidirectionalZ')
-        bidirectionalZ = char(seqNode.getAttribute('bidirectionalZ'));
+
+        bidirectionalZ = ...
+            char( ...
+                seqNode.getAttribute('bidirectionalZ'));
     end
 
     if ~seqNode.hasAttribute('type')
         continue;
     end
 
-    seqType = char(seqNode.getAttribute('type'));
+    seqType = ...
+        char( ...
+            seqNode.getAttribute('type'));
 
     if ~contains(seqType, 'ZSeries')
         continue;
@@ -470,98 +472,129 @@ for s = 0:seqNodes.getLength-1
     % ==========================================================
     % Nombre de plans
     % ==========================================================
-    frameNodesSeq = seqNode.getElementsByTagName('Frame');
-    n_planes = frameNodesSeq.getLength;
 
-    z_positions = nan(1, n_planes);
+    frameNodesSeq = ...
+        seqNode.getElementsByTagName('Frame');
+
+    n_planes = ...
+        frameNodesSeq.getLength;
+
+    z_positions = ...
+        nan(1, n_planes);
 
 
     % ==========================================================
-    % État Z courant
+    % Lecture directe du Z de chaque plan
     %
-    % On démarre avec positionCurrent globale.
+    % IMPORTANT :
     %
-    % Si une Frame contient un nouveau positionCurrent :
-    %     -> on met à jour current_z
+    % On ne propage PAS la valeur du plan précédent.
     %
-    % Sinon :
-    %     -> elle conserve la dernière valeur connue.
-    %
-    % C'est important car Prairie n'écrit pas forcément
-    % positionCurrent dans chaque Frame.
+    % Si Prairie n'enregistre pas positionCurrent dans une Frame,
+    % le Z de ce plan reste NaN.
     % ==========================================================
-    current_z = global_z;
-
 
     for f = 0:n_planes-1
 
-        frameNode = frameNodesSeq.item(f);
+        frameNode = ...
+            frameNodesSeq.item(f);
+
 
         % ------------------------------------------------------
         % Numéro du plan
         % ------------------------------------------------------
+
         if frameNode.hasAttribute('index')
-            plane_idx = str2double( ...
-                char(frameNode.getAttribute('index')));
+
+            plane_idx = ...
+                str2double( ...
+                    char( ...
+                        frameNode.getAttribute('index')));
+
         else
-            plane_idx = f + 1;
+
+            plane_idx = ...
+                f + 1;
         end
+
 
         if isnan(plane_idx) || ...
                 plane_idx < 1 || ...
                 plane_idx > n_planes
 
-            plane_idx = f + 1;
+            plane_idx = ...
+                f + 1;
         end
 
 
         % ------------------------------------------------------
-        % Recherche d'une nouvelle position Z dans cette Frame
+        % Recherche de positionCurrent dans CE plan uniquement
         % ------------------------------------------------------
-        pvNodes = frameNode.getElementsByTagName('PVStateValue');
 
-        frame_has_z = false;
+        pvNodes = ...
+            frameNode.getElementsByTagName( ...
+                'PVStateValue');
+
+        frame_z = ...
+            NaN;
+
 
         for p = 0:pvNodes.getLength-1
 
-            pvNode = pvNodes.item(p);
+            pvNode = ...
+                pvNodes.item(p);
 
             if ~strcmp( ...
-                    char(pvNode.getAttribute('key')), ...
+                    char( ...
+                        pvNode.getAttribute('key')), ...
                     'positionCurrent')
+
                 continue;
             end
 
-            [~, ~, z_str] = get_position_xyz(pvNode);
+
+            [~, ~, z_str] = ...
+                get_position_xyz( ...
+                    pvNode);
+
 
             if ~isempty(z_str)
 
-                current_z = str2double(z_str);
-                frame_has_z = true;
+                frame_z = ...
+                    str2double( ...
+                        z_str);
+
                 break;
             end
         end
 
 
         % ------------------------------------------------------
-        % Si positionCurrent n'est pas présente dans la Frame,
-        % on conserve current_z.
-        %
-        % Pour la première Frame, current_z = global_z.
+        % Sauvegarde uniquement si la Frame contient réellement Z
         % ------------------------------------------------------
-        if isfinite(current_z)
-            z_positions(plane_idx) = current_z;
-        end
 
+        if isfinite(frame_z)
+
+            z_positions(plane_idx) = ...
+                frame_z;
+        end
     end
 
 
     % ==========================================================
-    % Nettoyage
+    % Ne surtout PAS supprimer les NaN ici
+    %
+    % Il faut conserver une entrée par plan.
+    %
+    % Exemple :
+    %
+    %   [236.625 271.625 NaN]
+    %
+    % et non :
+    %
+    %   [236.625 271.625]
     % ==========================================================
-    z_positions = z_positions(isfinite(z_positions));
 
-    % Une seule ZSeries suffit pour déterminer les plans.
     break;
 end
 

@@ -8,6 +8,7 @@ function [selected_groups, animal_date_list] = folder_selection( ...
     end
 
     TSeriesPaths    = {};
+    ZSeriesPaths    = {};
     true_xml_paths  = {};
     suite2p_folders = {};
     Fallmat_paths   = {};
@@ -21,70 +22,150 @@ function [selected_groups, animal_date_list] = folder_selection( ...
         dataFolders = dataFolders_by_group{i};
 
         if isempty(dataFolders)
-            fprintf('Group %d: no folders selected.\n', choice);
+
+            fprintf( ...
+                'Group %d: no folders selected.\n', ...
+                choice);
+
             continue;
         end
 
         switch choice
 
             case {1}
-                disp('Processing JM data...');
 
-                % [true_xml_paths_jm, TSeriesPaths_jm, ~, statPaths, FPaths, ...
-                %  iscellPaths, opsPaths, spksPaths] = find_npy_folders(dataFolders);
-                % 
-                % valid_jm = ~cellfun('isempty', TSeriesPaths_jm);
-                % 
-                % TSeriesPaths_jm   = TSeriesPaths_jm(valid_jm);
-                % true_xml_paths_jm = true_xml_paths_jm(valid_jm);
+                disp('Processing JM data...');
 
                 [~, ~, ~, ~, ~, gcampdataFolders] = ...
                     preprocess_npy_files(dataFolders);
-            
-                nJM = numel(gcampdataFolders);
-            
-                dataFolders_4col   = cell(nJM, 4);
-            
+
+                nJM = ...
+                    numel(gcampdataFolders);
+
+                dataFolders_4col = ...
+                    cell(nJM, 4);
+
                 for j = 1:nJM
-                    dataFolders_4col{j,1} = gcampdataFolders{j};
+
+                    dataFolders_4col{j,1} = ...
+                        gcampdataFolders{j};
                 end
-            
-                Fallmat_paths = concat_cell_matrices_4col( ...
-                    Fallmat_paths, ...
-                    dataFolders_4col);
+
+                Fallmat_paths = ...
+                    concat_cell_matrices_4col( ...
+                        Fallmat_paths, ...
+                        dataFolders_4col);
+
 
             case {2,3,4}
-                group_name = group_order{choice};
-                fprintf('Processing %s data...\n', group_name);
 
-                [suite2p_tmp, TSeries_tmp, ~, xml_tmp, ~, Fall_tmp] = ...
-                    find_suite2p_folders(dataFolders);
-                
-                TSeriesPaths = concat_cell_matrices_4col( ...
-                    TSeriesPaths, ...
-                    force_4col(TSeries_tmp));
-                
-                true_xml_paths = concat_cell_matrices_4col( ...
+                group_name = ...
+                    group_order{choice};
+
+                fprintf( ...
+                    'Processing %s data...\n', ...
+                    group_name);
+
+                [ ...
+                    suite2p_tmp, ...
+                    TSeries_tmp, ...
+                    ZSeries_tmp, ...
+                    ~, ...
+                    xml_tmp, ...
+                    ~, ...
+                    Fall_tmp ...
+                ] = ...
+                    find_suite2p_folders( ...
+                        dataFolders);
+
+
+                % ==================================================
+                % TSeries : 4 colonnes
+                % ==================================================
+
+                TSeriesPaths = ...
+                    concat_cell_matrices_4col( ...
+                        TSeriesPaths, ...
+                        force_4col(TSeries_tmp));
+
+
+                % ==================================================
+                % ZSeries : 1 seule colonne
+                % ==================================================
+
+                if isempty(ZSeriesPaths)
+
+                    ZSeriesPaths = ...
+                        ZSeries_tmp(:);
+
+                else
+
+                    ZSeriesPaths = ...
+                        [ ...
+                            ZSeriesPaths(:); ...
+                            ZSeries_tmp(:) ...
+                        ];
+                end
+
+
+                % ==================================================
+                % XML : 4 colonnes
+                % ==================================================
+
+                true_xml_paths = concat_cell_matrices_5col( ...
                     true_xml_paths, ...
-                    force_4col(xml_tmp));
-                
-                suite2p_folders = concat_cell_matrices_4col( ...
-                    suite2p_folders, ...
-                    force_4col(suite2p_tmp));
-                
-                Fallmat_paths = concat_cell_matrices_4col( ...
-                    Fallmat_paths, ...
-                    force_4col(Fall_tmp));
+                    force_5col(xml_tmp));
+
+
+                % ==================================================
+                % Suite2p : 4 colonnes
+                % ==================================================
+
+                suite2p_folders = ...
+                    concat_cell_matrices_4col( ...
+                        suite2p_folders, ...
+                        force_4col(suite2p_tmp));
+
+
+                % ==================================================
+                % Fall.mat : 4 colonnes
+                % ==================================================
+
+                Fallmat_paths = ...
+                    concat_cell_matrices_4col( ...
+                        Fallmat_paths, ...
+                        force_4col(Fall_tmp));
         end
     end
 
-    animal_date_list = create_animal_date_list(first_col_safe(TSeriesPaths), root_path);
 
-    selected_groups_flat = build_selected_groups_minimal( ...
-        animal_date_list, TSeriesPaths, true_xml_paths, ...
-        suite2p_folders, Fallmat_paths);
+    % ==============================================================
+    % Construction animal/date à partir des TSeries GCaMP
+    % ==============================================================
 
-    new_selected_groups = group_selected_groups_by_type(selected_groups_flat);
+    animal_date_list = ...
+        create_animal_date_list( ...
+            first_col_safe(TSeriesPaths), ...
+            root_path);
+
+
+    % ==============================================================
+    % Construction selected_groups
+    % ==============================================================
+
+    selected_groups_flat = ...
+        build_selected_groups_minimal( ...
+            animal_date_list, ...
+            TSeriesPaths, ...
+            ZSeriesPaths, ...
+            true_xml_paths, ...
+            suite2p_folders, ...
+            Fallmat_paths);
+
+
+    new_selected_groups = ...
+        group_selected_groups_by_type( ...
+            selected_groups_flat);
 
     % ==========================================================
     % Les dossiers Suite2p sont optionnels à ce stade.
@@ -119,8 +200,12 @@ end
 % =====================================================================
 
 function selected_groups = build_selected_groups_minimal( ...
-    animal_date_list, TSeriesPaths, true_xml_paths, ...
-    suite2p_folders, Fallmat_paths)
+    animal_date_list, ...
+    TSeriesPaths, ...
+    ZSeriesPaths, ...
+    true_xml_paths, ...
+    suite2p_folders, ...
+    Fallmat_paths)
 
     if isempty(animal_date_list)
         selected_groups = struct([]);
@@ -194,7 +279,8 @@ function selected_groups = build_selected_groups_minimal( ...
             'animal', '', ...
             'date', {{}}, ...
             'TSeries', {cell(0,4)}, ...
-            'xml', {cell(0,4)}, ...
+            'ZSeries', {cell(0,1)}, ...
+            'xml', {cell(0,5)}, ...
             'suite2p', {cell(0,4)}, ...
             'fallmat', {cell(0,4)}));
 
@@ -280,12 +366,23 @@ function selected_groups = build_selected_groups_minimal( ...
         selected_groups(k).dates        = dates;
         selected_groups(k).ages         = ages;
 
-        selected_groups(k).paths.animal  = animal_path;
-        selected_groups(k).paths.date    = date_group_path;
-        selected_groups(k).paths.TSeries = subset_rows_safe_4col(TSeriesPaths, idx);
-        selected_groups(k).paths.xml = subset_rows_safe_4col(true_xml_paths, idx);
-        selected_groups(k).paths.suite2p = subset_rows_safe_4col(suite2p_folders, idx);
-        selected_groups(k).paths.fallmat = subset_rows_safe_4col(Fallmat_paths, idx);
+        selected_groups(k).paths.animal = animal_path;
+        selected_groups(k).paths.date = date_group_path;
+        
+        selected_groups(k).paths.TSeries = ...
+            subset_rows_safe_4col(TSeriesPaths, idx);
+        
+        selected_groups(k).paths.ZSeries = ...
+            subset_rows_safe_1col(ZSeriesPaths, idx);
+        
+        selected_groups(k).paths.xml = ...
+            subset_rows_safe_5col(true_xml_paths, idx);
+        
+        selected_groups(k).paths.suite2p = ...
+            subset_rows_safe_4col(suite2p_folders, idx);
+        
+        selected_groups(k).paths.fallmat = ...
+            subset_rows_safe_4col(Fallmat_paths, idx);
     end
 end
 
@@ -1439,4 +1536,66 @@ function selected_groups = initialize_empty_gcamp_paths(selected_groups)
                 cell(nRecordings,1);
         end
     end
+end
+
+function out = subset_rows_safe_1col(C, idx)
+
+    if isempty(C)
+        out = cell(numel(idx),1);
+        return;
+    end
+
+    C = C(:);
+
+    out = cell(numel(idx),1);
+
+    valid_idx = idx <= numel(C);
+
+    out(valid_idx,1) = ...
+        C(idx(valid_idx),1);
+end
+
+function C5 = force_5col(C)
+
+    if isempty(C)
+        C5 = cell(0,5);
+        return;
+    end
+
+    nRows = size(C,1);
+    nCols = size(C,2);
+
+    C5 = cell(nRows,5);
+
+    C5(:,1:min(5,nCols)) = ...
+        C(:,1:min(5,nCols));
+end
+
+function out = concat_cell_matrices_5col(a, b)
+
+    a = force_5col(a);
+    b = force_5col(b);
+
+    if isempty(a)
+        out = b;
+
+    elseif isempty(b)
+        out = a;
+
+    else
+        out = [a; b];
+    end
+end
+
+function out = subset_rows_safe_5col(C, idx)
+
+    if isempty(C)
+        out = cell(numel(idx),5);
+        return;
+    end
+
+    C = force_5col(C);
+
+    out = ...
+        C(idx,:);
 end

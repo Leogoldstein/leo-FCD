@@ -151,6 +151,29 @@ function selected_groups = process_selected_groups( ...
             
             data.electroporated_plane.meanImgs_electroporated = ...
                 meanImgs_electroporated;
+
+            %% -----------------------------------------------------
+            % ZSeries reconstruction
+            % ------------------------------------------------------
+            
+            if isfield(paths, 'ZSeries') && ...
+                    ~isempty(paths.ZSeries)
+            
+                zseries = ...
+                    load_or_process_zseries( ...
+                        paths.ZSeries, ...
+                        gcamp_root_folders, ...
+                        metadata.ZSeries);
+            
+                data.ZSeries = ...
+                    zseries;
+            
+            else
+            
+                data.ZSeries = ...
+                    struct();
+            end
+            
             %% -----------------------------------------------------
             % Motion energy
             % ------------------------------------------------------
