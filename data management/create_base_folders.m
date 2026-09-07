@@ -736,7 +736,7 @@ function [selected_root_folder, chosen_folder_processing_gcamp] = ...
         
             clear_detection_outputs( ...
                 chosen_folder_processing_gcamp(m), ...
-                {'gcamp', 'blue', 'combined'});
+                {'gcamp', 'electroporated', 'combined'});
         end
 
         %======================================================
@@ -1030,7 +1030,7 @@ end
 function clear_detection_outputs(gcamp_output_folders, branches_to_clear)
 
     if nargin < 2 || isempty(branches_to_clear)
-        branches_to_clear = {'gcamp','blue','combined'};
+        branches_to_clear = {'gcamp','electroporated','combined'};
     end
 
     fields_detect_gcamp = { ...
@@ -1108,7 +1108,7 @@ function clear_detection_outputs(gcamp_output_folders, branches_to_clear)
             clear_vars_in_matfile(filePath, fields_detect_gcamp);
         end
 
-        if ismember('blue', branches_to_clear)
+        if ismember('electroporated', branches_to_clear)
             filePath = fullfile(outdir_m, 'results_electroporated.mat');
             clear_vars_in_matfile(filePath, fields_detect_electroporated);
         end
