@@ -564,7 +564,13 @@ function folder_names = get_folder_list( ...
                                 'mtor40\2314\25-02-2026';
 
                                 'mtor46\2469\03-06-2026';
-                                
+                                'mtor46\2469\10-06-2026\before'; % TSeries-002
+                                'mtor46\2469\15-06-2026\before'; % TSeries-002
+                                'mtor46\2469\19-05-2026'; % TSeries-002
+                                'mtor46\2469\23-06-2026\before';
+                                'mtor46\2469\26-05-2026'; % TSeries-002
+
+
 
                             };
 

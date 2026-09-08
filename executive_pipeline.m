@@ -22,7 +22,7 @@ selected_groups = create_data(selected_groups);
 
 [selected_groups, metadata_table] = create_metadata(selected_groups);
 
-%recap_all = create_summary_sheets(selected_groups);
+recap_all = create_summary_sheets(selected_groups);
 
 % Data processing
 selected_groups = process_selected_groups(selected_groups, include_electroporated, automatic_selection);

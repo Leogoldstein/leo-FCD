@@ -14,50 +14,8 @@ function create_random_peak_preview( ...
         animal, ...
         date, ...
         age, ...
-        plane_number)
-
-%CREATE_PEAK_DETECTION_FIGURES
-%
-% Crée les figures associées à une nouvelle détection.
-%
-% 1) RANDOM PEAK PREVIEW
-%
-%    Toujours créée :
-%       - jusqu'à 10 cellules aléatoires
-%       - traces noires
-%       - pics détectés
-%       - seuil de détection
-%
-% 2) REPRESENTATIVE SINGLE-CELL TRACES
-%
-%    Créée uniquement si :
-%
-%       include_electroporated == 1
-%
-%    ET
-%
-%       use_combined_this_plane == true
-%
-% Sauvegarde :
-%
-%   - toujours dans gcamp_current_output_folder
-%
-%   - si automatic_selection :
-%
-%       current_output_folder/
-%           Development|Adult/
-%               line/
-%                   animal/
-%                       date/
-%                           planeX/
-%
-% Nomenclature :
-%
-%   line_animal_date_age_planeX_random_peak_preview.png
-%
-%   line_animal_date_age_planeX_...
-%       representative_single_cell_traces.png
-
+        plane_number, ...
+        modified_plane)
 
     % =============================================================
     % Defaults
@@ -114,6 +72,17 @@ function create_random_peak_preview( ...
     if nargin < 16
         plane_number = [];
     end
+
+    if nargin < 17 || ...
+            isempty(modified_plane)
+
+        modified_plane = ...
+            false;
+    end
+
+    modified_plane = ...
+        logical( ...
+            modified_plane(1));
 
 
     % =============================================================
@@ -296,56 +265,48 @@ function create_random_peak_preview( ...
 
     % =============================================================
     % Summary folder
-    %
-    % Seulement si automatic_selection.
-    %
-    % current_output_folder/
-    %   Development|Adult/
-    %     line/
-    %       animal/
-    %         date/
     % =============================================================
-    
+
     summary_folder = '';
     summary_recording_folder = '';
-    
+
     if automatic_selection && ...
             ~isempty(current_output_folder)
-    
+
         current_age_value = ...
             str2double( ...
                 regexprep( ...
                     char(string(age)), ...
                     '[^\d\.]', ...
                     ''));
-    
+
         if isfinite(current_age_value) && ...
                 current_age_value <= 15
-    
+
             summary_folder = ...
                 fullfile( ...
                     current_output_folder, ...
                     'Development');
-    
+
         else
-    
+
             summary_folder = ...
                 fullfile( ...
                     current_output_folder, ...
                     'Adult');
         end
-    
+
         if exist(summary_folder, 'dir') ~= 7
             mkdir(summary_folder);
         end
-    
+
         summary_recording_folder = ...
             fullfile( ...
                 summary_folder, ...
                 char(string(line)), ...
                 char(string(animal)), ...
                 char(string(date)));
-    
+
         if exist(summary_recording_folder, 'dir') ~= 7
             mkdir(summary_recording_folder);
         end
@@ -353,9 +314,7 @@ function create_random_peak_preview( ...
 
 
     % =============================================================
-    %
     % 1) RANDOM PEAK PREVIEW
-    %
     % =============================================================
 
     if isempty(name_parts)
@@ -415,14 +374,27 @@ function create_random_peak_preview( ...
         exist(preview_summary_path, 'file') == 2;
 
 
+    % =============================================================
+    % Sauvegarde conditionnelle
+    %
+    % modified_plane == true :
+    %   recréer / écraser même si la figure existe.
+    % =============================================================
+
     preview_local_needed = ...
         ~isempty(preview_local_path) && ...
-        ~preview_local_exists;
+        ( ...
+            modified_plane || ...
+            ~preview_local_exists ...
+        );
 
 
     preview_summary_needed = ...
         ~isempty(preview_summary_path) && ...
-        ~preview_summary_exists;
+        ( ...
+            modified_plane || ...
+            ~preview_summary_exists ...
+        );
 
 
     % =============================================================
@@ -473,10 +445,6 @@ function create_random_peak_preview( ...
                 'Padding', 'compact');
 
 
-        % =========================================================
-        % Preview cells
-        % =========================================================
-
         for k = 1:nShow
 
             ii = ...
@@ -510,10 +478,6 @@ function create_random_peak_preview( ...
                 'TickDir', 'out');
 
 
-            % -----------------------------------------------------
-            % Trace
-            % -----------------------------------------------------
-
             plot( ...
                 ax, ...
                 frames, ...
@@ -521,10 +485,6 @@ function create_random_peak_preview( ...
                 'k-', ...
                 'LineWidth', 1);
 
-
-            % -----------------------------------------------------
-            % Peaks
-            % -----------------------------------------------------
 
             pk = ...
                 get_peak_figure_indices( ...
@@ -546,10 +506,6 @@ function create_random_peak_preview( ...
             end
 
 
-            % -----------------------------------------------------
-            % Threshold
-            % -----------------------------------------------------
-
             current_threshold = ...
                 get_peak_figure_threshold( ...
                     thresholds, ...
@@ -565,10 +521,6 @@ function create_random_peak_preview( ...
                     'LineWidth', 1);
             end
 
-
-            % -----------------------------------------------------
-            % Labels
-            % -----------------------------------------------------
 
             title( ...
                 ax, ...
@@ -603,10 +555,6 @@ function create_random_peak_preview( ...
         end
 
 
-        % =========================================================
-        % Save preview locally
-        % =========================================================
-
         if preview_local_needed
 
             save_peak_figure( ...
@@ -619,10 +567,6 @@ function create_random_peak_preview( ...
                 preview_local_path);
         end
 
-
-        % =========================================================
-        % Save preview summary
-        % =========================================================
 
         if preview_summary_needed
 
@@ -673,9 +617,7 @@ function create_random_peak_preview( ...
 
 
     % =============================================================
-    %
-    % 2) REPRESENTATIVE SINGLE-CELL TRACES
-    %
+    % Representative traces
     % =============================================================
 
     if isempty(sampling_rate) || ...
@@ -690,10 +632,6 @@ function create_random_peak_preview( ...
         return;
     end
 
-
-    % =============================================================
-    % Remap electroporated cells into final DF indices
-    % =============================================================
 
     electroporated_idx = [];
 
@@ -730,10 +668,6 @@ function create_random_peak_preview( ...
     end
 
 
-    % =============================================================
-    % No electroporated cell available
-    % =============================================================
-
     if isempty(electroporated_idx)
 
         fprintf( ...
@@ -743,10 +677,6 @@ function create_random_peak_preview( ...
         return;
     end
 
-
-    % =============================================================
-    % Non-electroporated GCaMP cells
-    % =============================================================
 
     all_idx = ...
         (1:nCells)';
@@ -767,10 +697,6 @@ function create_random_peak_preview( ...
         return;
     end
 
-
-    % =============================================================
-    % Random representative cells
-    % =============================================================
 
     n_example = 3;
 
@@ -804,10 +730,6 @@ function create_random_peak_preview( ...
                 n_electroporated_show));
 
 
-    % =============================================================
-    % Representative filename
-    % =============================================================
-
     if isempty(name_parts)
 
         representative_base_name = ...
@@ -824,10 +746,6 @@ function create_random_peak_preview( ...
             ];
     end
 
-
-    % =============================================================
-    % Representative paths
-    % =============================================================
 
     representative_local_path = '';
 
@@ -857,10 +775,6 @@ function create_random_peak_preview( ...
     end
 
 
-    % =============================================================
-    % Existing representative files
-    % =============================================================
-
     representative_local_exists = ...
         ~isempty(representative_local_path) && ...
         exist( ...
@@ -877,12 +791,18 @@ function create_random_peak_preview( ...
 
     representative_local_needed = ...
         ~isempty(representative_local_path) && ...
-        ~representative_local_exists;
+        ( ...
+            modified_plane || ...
+            ~representative_local_exists ...
+        );
 
 
     representative_summary_needed = ...
         ~isempty(representative_summary_path) && ...
-        ~representative_summary_exists;
+        ( ...
+            modified_plane || ...
+            ~representative_summary_exists ...
+        );
 
 
     if ~representative_local_needed && ...
@@ -891,10 +811,6 @@ function create_random_peak_preview( ...
         return;
     end
 
-
-    % =============================================================
-    % Figure
-    % =============================================================
 
     figRep = ...
         figure( ...
@@ -911,18 +827,10 @@ function create_random_peak_preview( ...
     hold(ax, 'on');
 
 
-    % =============================================================
-    % Time
-    % =============================================================
-
     t_plot = ...
         (0:nFrames - 1) / ...
         sampling_rate;
 
-
-    % =============================================================
-    % Trace offsets
-    % =============================================================
 
     offset = 0;
 
@@ -935,10 +843,6 @@ function create_random_peak_preview( ...
     min_trace_y = ...
         Inf;
 
-
-    % =============================================================
-    % GCaMP traces
-    % =============================================================
 
     for j = 1:numel(gcamp_examples)
 
@@ -969,10 +873,6 @@ function create_random_peak_preview( ...
     end
 
 
-    % =============================================================
-    % Electroporated traces
-    % =============================================================
-
     for j = 1:numel(electroporated_examples)
 
         cell_idx = ...
@@ -1002,18 +902,8 @@ function create_random_peak_preview( ...
     end
 
 
-    % =============================================================
-    % Formatting
-    % =============================================================
-
-    box( ...
-        ax, ...
-        'off');
-
-
-    grid( ...
-        ax, ...
-        'off');
+    box(ax,'off');
+    grid(ax,'off');
 
 
     xlabel( ...
@@ -1052,10 +942,6 @@ function create_random_peak_preview( ...
             t_plot(end) ...
         ]);
 
-
-    % =============================================================
-    % Scale bars
-    % =============================================================
 
     bar_time = 60;
 
@@ -1100,45 +986,21 @@ function create_random_peak_preview( ...
         0.03 * range(xl);
 
 
-    % -------------------------------------------------------------
-    % Horizontal time bar
-    % -------------------------------------------------------------
-
     plot( ...
         ax, ...
-        [ ...
-            x0, ...
-            x0 + bar_time ...
-        ], ...
-        [ ...
-            y0, ...
-            y0 ...
-        ], ...
+        [x0 x0 + bar_time], ...
+        [y0 y0], ...
         'k', ...
         'LineWidth', 6);
 
 
-    % -------------------------------------------------------------
-    % Vertical amplitude bar
-    % -------------------------------------------------------------
-
     plot( ...
         ax, ...
-        [ ...
-            x0, ...
-            x0 ...
-        ], ...
-        [ ...
-            y0, ...
-            y0 + bar_amp ...
-        ], ...
+        [x0 x0], ...
+        [y0 y0 + bar_amp], ...
         'k', ...
         'LineWidth', 6);
 
-
-    % -------------------------------------------------------------
-    % Time text
-    % -------------------------------------------------------------
 
     text( ...
         ax, ...
@@ -1153,10 +1015,6 @@ function create_random_peak_preview( ...
         'FontWeight', 'bold');
 
 
-    % -------------------------------------------------------------
-    % Amplitude text
-    % -------------------------------------------------------------
-
     text( ...
         ax, ...
         x0 - 0.01 * range(xl), ...
@@ -1168,14 +1026,8 @@ function create_random_peak_preview( ...
         'FontWeight', 'bold');
 
 
-    hold( ...
-        ax, ...
-        'off');
+    hold(ax,'off');
 
-
-    % =============================================================
-    % Save representative locally
-    % =============================================================
 
     if representative_local_needed
 
@@ -1189,10 +1041,6 @@ function create_random_peak_preview( ...
             representative_local_path);
     end
 
-
-    % =============================================================
-    % Save representative summary
-    % =============================================================
 
     if representative_summary_needed
 
@@ -1217,16 +1065,11 @@ function create_random_peak_preview( ...
     end
 
 
-    % =============================================================
-    % Close
-    % =============================================================
-
     if isgraphics(figRep)
 
         close(figRep);
     end
 end
-
 
 % ========================================================================
 function [max_trace_y, min_trace_y] = ...

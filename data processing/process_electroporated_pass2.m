@@ -77,6 +77,57 @@ function [electroporated_plane, data] = process_electroporated_pass2( ...
                 continue;
             end
 
+            % ==================================================
+            % Anciennes sorties Electroporated à invalider ?
+            % ==================================================
+            
+            clear_electroporated_outputs_requested = ...
+                false;
+            
+            
+            if isfield( ...
+                    cache.planes{p}, ...
+                    'clear_electroporated_outputs_requested') && ...
+                    ~isempty( ...
+                        cache.planes{p}. ...
+                            clear_electroporated_outputs_requested)
+            
+                clear_electroporated_outputs_requested = ...
+                    logical( ...
+                        cache.planes{p}. ...
+                            clear_electroporated_outputs_requested);
+            end
+            
+            
+            if clear_electroporated_outputs_requested
+            
+                fprintf('\n');
+                fprintf('  ----------------------------------------------------------\n');
+                fprintf('  CLEAR OLD ELECTROPORATED ROI OUTPUTS\n');
+                fprintf('  Acquisition: %d\n', m);
+                fprintf('  Plane      : %d\n', p);
+                fprintf('  ----------------------------------------------------------\n');
+            
+            
+                [ ...
+                    data, ...
+                    fields_were_cleared ...
+                ] = ...
+                    clear_electroporated_saved_fields_for_plane( ...
+                        data, ...
+                        cache.filePath_electroporated, ...
+                        fields_electroporated_saved, ...
+                        m, ...
+                        p);
+            
+            
+                if fields_were_cleared
+            
+                    cache.has_new_electroporated_data = ...
+                        true;
+                end
+            end
+
             npy_file_path = ...
                 cache.planes{p}.npy_file_path;
 
@@ -1346,5 +1397,162 @@ function saveStruct_electroporated = ...
             saveStruct_electroporated.(name) = ...
                 data.electroporated_plane.(name){m};
         end
+    end
+end
+
+function [data, fields_were_cleared] = ...
+        clear_electroporated_saved_fields_for_plane( ...
+            data, ...
+            filePath_electroporated, ...
+            fields_electroporated_saved, ...
+            m, ...
+            p)
+
+    fields_were_cleared = ...
+        false;
+
+
+    % ==========================================================
+    % 1. Effacer le plan dans data.electroporated_plane
+    % ==========================================================
+
+    if isfield(data, 'electroporated_plane') && ...
+            isstruct(data.electroporated_plane)
+
+        for f = 1:numel(fields_electroporated_saved)
+
+            fn = ...
+                fields_electroporated_saved{f};
+
+
+            if ~isfield( ...
+                    data.electroporated_plane, ...
+                    fn)
+
+                continue;
+            end
+
+
+            values = ...
+                data.electroporated_plane.(fn);
+
+
+            if ~iscell(values) || ...
+                    numel(values) < m || ...
+                    isempty(values{m}) || ...
+                    ~iscell(values{m}) || ...
+                    numel(values{m}) < p
+
+                continue;
+            end
+
+
+            data.electroporated_plane.(fn){m}{p} = ...
+                [];
+
+
+            fields_were_cleared = ...
+                true;
+        end
+    end
+
+
+    % ==========================================================
+    % 2. Effacer uniquement le plan p dans results_electroporated.mat
+    %
+    % IMPORTANT :
+    % on ne supprime PAS le fichier ni les autres plans.
+    % ==========================================================
+
+    if isempty(filePath_electroporated) || ...
+            exist(filePath_electroporated, 'file') ~= 2
+
+        return;
+    end
+
+
+    S = ...
+        load( ...
+            filePath_electroporated);
+
+
+    file_changed = ...
+        false;
+
+
+    for f = 1:numel(fields_electroporated_saved)
+
+        fn = ...
+            fields_electroporated_saved{f};
+
+
+        if ~isfield(S, fn)
+
+            continue;
+        end
+
+
+        values = ...
+            S.(fn);
+
+
+        % ------------------------------------------------------
+        % Format actuel :
+        % field = cell(nPlanes,1)
+        % ------------------------------------------------------
+
+        if iscell(values)
+
+            if numel(values) >= p
+
+                values{p} = ...
+                    [];
+
+
+                S.(fn) = ...
+                    values;
+
+
+                file_changed = ...
+                    true;
+            end
+
+        % ------------------------------------------------------
+        % Ancien format monoplan éventuel
+        % ------------------------------------------------------
+
+        elseif p == 1
+
+            S.(fn) = ...
+                [];
+
+
+            file_changed = ...
+                true;
+        end
+    end
+
+
+    % ==========================================================
+    % Réécriture du fichier
+    % ==========================================================
+
+    if file_changed
+
+        save( ...
+            filePath_electroporated, ...
+            '-struct', ...
+            'S');
+
+
+        fprintf( ...
+            ['  Old Electroporated ROI fields cleared ' ...
+             'for plane %d:\n  %s\n'], ...
+            p, ...
+            filePath_electroporated);
+
+
+        fields_were_cleared = ...
+            true;
     end
 end
