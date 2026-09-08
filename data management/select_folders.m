@@ -568,7 +568,9 @@ function folder_names = get_folder_list( ...
                                 'mtor46\2469\15-06-2026\before'; % TSeries-002
                                 'mtor46\2469\19-05-2026'; % TSeries-002
                                 'mtor46\2469\23-06-2026\before';
-                                'mtor46\2469\26-05-2026'; % TSeries-002
+                                'mtor46\2469\26-05-2026'; % TSeries-002 : longitudinal avec 19/05 
+                                'mtor46\2469\26-05-2026'; % TSeries-003 : longitudinal avec les jours suivants
+                                
 
 
 

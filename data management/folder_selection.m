@@ -1012,19 +1012,26 @@ function [A, b] = harmonize_struct_fields_for_append(A, b)
     b = orderfields(b, all_fields);
 end
 
-
 function idx = find_matching_group(old_groups, new_group)
 
     idx = [];
 
+    if isempty(old_groups)
+        return;
+    end
+
     new_type   = string(new_group.type);
     new_line   = string(new_group.line);
     new_animal = string(new_group.animal);
-    new_path   = "";
 
-    if isfield(new_group, 'paths') && ...
-            isfield(new_group.paths, 'animal')
-        new_path = string(new_group.paths.animal);
+    new_path = "";
+
+    if isfield(new_group,'paths') && ...
+       isstruct(new_group.paths) && ...
+       isfield(new_group.paths,'animal') && ...
+       ~isempty(new_group.paths.animal)
+
+        new_path = normalize_one_path(new_group.paths.animal);
     end
 
     for j = 1:numel(old_groups)
@@ -1032,11 +1039,15 @@ function idx = find_matching_group(old_groups, new_group)
         old_type   = string(old_groups(j).type);
         old_line   = string(old_groups(j).line);
         old_animal = string(old_groups(j).animal);
-        old_path   = "";
 
-        if isfield(old_groups(j), 'paths') && ...
-                isfield(old_groups(j).paths, 'animal')
-            old_path = string(old_groups(j).paths.animal);
+        old_path = "";
+
+        if isfield(old_groups(j),'paths') && ...
+           isstruct(old_groups(j).paths) && ...
+           isfield(old_groups(j).paths,'animal') && ...
+           ~isempty(old_groups(j).paths.animal)
+
+            old_path = normalize_one_path(old_groups(j).paths.animal);
         end
 
         same_identity = ...
@@ -1056,7 +1067,6 @@ function idx = find_matching_group(old_groups, new_group)
     end
 end
 
-
 function idx = find_matching_recording( ...
     old_group, new_group, new_idx, used_old)
 
@@ -1068,8 +1078,15 @@ function idx = find_matching_recording( ...
         return;
     end
 
-    old_tseries = get_path_matrix(old_group, 'TSeries', nOld, 4);
-    new_tseries = get_path_matrix(new_group, 'TSeries', ...
+    % ==========================================================
+    % 1. Correspondance exacte du TSeries
+    % ==========================================================
+
+    old_tseries = get_path_matrix( ...
+        old_group, 'TSeries', nOld, 4);
+
+    new_tseries = get_path_matrix( ...
+        new_group, 'TSeries', ...
         get_recording_count(new_group), 4);
 
     new_tseries_path = normalize_one_path( ...
@@ -1086,30 +1103,28 @@ function idx = find_matching_recording( ...
             old_path = normalize_one_path( ...
                 get_cell_safe(old_tseries, i, 1));
 
-            if old_path ~= "" && old_path == new_tseries_path
+            if old_path ~= "" && ...
+               old_path == new_tseries_path
+
                 idx = i;
                 return;
             end
         end
     end
 
+    % ==========================================================
+    % 2. Correspondance exacte du XML
+    % ==========================================================
+
     old_xml = get_path_matrix( ...
-        old_group, ...
-        'xml', ...
-        nOld, ...
-        4);
-    
+        old_group, 'xml', nOld, 5);
+
     new_xml = get_path_matrix( ...
-        new_group, ...
-        'xml', ...
-        get_recording_count(new_group), ...
-        4);
-    
+        new_group, 'xml', ...
+        get_recording_count(new_group), 5);
+
     new_xml_path = normalize_one_path( ...
-        get_cell_safe( ...
-            new_xml, ...
-            new_idx, ...
-            1));
+        get_cell_safe(new_xml, new_idx, 1));
 
     if new_xml_path ~= ""
 
@@ -1122,44 +1137,21 @@ function idx = find_matching_recording( ...
             old_path = normalize_one_path( ...
                 get_cell_safe(old_xml, i, 1));
 
-            if old_path ~= "" && old_path == new_xml_path
+            if old_path ~= "" && ...
+               old_path == new_xml_path
+
                 idx = i;
                 return;
             end
         end
     end
 
-    old_date = get_path_vector(old_group, 'date', nOld);
-    new_date = get_path_vector(new_group, 'date', ...
-        get_recording_count(new_group));
+    % ==========================================================
+    % Aucune correspondance trouvée :
+    % nouveau recording
+    % ==========================================================
 
-    new_date_path = normalize_one_path( ...
-        get_cell_safe(new_date, new_idx, 1));
-
-    if new_date_path ~= ""
-
-        candidates = [];
-
-        for i = 1:nOld
-
-            if used_old(i)
-                continue;
-            end
-
-            old_path = normalize_one_path( ...
-                get_cell_safe(old_date, i, 1));
-
-            if old_path ~= "" && old_path == new_date_path
-                candidates(end+1) = i; %#ok<AGROW>
-            end
-        end
-
-        if numel(candidates) == 1
-            idx = candidates(1);
-        end
-    end
 end
-
 
 function n = get_recording_count(group)
 

@@ -1,9 +1,6 @@
 %% Choix du type
-% clearvars -except choices group_order selected_groups
-% clc
-clear 
+clearvars -except choices group_order selected_groups
 clc
-
 setup_python_env()
 
 % Choix du type (jm, FCD, SHAM)
@@ -26,7 +23,7 @@ recap_all = create_summary_sheets(selected_groups);
 
 % Data processing
 selected_groups = process_selected_groups(selected_groups, include_electroporated, automatic_selection);
-%%
+
 selected_groups = DF_peak_detection(selected_groups, include_electroporated, automatic_selection);
 %%
 %%selected_groups = data_checking(selected_groups, include_electroporated);

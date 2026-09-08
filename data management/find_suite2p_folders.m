@@ -111,41 +111,41 @@ function [suite2p_folders, TSeriesPaths, ZSeriesPaths, xml_paths_all, ...
         % ==========================================================
         % Sélection manuelle si plusieurs TSeries GCaMP existent
         % ==========================================================
-
+        
         if numel(gcamp_paths) > 1
-
+        
             fprintf('\n');
-
+        
             fprintf( ...
                 'Plusieurs TSeries GCaMP trouvés dans :\n%s\n', ...
                 selectedFolder);
-
+        
             for ii = 1:numel(gcamp_paths)
-
+        
                 fprintf( ...
                     '    %d) %s\n', ...
                     ii, ...
                     gcamp_paths{ii});
             end
-
-            selected_gcamp_path = ...
-                select_one_gcamp_tseries( ...
+        
+            selected_gcamp_paths = ...
+                select_multiple_gcamp_tseries( ...
                     selectedFolder, ...
                     gcamp_paths);
-
-            if isempty(selected_gcamp_path)
-
+        
+            if isempty(selected_gcamp_paths)
+        
                 fprintf( ...
                     [ ...
                     'Aucun TSeries GCaMP sélectionné pour :\n' ...
                     '%s\n'], ...
                     selectedFolder);
-
+        
                 continue;
             end
-
+        
             gcamp_paths = ...
-                {selected_gcamp_path};
+                selected_gcamp_paths;
         end
 
         % ==========================================================
@@ -923,6 +923,146 @@ end
 % ========================================================================
 % SELECT GCAMP TSERIES
 % ========================================================================
+
+function selected_paths = ...
+        select_multiple_gcamp_tseries( ...
+            parent_folder, ...
+            available_gcamp_paths)
+
+    selected_paths = {};
+
+    if isempty(available_gcamp_paths)
+        return;
+    end
+
+    % ==========================================================
+    % Un seul TSeries disponible
+    % ==========================================================
+
+    if numel(available_gcamp_paths) == 1
+
+        selected_paths = ...
+            available_gcamp_paths;
+
+        return;
+    end
+
+    % ==========================================================
+    % Plusieurs TSeries disponibles
+    % ==========================================================
+
+    remaining_paths = ...
+        available_gcamp_paths;
+
+    while ~isempty(remaining_paths)
+
+        % ------------------------------------------------------
+        % Sélection d'un TSeries parmi ceux qui restent
+        % ------------------------------------------------------
+
+        selected_path = ...
+            select_one_gcamp_tseries( ...
+                parent_folder, ...
+                remaining_paths);
+
+        if isempty(selected_path)
+
+            % Aucun premier TSeries sélectionné
+            if isempty(selected_paths)
+                return;
+            end
+
+            % Sinon on garde ceux déjà sélectionnés
+            break;
+        end
+
+        selected_paths{end+1,1} = ...
+            selected_path;
+
+        % ------------------------------------------------------
+        % Retirer celui qui vient d'être sélectionné
+        % ------------------------------------------------------
+
+        selected_normalized = ...
+            normalize_folder_path( ...
+                selected_path);
+
+        remaining_normalized = ...
+            cellfun( ...
+                @normalize_folder_path, ...
+                remaining_paths, ...
+                'UniformOutput', ...
+                false);
+
+        selected_idx = ...
+            find( ...
+                strcmpi( ...
+                    remaining_normalized, ...
+                    selected_normalized), ...
+                1);
+
+        if ~isempty(selected_idx)
+
+            remaining_paths(selected_idx) = [];
+        end
+
+        % ------------------------------------------------------
+        % Plus rien à sélectionner
+        % ------------------------------------------------------
+
+        if isempty(remaining_paths)
+            break;
+        end
+
+        % ------------------------------------------------------
+        % Demander si on veut ajouter un autre recording
+        % ------------------------------------------------------
+
+        if numel(remaining_paths) == 1
+
+            question_text = ...
+                sprintf( ...
+                    [ ...
+                    'Il reste 1 TSeries GCaMP disponible.\n\n' ...
+                    'Voulez-vous sélectionner également ce TSeries ?']);
+
+        else
+
+            question_text = ...
+                sprintf( ...
+                    [ ...
+                    'Il reste %d TSeries GCaMP disponibles.\n\n' ...
+                    'Voulez-vous sélectionner un autre TSeries ?'], ...
+                    numel(remaining_paths));
+        end
+
+        choice = ...
+            questdlg( ...
+                question_text, ...
+                'Sélection TSeries GCaMP', ...
+                'Oui', ...
+                'Non', ...
+                'Oui');
+
+        if ~strcmp(choice, 'Oui')
+            break;
+        end
+    end
+
+    % ==========================================================
+    % Résumé
+    % ==========================================================
+
+    fprintf('\nTSeries GCaMP retenus :\n');
+
+    for i = 1:numel(selected_paths)
+
+        fprintf( ...
+            '    %d) %s\n', ...
+            i, ...
+            selected_paths{i});
+    end
+end
 
 function selected_path = ...
         select_one_gcamp_tseries( ...
