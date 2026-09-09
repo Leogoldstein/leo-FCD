@@ -108,13 +108,20 @@ for t = 1:numel(type_names)
         end
 
         % =========================================================
+        % Recaps temporaires
+        % =========================================================
+
+        recap_tmp = ...
+            cell(1, nRec);
+
+        % =========================================================
         % Boucle recordings
         % =========================================================
 
         for idx = 1:nRec
 
             % -----------------------------------------------------
-            % Dossier de sortie DU RECORDING
+            % Dossier de sortie du recording
             % -----------------------------------------------------
 
             output_folder = '';
@@ -139,16 +146,37 @@ for t = 1:numel(type_names)
                 continue;
             end
 
-            recap = ...
+            % -----------------------------------------------------
+            % Création / chargement fiche
+            % -----------------------------------------------------
+
+            recap_tmp{idx} = ...
                 create_one_recording_summary_sheet( ...
                     metadata, ...
                     output_folder, ...
                     current_type, ...
                     animal_name, ...
                     idx);
+        end
 
-            recap_all.(current_type)(k).recap(idx) = ...
-                recap;
+        % =========================================================
+        % Conversion en tableau de structures
+        % =========================================================
+
+        valid_recap = ...
+            ~cellfun( ...
+                @isempty, ...
+                recap_tmp);
+
+        if any(valid_recap)
+
+            recap_all.(current_type)(k).recap = ...
+                [recap_tmp{valid_recap}];
+
+        else
+
+            recap_all.(current_type)(k).recap = ...
+                struct([]);
         end
     end
 end
@@ -187,58 +215,18 @@ output_file = ...
             idx));
 
 % =========================================================
-% Fichier déjà présent
+% Construction du recap
 % =========================================================
-
-if exist(output_file, 'file') == 2
-
-    fprintf( ...
-        'Summary déjà existant -> skip : %s\n', ...
-        output_file);
-
-    recap = struct();
-
-    recap.summary_file = ...
-        output_file;
-
-    recap.already_exists = ...
-        true;
-
-    return;
-end
-
-% =========================================================
-% Commentaire utilisateur
-% =========================================================
-
-comment_answer = ...
-    inputdlg( ...
-        sprintf( ...
-            'Commentaire pour %s | %s | %s :', ...
-            current_type, ...
-            animal_name, ...
-            value_to_string(date_name)), ...
-        'Recording comment', ...
-        [5 80]);
-
-if isempty(comment_answer)
-
-    comment_text = '';
-
-else
-
-    comment_text = ...
-        comment_answer{1};
-end
-
-% =========================================================
-% Construction recap
+%
+% IMPORTANT :
+% recap est toujours construit avec exactement les mêmes
+% fields, que la fiche existe déjà ou non.
 % =========================================================
 
 recap = struct();
 
 recap.comment = ...
-    comment_text;
+    '';
 
 recap.date_name = ...
     date_name;
@@ -360,8 +348,143 @@ recap.num_channels = ...
 recap.bidirectional_z = ...
     get_meta_idx(metadata, 'BidirectionalZ', idx);
 
+recap.summary_file = ...
+    output_file;
+
+recap.already_exists = ...
+    exist(output_file, 'file') == 2;
+
 % =========================================================
-% Écriture fichier
+% Gestion du commentaire
+% =========================================================
+
+rewrite_file = ...
+    true;
+
+if recap.already_exists
+
+    % -----------------------------------------------------
+    % Charger commentaire existant
+    % -----------------------------------------------------
+
+    existing_comment = ...
+        read_summary_comment( ...
+            output_file);
+
+    recap.comment = ...
+        existing_comment;
+
+    % -----------------------------------------------------
+    % Commentaire déjà présent
+    % -----------------------------------------------------
+
+    if ~isempty(strtrim(existing_comment))
+
+        dlg = ...
+            helpdlg( ...
+                sprintf( ...
+                    'Commentaire :\n\n%s', ...
+                    existing_comment), ...
+                sprintf( ...
+                    '%s | %s | %s', ...
+                    current_type, ...
+                    animal_name, ...
+                    value_to_string(date_name)));
+
+        % Bloque le pipeline jusqu'à clic sur OK
+        uiwait(dlg);
+
+        fprintf( ...
+            'Summary déjà existant avec commentaire -> conservation : %s\n', ...
+            output_file);
+
+        rewrite_file = ...
+            false;
+
+    else
+
+        % -------------------------------------------------
+        % Fiche existante mais commentaire vide
+        % -------------------------------------------------
+
+        fprintf( ...
+            'Summary existant mais commentaire vide : %s\n', ...
+            output_file);
+
+        comment_answer = ...
+            inputdlg( ...
+                sprintf( ...
+                    'Commentaire pour %s | %s | %s :', ...
+                    current_type, ...
+                    animal_name, ...
+                    value_to_string(date_name)), ...
+                'Recording comment', ...
+                [5 80]);
+
+        % -------------------------------------------------
+        % Cancel
+        % -------------------------------------------------
+
+        if isempty(comment_answer)
+
+            fprintf( ...
+                'Commentaire annulé -> fiche existante conservée sans modification.\n');
+
+            rewrite_file = ...
+                false;
+
+        else
+
+            recap.comment = ...
+                comment_answer{1};
+
+            rewrite_file = ...
+                true;
+        end
+    end
+
+else
+
+    % =====================================================
+    % Nouvelle fiche
+    % =====================================================
+
+    comment_answer = ...
+        inputdlg( ...
+            sprintf( ...
+                'Commentaire pour %s | %s | %s :', ...
+                current_type, ...
+                animal_name, ...
+                value_to_string(date_name)), ...
+            'Recording comment', ...
+            [5 80]);
+
+    % -----------------------------------------------------
+    % Cancel = commentaire vide
+    % -----------------------------------------------------
+
+    if isempty(comment_answer)
+
+        recap.comment = ...
+            '';
+
+    else
+
+        recap.comment = ...
+            comment_answer{1};
+    end
+end
+
+% =========================================================
+% Ne pas réécrire si inutile
+% =========================================================
+
+if ~rewrite_file
+    return;
+end
+
+% =========================================================
+% Écriture / réécriture
 % =========================================================
 
 fid = ...
@@ -468,15 +591,135 @@ end
 
 fclose(fid);
 
-recap.summary_file = ...
-    output_file;
+% =========================================================
+% Message console
+% =========================================================
 
-recap.already_exists = ...
-    false;
+if recap.already_exists
 
-fprintf( ...
-    'Fiche sauvegardée : %s\n', ...
-    output_file);
+    fprintf( ...
+        'Fiche mise à jour avec commentaire : %s\n', ...
+        output_file);
+
+else
+
+    fprintf( ...
+        'Fiche sauvegardée : %s\n', ...
+        output_file);
+end
+
+end
+
+
+%% ========================================================================
+function comment_text = read_summary_comment(output_file)
+
+comment_text = '';
+
+if exist(output_file, 'file') ~= 2
+    return;
+end
+
+txt = ...
+    fileread( ...
+        output_file);
+
+lines = ...
+    regexp( ...
+        txt, ...
+        '\r\n|\n|\r', ...
+        'split');
+
+% =========================================================
+% Trouver section COMMENTAIRES
+% =========================================================
+
+comment_idx = ...
+    find( ...
+        strcmp(strtrim(lines), 'COMMENTAIRES'), ...
+        1, ...
+        'first');
+
+if isempty(comment_idx)
+    return;
+end
+
+% COMMENTAIRES
+% ------------
+% commentaire
+%
+% INFOS ENREGISTREMENT
+
+start_idx = ...
+    comment_idx + 2;
+
+if start_idx > numel(lines)
+    return;
+end
+
+% =========================================================
+% Trouver section suivante
+% =========================================================
+
+end_idx = ...
+    numel(lines);
+
+for i = start_idx:numel(lines)
+
+    if strcmp(strtrim(lines{i}), 'INFOS ENREGISTREMENT')
+
+        end_idx = ...
+            i - 1;
+
+        break;
+    end
+end
+
+% =========================================================
+% Récupérer commentaire
+% =========================================================
+
+comment_lines = ...
+    lines(start_idx:end_idx);
+
+% ---------------------------------------------------------
+% Supprimer lignes vides au début
+% ---------------------------------------------------------
+
+while ~isempty(comment_lines) && ...
+        isempty(strtrim(comment_lines{1}))
+
+    comment_lines(1) = [];
+end
+
+% ---------------------------------------------------------
+% Supprimer lignes vides à la fin
+% ---------------------------------------------------------
+
+while ~isempty(comment_lines) && ...
+        isempty(strtrim(comment_lines{end}))
+
+    comment_lines(end) = [];
+end
+
+if isempty(comment_lines)
+    return;
+end
+
+comment_text = ...
+    strjoin( ...
+        comment_lines, ...
+        newline);
+
+% =========================================================
+% "NA" = ancien commentaire vide
+% =========================================================
+
+if strcmpi(strtrim(comment_text), 'NA')
+
+    comment_text = ...
+        '';
+end
 
 end
 

@@ -3,47 +3,12 @@ function selected_groups = build_output_folders( ...
         root_folders, ...
         automatic_selection, ...
         include_electroporated)
-%BUILD_OUTPUT_FOLDERS
-%
-% Construit et enregistre directement les dossiers de sortie dans :
-%
-%   selected_groups.(type)(k).paths.output_folders
-%
-% Chaque élément de paths.output_folders correspond à un recording.
-%
-% La période est déterminée automatiquement à partir de l'âge :
-%
-%   Development : âge <= P15
-%   Adult       : âge > P15
-%
-% Chaque chemin final est :
-%
-%   ...\Summary plots\<mode>\<periode>\<line>\<animal>\<date>
-%
-% Exemple :
-%
-%   ...\Summary plots\
-%       Pre-selection electroporated cells\
-%       Adult\
-%       mtor46\
-%       2470\
-%       11-06-2026
-%
-%
-% Exemple d'appel :
-%
-%   selected_groups = build_output_folders( ...
-%       selected_groups, ...
-%       root_folders, ...
-%       automatic_selection, ...
-%       include_electroporated);
-
 
     %==============================================================%
     % Vérification de selected_groups
     %==============================================================%
-
-    if nargin < 1 || isempty(selected_groups)
+    if nargin < 1 || ...
+            isempty(selected_groups)
 
         fprintf( ...
             'Output folders: selected_groups vide.\n');
@@ -60,6 +25,9 @@ function selected_groups = build_output_folders( ...
     end
 
 
+    %==============================================================%
+    % Types
+    %==============================================================%
     type_names = ...
         fieldnames(selected_groups);
 
@@ -80,8 +48,8 @@ function selected_groups = build_output_folders( ...
     %==============================================================%
     % Valeurs par défaut
     %==============================================================%
-
-    if nargin < 2 || isempty(root_folders)
+    if nargin < 2 || ...
+            isempty(root_folders)
 
         root_folders = ...
             repmat( ...
@@ -91,16 +59,32 @@ function selected_groups = build_output_folders( ...
     end
 
 
-    if nargin < 3 || isempty(automatic_selection)
+    if nargin < 3 || ...
+            isempty(automatic_selection)
 
         automatic_selection = ...
-            false( ...
-                n_types, ...
-                1);
+            struct();
+
+
+        for t = 1:n_types
+
+            automatic_selection.(type_names{t}) = ...
+                false;
+        end
     end
 
 
-    if nargin < 4 || isempty(include_electroporated)
+    if ~isstruct(automatic_selection)
+
+        error( ...
+            'build_output_folders:InvalidAutomaticSelection', ...
+            ['automatic_selection doit être une structure ', ...
+             'indexée par type expérimental.']);
+    end
+
+
+    if nargin < 4 || ...
+            isempty(include_electroporated)
 
         include_electroporated = ...
             false;
@@ -108,18 +92,11 @@ function selected_groups = build_output_folders( ...
 
 
     %==============================================================%
-    % Normalisation des entrées
+    % Normalisation
     %==============================================================%
-
     root_folders = ...
         normalize_root_folders_DF( ...
             root_folders, ...
-            n_types);
-
-
-    automatic_selection = ...
-        normalize_automatic_selection_DF( ...
-            automatic_selection, ...
             n_types);
 
 
@@ -145,15 +122,30 @@ function selected_groups = build_output_folders( ...
 
         current_type = ...
             type_names{t};
-
-
+    
+    
         current_root_folder = ...
             root_folders{t};
-
-
-        current_automatic_selection = ...
-            automatic_selection(t);
-
+    
+    
+        if ~isfield( ...
+                automatic_selection, ...
+                current_type)
+    
+            warning( ...
+                'build_output_folders:MissingAutomaticSelection', ...
+                'automatic_selection.%s absent. false utilisé.', ...
+                current_type);
+    
+    
+            current_automatic_selection = ...
+                false;
+    
+        else
+    
+            current_automatic_selection = ...
+                automatic_selection.(current_type);
+        end
 
         %----------------------------------------------------------%
         % Racine Summary plots
@@ -680,149 +672,6 @@ function root_folders = ...
             ['Le nombre de dossiers racines (%d) doit être égal ', ...
              'au nombre de types (%d), ou être égal à 1.'], ...
             numel(root_folders), ...
-            n_types);
-    end
-end
-
-
-%==========================================================================%
-% HELPER : normaliser automatic_selection
-%==========================================================================%
-function automatic_selection = ...
-    normalize_automatic_selection_DF( ...
-        automatic_selection, ...
-        n_types)
-
-    if nargin < 2 || ...
-            isempty(n_types) || ...
-            n_types < 1
-
-        automatic_selection = ...
-            false(0, 1);
-
-        return;
-    end
-
-
-    if isempty(automatic_selection)
-
-        automatic_selection = ...
-            false( ...
-                n_types, ...
-                1);
-
-        return;
-    end
-
-
-    %----------------------------------------------------------------------%
-    % Cellule
-    %----------------------------------------------------------------------%
-
-    if iscell(automatic_selection)
-
-        parsed_values = ...
-            false( ...
-                numel(automatic_selection), ...
-                1);
-
-
-        for i = 1:numel(automatic_selection)
-
-            parsed_values(i) = ...
-                parse_logical_scalar_DF( ...
-                    automatic_selection{i}, ...
-                    false);
-        end
-
-
-        automatic_selection = ...
-            parsed_values;
-
-
-    %----------------------------------------------------------------------%
-    % String
-    %----------------------------------------------------------------------%
-
-    elseif isstring(automatic_selection)
-
-        parsed_values = ...
-            false( ...
-                numel(automatic_selection), ...
-                1);
-
-
-        for i = 1:numel(automatic_selection)
-
-            parsed_values(i) = ...
-                parse_logical_scalar_DF( ...
-                    automatic_selection(i), ...
-                    false);
-        end
-
-
-        automatic_selection = ...
-            parsed_values;
-
-
-    %----------------------------------------------------------------------%
-    % Char
-    %----------------------------------------------------------------------%
-
-    elseif ischar(automatic_selection)
-
-        automatic_selection = ...
-            parse_logical_scalar_DF( ...
-                automatic_selection, ...
-                false);
-
-
-    %----------------------------------------------------------------------%
-    % Logique / numérique
-    %----------------------------------------------------------------------%
-
-    elseif islogical(automatic_selection) || ...
-            isnumeric(automatic_selection)
-
-        automatic_selection = ...
-            automatic_selection(:) ~= 0;
-
-
-    else
-
-        error( ...
-            'build_output_folders:InvalidAutomaticSelection', ...
-            ['automatic_selection doit être logique, numérique, ', ...
-             'string, char ou cellule.']);
-    end
-
-
-    automatic_selection = ...
-        logical( ...
-            automatic_selection(:));
-
-
-    %----------------------------------------------------------------------%
-    % Adaptation au nombre de types
-    %----------------------------------------------------------------------%
-
-    if numel(automatic_selection) == 1 && ...
-            n_types > 1
-
-        automatic_selection = ...
-            repmat( ...
-                automatic_selection, ...
-                n_types, ...
-                1);
-
-
-    elseif numel(automatic_selection) ~= n_types
-
-        error( ...
-            'build_output_folders:AutomaticSelectionCountMismatch', ...
-            ['Le nombre de valeurs automatic_selection (%d) doit ', ...
-             'être égal au nombre de types (%d), ou être égal à 1.'], ...
-            numel(automatic_selection), ...
             n_types);
     end
 end
