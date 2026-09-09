@@ -1750,6 +1750,17 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     uiwait(fig);
 
     %==============================================================
+    % MODIFICATION DU COMMENTAIRE
+    %
+    % Indépendante de selection_modified.
+    %==============================================================
+    
+    comment_modified = ...
+        ishghandle(fig) && ...
+        isappdata(fig,'comment_modified') && ...
+        getappdata(fig,'comment_modified');
+
+    %==============================================================
     % SELECTED SIGNAL
     %==============================================================
 
@@ -1766,80 +1777,133 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     %==============================================================
     % OUTPUTS
+    %
+    % has_new_outputs concerne UNIQUEMENT les données de détection /
+    % sélection.
+    %
+    % Une modification du commentaire est renvoyée dans
+    % selection_summary mais ne met PAS has_new_outputs à true.
     %==============================================================
-
+    
     if ishghandle(fig) && ...
             isappdata(fig,'last_save_outputs')
-
+    
         out = ...
             getappdata(fig,'last_save_outputs');
-
+    
+        % Une vraie sélection a été sauvegardée.
         has_new_outputs = true;
-
+    
         valid_cells = ...
             out.valid_cells;
-
+    
         DF_raw = ...
             out.DF_raw;
-
+    
         DF_sg = ...
             out.DF_sg;
-
+    
         F0 = ...
             out.F0;
-
+    
         noise_est = ...
             out.noise_est;
-
+    
         Raster = ...
             out.Raster;
-
+    
         Acttmp2 = ...
             out.Acttmp2;
-
+    
         MAct = ...
             out.MAct;
-
+    
         thresholds = ...
             out.thresholds;
-
+    
         if isfield(out,'summary') && ...
                 ~isempty(out.summary)
-        
+    
             selection_summary = ...
                 out.summary;
-        
+    
         else
-        
+    
             selection_summary = ...
                 struct();
         end
-
+    
     else
-
+    
+        %==========================================================
+        % AUCUNE MODIFICATION DE SÉLECTION
+        %
+        % Important :
+        % on ne crée PAS de nouveaux outputs de détection.
+        %
+        % Mais on conserve quand même selection_summary pour pouvoir
+        % renvoyer un éventuel nouveau commentaire.
+        %==========================================================
+    
+        has_new_outputs = ...
+            false;
+    
         Raster = ...
             false(size(F));
-
+    
         Acttmp2 = ...
             repmat( ...
                 {[]}, ...
                 nCells, ...
                 1);
-
+    
         MAct = [];
-
+    
         thresholds = ...
             nan(nCells,1);
-
+    
         valid_cells = [];
-
+    
         DF_sg = [];
         DF_raw = [];
         F0 = [];
         noise_est = [];
-
-        selection_summary = struct();
+    
+        %==========================================================
+        % Reprendre le summary déjà sauvegardé
+        %==========================================================
+    
+        if isstruct(selection_summary_saved)
+    
+            selection_summary = ...
+                selection_summary_saved;
+    
+        else
+    
+            selection_summary = ...
+                struct();
+        end
+    
+        %==========================================================
+        % Remplacer uniquement le commentaire
+        %==========================================================
+    
+        if ishghandle(fig) && ...
+                isappdata(fig,'comment')
+    
+            selection_summary.comment = ...
+                getappdata(fig,'comment');
+        end
     end
+    
+    %==============================================================
+    % Signaler séparément si le commentaire a changé
+    %
+    % CE FLAG NE DOIT PAS servir à modified_plane.
+    %==============================================================
+    
+    selection_summary.comment_modified = ...
+        comment_modified;
 
     if ishghandle(fig)
         delete(fig);
@@ -4455,13 +4519,6 @@ function edit_peak_detection_comment(fig)
         setappdata( ...
             fig, ...
             'comment_modified', ...
-            true);
-
-        % Un changement de commentaire constitue une modification
-        % sauvegardable, notamment en mode Viewer.
-        setappdata( ...
-            fig, ...
-            'selection_modified', ...
             true);
     end
 
