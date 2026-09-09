@@ -265,49 +265,25 @@ function create_random_peak_preview( ...
 
     % =============================================================
     % Summary folder
+    %
+    % current_output_folder est déjà le chemin COMPLET :
+    %
+    %   ...\Summary plots\<mode>\Adult|Development\
+    %       <line>\<animal>\<date>
+    %
+    % Il ne faut donc rien reconstruire ici.
     % =============================================================
-
-    summary_folder = '';
+    
     summary_recording_folder = '';
-
+    
     if automatic_selection && ...
             ~isempty(current_output_folder)
-
-        current_age_value = ...
-            str2double( ...
-                regexprep( ...
-                    char(string(age)), ...
-                    '[^\d\.]', ...
-                    ''));
-
-        if isfinite(current_age_value) && ...
-                current_age_value <= 15
-
-            summary_folder = ...
-                fullfile( ...
-                    current_output_folder, ...
-                    'Development');
-
-        else
-
-            summary_folder = ...
-                fullfile( ...
-                    current_output_folder, ...
-                    'Adult');
-        end
-
-        if exist(summary_folder, 'dir') ~= 7
-            mkdir(summary_folder);
-        end
-
+    
         summary_recording_folder = ...
-            fullfile( ...
-                summary_folder, ...
-                char(string(line)), ...
-                char(string(animal)), ...
-                char(string(date)));
-
-        if exist(summary_recording_folder, 'dir') ~= 7
+            current_output_folder;
+    
+        if exist(summary_recording_folder,'dir') ~= 7
+    
             mkdir(summary_recording_folder);
         end
     end
