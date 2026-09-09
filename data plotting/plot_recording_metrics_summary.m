@@ -1,12 +1,13 @@
 function plot_recording_metrics_summary( ...
         results_analysis, ...
         current_automatic_selection, ...
-        current_output_folder, ...
+        current_output_folders, ...
         gcamp_root_folders, ...
         current_line, ...
         current_animal, ...
         current_dates, ...
         current_ages)
+
 %PLOT_RECORDING_METRICS_SUMMARY
 %
 % Crée une figure de synthèse par recording avec :
@@ -19,30 +20,28 @@ function plot_recording_metrics_summary( ...
 %   6) Burst rate
 %
 % Les métriques calculées par plan sont concaténées pour la
-% visualisation du recording :
-%
-%   FrequencyPerCell{m}{p}
-%   BurstFraction{m}{p}
-%   BurstRate_per_min{m}{p}
-%
-% Pour les corrélations :
-%   - chaque matrice de plan est traitée séparément ;
-%   - la diagonale est supprimée ;
-%   - seul le triangle supérieur est conservé ;
-%   - les valeurs des plans sont ensuite concaténées.
-%
-% Les SCEs sont déjà calculées sur les plans concaténés et sont donc
-% utilisées directement au niveau du recording.
+% visualisation du recording.
 %
 % Sauvegarde :
 %
 %   Toujours :
 %       gcamp_root_folders{m}
 %
-%   Si current_automatic_selection ~= 0 :
-%       current_output_folder
+%   Si current_automatic_selection == true :
+%       current_output_folders{m}
 %
-% Aucun dossier n'est créé.
+% Structure attendue :
+%
+%   current_output_folders{m} =
+%
+%   ...\Summary plots\
+%       <mode>\
+%       Development|Adult\
+%       line\
+%       animal\
+%       date
+%
+% Aucun sous-dossier line/animal/date n'est reconstruit ici.
 %
 % Nomenclature :
 %
@@ -64,23 +63,23 @@ function plot_recording_metrics_summary( ...
 
 
     %==============================================================%
-    % Copie dans output global ?
-    %
-    % current_output_folder contient déjà Adult/Development.
+    % Copie dans Summary plots ?
     %==============================================================%
     save_in_current_output = ...
-        current_automatic_selection ~= 0;
-    
-    
+        current_automatic_selection;
+
+
     if save_in_current_output && ...
-            isempty(current_output_folder)
-    
+            isempty(current_output_folders)
+
         warning( ...
-            ['Recording metrics summary: current_output_folder ' ...
-             'is empty. Global copies will be skipped.']);
-    
-        save_in_current_output = false;
+            ['Recording metrics summary: current_output_folders ', ...
+             'is empty. Output copies will be skipped.']);
+
+        save_in_current_output = ...
+            false;
     end
+
 
     %==============================================================%
     % Nombre de recordings
@@ -111,7 +110,7 @@ function plot_recording_metrics_summary( ...
                     isempty(gcamp_root_folders{m})
 
                 warning( ...
-                    ['Rec %d: GCaMP root folder missing, ' ...
+                    ['Rec %d: GCaMP root folder missing, ', ...
                      'recording skipped.'], ...
                     m);
 
@@ -123,9 +122,6 @@ function plot_recording_metrics_summary( ...
                 gcamp_root_folders{m};
 
 
-            %------------------------------------------------------%
-            % Déballage éventuel d'une cellule singleton
-            %------------------------------------------------------%
             while iscell(current_gcamp_root) && ...
                     numel(current_gcamp_root) == 1
 
@@ -136,12 +132,10 @@ function plot_recording_metrics_summary( ...
 
             if isempty(current_gcamp_root) || ...
                     iscell(current_gcamp_root) || ...
-                    exist( ...
-                        current_gcamp_root, ...
-                        'dir') ~= 7
+                    exist(current_gcamp_root, 'dir') ~= 7
 
                 warning( ...
-                    ['Rec %d: GCaMP root folder invalid or missing, ' ...
+                    ['Rec %d: GCaMP root folder invalid or missing, ', ...
                      'recording skipped.'], ...
                     m);
 
@@ -155,9 +149,7 @@ function plot_recording_metrics_summary( ...
             if m <= numel(current_dates)
 
                 current_date = ...
-                    get_date_label( ...
-                        current_dates, ...
-                        m);
+                    char(string(current_dates{m}));
 
             else
 
@@ -172,9 +164,7 @@ function plot_recording_metrics_summary( ...
             if m <= numel(current_ages)
 
                 current_age = ...
-                    get_age_label( ...
-                        current_ages, ...
-                        m);
+                    char(string(current_ages{m}));
 
             else
 
@@ -182,30 +172,40 @@ function plot_recording_metrics_summary( ...
                     '';
             end
 
-            
+
             %======================================================%
-            % Dossier de résumé
+            % Dossier Summary plots du recording
             %
-            % current_output_folder/
-            %   line/
-            %       animal/
-            %           date/
+            % Il est déjà complètement construit :
+            %
+            % ...\Development|Adult\line\animal\date
             %======================================================%
             summary_output_folder = '';
-            
+
+
             if save_in_current_output
-            
-                summary_output_folder = ...
-                    fullfile( ...
-                        current_output_folder, ...
-                        char(string(current_line)), ...
-                        char(string(current_animal)), ...
-                        char(string(current_date)));
-            
-                if exist(summary_output_folder,'dir') ~= 7
-                    mkdir(summary_output_folder);
+
+                if m <= numel(current_output_folders) && ...
+                        ~isempty(current_output_folders{m})
+
+                    summary_output_folder = ...
+                        current_output_folders{m};
+
+
+                    if exist(summary_output_folder, 'dir') ~= 7
+
+                        mkdir( ...
+                            summary_output_folder);
+                    end
+
+                else
+
+                    warning( ...
+                        'Rec %d: output folder missing.', ...
+                        m);
                 end
             end
+
 
             %======================================================%
             % FREQUENCY
@@ -266,9 +266,6 @@ function plot_recording_metrics_summary( ...
 
             %======================================================%
             % PAIRWISE CORRELATIONS
-            %
-            % Ne jamais concaténer les matrices avant extraction.
-            % Chaque plan est traité séparément.
             %======================================================%
             corr_by_plane = ...
                 get_results_analysis_value( ...
@@ -288,8 +285,6 @@ function plot_recording_metrics_summary( ...
 
             %======================================================%
             % SCE FREQUENCY
-            %
-            % Déjà calculée sur les plans concaténés.
             %======================================================%
             sce_frequency = ...
                 get_results_analysis_value( ...
@@ -309,8 +304,6 @@ function plot_recording_metrics_summary( ...
 
             %======================================================%
             % SCE PARTICIPATION
-            %
-            % Déjà calculée sur les plans concaténés.
             %======================================================%
             sce_participation = ...
                 get_results_analysis_value( ...
@@ -388,13 +381,11 @@ function plot_recording_metrics_summary( ...
 
 
             exists_gcamp = ...
-                exist( ...
-                    save_path_gcamp, ...
-                    'file') == 2;
+                exist(save_path_gcamp, 'file') == 2;
 
 
             %======================================================%
-            % Chemin output global
+            % Chemin Summary plots
             %======================================================%
             save_path_output = '';
 
@@ -403,7 +394,8 @@ function plot_recording_metrics_summary( ...
                 true;
 
 
-            if save_in_current_output
+            if save_in_current_output && ...
+                    ~isempty(summary_output_folder)
 
                 save_path_output = ...
                     fullfile( ...
@@ -412,9 +404,7 @@ function plot_recording_metrics_summary( ...
 
 
                 exists_output = ...
-                    exist( ...
-                        save_path_output, ...
-                        'file') == 2;
+                    exist(save_path_output, 'file') == 2;
             end
 
 
@@ -615,7 +605,6 @@ function plot_recording_metrics_summary( ...
 
             %======================================================%
             % Sauvegarde GCaMP
-            % Toujours
             %======================================================%
             if ~exists_gcamp
 
@@ -633,10 +622,10 @@ function plot_recording_metrics_summary( ...
 
 
             %======================================================%
-            % Copie output global
-            % Seulement si automatic_selection ~= 0
+            % Sauvegarde Summary plots / date
             %======================================================%
             if save_in_current_output && ...
+                    ~isempty(save_path_output) && ...
                     ~exists_output
 
                 exportgraphics( ...
@@ -665,8 +654,8 @@ function plot_recording_metrics_summary( ...
         catch ME
 
             fprintf( ...
-                'Recording summary error | rec %d: %s\n', ...
-                m, ...
+                'Recording summary error | folder %s: %s\n', ...
+                current_gcamp_root, ...
                 ME.message);
 
 
@@ -758,14 +747,8 @@ function plot_distribution_panel( ...
         'top');
 
 
-    grid( ...
-        ax, ...
-        'on');
-
-
-    box( ...
-        ax, ...
-        'off');
+    grid(ax, 'on');
+    box(ax, 'off');
 end
 
 
@@ -843,21 +826,16 @@ function plot_single_value_panel( ...
         'bold');
 
 
-    grid( ...
-        ax, ...
-        'on');
-
-
-    box( ...
-        ax, ...
-        'off');
+    grid(ax, 'on');
+    box(ax, 'off');
 end
 
 
 %=========================================================================%
 % CONCATENATE PLAN METRICS
 %=========================================================================%
-function values = concatenate_numeric_planes( ...
+function values = ...
+    concatenate_numeric_planes( ...
         values_by_plane)
 
     values = [];
@@ -939,12 +917,9 @@ function values = ...
             double(C);
 
 
-        %==========================================================%
-        % Matrice carrée de corrélation
-        %==========================================================%
         if ismatrix(C) && ...
-                size(C, 1) > 1 && ...
-                size(C, 1) == size(C, 2)
+                size(C,1) > 1 && ...
+                size(C,1) == size(C,2)
 
             keep = ...
                 triu( ...
@@ -979,19 +954,13 @@ end
 %=========================================================================%
 % GET RESULTS_ANALYSIS VALUE
 %=========================================================================%
-function val = get_results_analysis_value( ...
+function val = ...
+    get_results_analysis_value( ...
         results_analysis, ...
         path_fields, ...
         idx)
 
     val = [];
-
-
-    if isempty(results_analysis) || ...
-            ~isstruct(results_analysis)
-
-        return;
-    end
 
 
     current = ...
@@ -1035,7 +1004,8 @@ end
 %=========================================================================%
 % FORCE NUMERIC VECTOR
 %=========================================================================%
-function v = force_numeric_vector(x)
+function v = ...
+    force_numeric_vector(x)
 
     if isempty(x)
 
@@ -1083,13 +1053,11 @@ function v = force_numeric_vector(x)
 
 
     v = ...
-        double( ...
-            x(:));
+        double(x(:));
 
 
     v = ...
-        v( ...
-            isfinite(v));
+        v(isfinite(v));
 end
 
 
@@ -1116,107 +1084,8 @@ function empty_summary_axis( ...
         'center');
 
 
-    xticks( ...
-        ax, ...
-        []);
+    xticks(ax, []);
+    yticks(ax, []);
 
-
-    yticks( ...
-        ax, ...
-        []);
-
-
-    box( ...
-        ax, ...
-        'off');
-end
-
-
-%=========================================================================%
-% AGE
-%=========================================================================%
-function age_label = get_age_label( ...
-        ages, ...
-        m)
-
-    if iscell(ages)
-
-        age_value = ...
-            ages{m};
-
-    else
-
-        age_value = ...
-            ages(m);
-    end
-
-
-    if isnumeric(age_value) || ...
-            islogical(age_value)
-
-        age_label = ...
-            sprintf( ...
-                'P%d', ...
-                round( ...
-                    double(age_value)));
-
-    else
-
-        age_txt = ...
-            age_value;
-
-
-        token = ...
-            regexp( ...
-                age_txt, ...
-                '\d+', ...
-                'match', ...
-                'once');
-
-
-        if isempty(token)
-
-            age_label = ...
-                age_txt;
-
-        else
-
-            age_label = ...
-                ['P' token];
-        end
-    end
-end
-
-
-%=========================================================================%
-% DATE
-%=========================================================================%
-function date_label = get_date_label( ...
-        dates, ...
-        m)
-
-    if iscell(dates)
-
-        date_value = ...
-            dates{m};
-
-    else
-
-        date_value = ...
-            dates(m);
-    end
-
-
-    if isdatetime(date_value)
-
-        date_label = ...
-            datestr( ...
-                date_value, ...
-                'yyyy-mm-dd');
-
-    else
-
-        date_label = ...
-            date_value;
-    end
+    box(ax, 'off');
 end

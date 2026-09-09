@@ -27,8 +27,7 @@ function selected_groups = DF_peak_detection( ...
             type_names{t};
 
         current_automatic_selection = ...
-            automatic_selection(t);
-
+            automatic_selection.(current_type);
 
         for k = 1:numel(selected_groups.(current_type))
 

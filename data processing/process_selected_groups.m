@@ -18,7 +18,7 @@ function selected_groups = process_selected_groups( ...
             numel(selected_groups.(current_type));
 
         current_automatic_selection = ...
-            automatic_selection(t);
+            automatic_selection.(current_type);
 
         fprintf('\n');
         fprintf('============================================================\n');

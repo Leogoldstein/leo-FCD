@@ -1805,49 +1805,151 @@ function build_rasterplot_peaks( ...
 
         %==========================================================
         % 4) SUMMARY ANIMAL : TOUS LES RASTERS CONCATÉNÉS
+        %
+        % Sauvegarde :
+        %
+        %   1) dossier animal local :
+        %      animal_path
+        %
+        %   2) si automatic_selection :
+        %
+        %      current_output_folders{m}
+        %          = ...\line\animal\date
+        %
+        %      animal_output_folder
+        %          = ...\line\animal
+        %
+        % La figure est donc également copiée dans le dossier
+        % Summary plots propre à l'animal.
         %==========================================================
         if m == numFolders
-
+        
             fig = [];
-
-
+        
+        
             try
-
+        
+                %======================================================
+                % Nom de fichier
+                %======================================================
+                animal_summary_filename = ...
+                    sprintf( ...
+                        '%s%s_all_dates_all_ages_peak_concat_rasters.png', ...
+                        line_prefix, ...
+                        animal_file_name);
+        
+        
+                %======================================================
+                % 1) Sauvegarde locale animal
+                %======================================================
                 fig_save_animal = ...
                     fullfile( ...
                         animal_path, ...
-                        sprintf( ...
-                            '%s%s_all_dates_all_ages_peak_concat_rasters.png', ...
-                            line_prefix, ...
-                            animal_file_name));
-
-
+                        animal_summary_filename);
+        
+        
+                %======================================================
+                % 2) Sauvegarde automatic_selection dans :
+                %
+                % ...\Summary plots\
+                %     <mode>\
+                %     Development|Adult\
+                %     line\
+                %     animal\
+                %
+                % current_output_folders{m} correspond au dernier
+                % dossier date puisque m == numFolders.
+                %======================================================
+                fig_save_output = '';
+        
+        
+                if automatic_selection && ...
+                        numel(current_output_folders) >= m && ...
+                        ~isempty(current_output_folders{m})
+        
+                    date_output_folder = ...
+                        current_output_folders{m};
+        
+        
+                    animal_output_folder = ...
+                        fileparts( ...
+                            date_output_folder);
+        
+        
+                    if exist(animal_output_folder, 'dir') ~= 7
+        
+                        mkdir( ...
+                            animal_output_folder);
+                    end
+        
+        
+                    fig_save_output = ...
+                        fullfile( ...
+                            animal_output_folder, ...
+                            animal_summary_filename);
+                end
+        
+        
+                %======================================================
+                % Vérifier indépendamment les deux destinations
+                %======================================================
                 animal_summary_exists = ...
                     exist( ...
                         fig_save_animal, ...
                         'file') == 2;
-
-
-                %--------------------------------------------------
-                % La summary animal agrège les recordings.
-                % Si au moins une nouvelle sortie a été sauvegardée,
-                % la reconstruire et écraser l'ancienne.
-                %--------------------------------------------------
-                if animal_summary_exists && ...
-                        ~has_new_saved
-
+        
+        
+                output_summary_exists = ...
+                    ~isempty(fig_save_output) && ...
+                    exist( ...
+                        fig_save_output, ...
+                        'file') == 2;
+        
+        
+                %------------------------------------------------------
+                % La summary animal agrège tous les recordings.
+                %
+                % Recalcul nécessaire si :
+                %   - nouvelles données sauvegardées
+                %   - figure locale absente
+                %   - copie automatic_selection absente
+                %------------------------------------------------------
+                need_animal_summary = ...
+                    has_new_saved || ...
+                    ~animal_summary_exists;
+        
+        
+                need_output_summary = ...
+                    automatic_selection && ...
+                    ~isempty(fig_save_output) && ...
+                    ( ...
+                        has_new_saved || ...
+                        ~output_summary_exists ...
+                    );
+        
+        
+                %======================================================
+                % Skip uniquement si toutes les destinations
+                % nécessaires existent déjà
+                %======================================================
+                if ~need_animal_summary && ...
+                        ~need_output_summary
+        
                     fprintf( ...
                         ['Animal peak concat raster summary already ' ...
-                         'exists, all processing skipped:\n%s\n'], ...
-                        fig_save_animal);
-
+                         'exists in all required locations, skipped.\n']);
+        
                 else
-
+        
+                    %==================================================
+                    % Trouver les recordings possédant un raster
+                    % concaténé valide
+                    %==================================================
                     valid_dates = [];
-
-
+        
+        
                     for mm = 1:numFolders
-
+        
                         [ ...
                             Raster_concat_mm, ...
                             ~, ...
@@ -1856,94 +1958,106 @@ function build_rasterplot_peaks( ...
                             get_concat_peak_data( ...
                                 data, ...
                                 mm);
-
-
+        
+        
                         if ~isempty(Raster_concat_mm)
-
+        
                             [NCell_mm, Nz_mm] = ...
                                 size(Raster_concat_mm);
-
-
+        
+        
                             if NCell_mm > 0 && ...
                                     Nz_mm > 0
-
+        
                                 valid_dates(end+1) = ...
                                     mm; %#ok<AGROW>
                             end
                         end
                     end
-
-
+        
+        
+                    %==================================================
+                    % Vérifier le nombre de dates valides
+                    %==================================================
                     if isempty(valid_dates)
-
+        
                         fprintf( ...
                             ['Animal peak summary: aucun raster ' ...
                              'concaténé valide.\n']);
-
+        
                     elseif numel(valid_dates) < 2
-
+        
                         fprintf( ...
                             ['Animal peak summary: une seule date ' ...
                              'valide, figure non générée.\n']);
-
+        
                     else
-
+        
+                        %==================================================
+                        % Trier les recordings par âge
+                        %==================================================
                         ages_valid = ...
                             nan( ...
                                 numel(valid_dates), ...
                                 1);
-
-
+        
+        
                         for ii = 1:numel(valid_dates)
-
+        
                             mm = ...
                                 valid_dates(ii);
-
-
+        
+        
                             if numel(current_ages_group) >= mm && ...
                                     ~isempty(current_ages_group{mm})
-
+        
                                 ages_valid(ii) = ...
                                     extract_age_number( ...
                                         current_ages_group{mm});
                             end
                         end
-
-
+        
+        
                         [~, order_age] = ...
                             sort( ...
                                 ages_valid, ...
                                 'ascend', ...
                                 'MissingPlacement', ...
                                 'last');
-
-
+        
+        
                         valid_dates = ...
                             valid_dates(order_age);
-
-
+        
+        
                         nRows = ...
                             numel(valid_dates);
-
-
+        
+        
+                        %==================================================
+                        % Figure
+                        %==================================================
                         fig = ...
                             figure( ...
                                 'Color', ...
                                 'w');
-
-
+        
+        
                         set( ...
                             fig, ...
                             'Position', ...
                             get(0, 'ScreenSize'));
-
-
+        
+        
+                        %==================================================
+                        % Une ligne par recording/date
+                        %==================================================
                         for idx = 1:nRows
-
+        
                             mm = ...
                                 valid_dates(idx);
-
-
+        
+        
                             [ ...
                                 Raster_concat, ...
                                 isort_concat, ...
@@ -1952,127 +2066,156 @@ function build_rasterplot_peaks( ...
                                 get_concat_peak_data( ...
                                     data, ...
                                     mm);
-
-
+        
+        
                             if isempty(Raster_concat)
                                 continue;
                             end
-
-
+        
+        
+                            %==============================================
+                            % Sampling rate
+                            %==============================================
+                            if numel(sampling_rate_group) < mm || ...
+                                    isempty(sampling_rate_group{mm})
+        
+                                fprintf( ...
+                                    ['Animal peak summary date %d: ' ...
+                                     'sampling rate missing, skip.\n'], ...
+                                    mm);
+        
+                                continue;
+                            end
+        
+        
                             sampling_rate_mm = ...
                                 double( ...
                                     sampling_rate_group{mm}(1));
-
-
+        
+        
                             if ~isfinite(sampling_rate_mm) || ...
                                     sampling_rate_mm <= 0
-
+        
+                                fprintf( ...
+                                    ['Animal peak summary date %d: ' ...
+                                     'invalid sampling rate, skip.\n'], ...
+                                    mm);
+        
                                 continue;
                             end
-
-
+        
+        
                             [NCell, Nz] = ...
                                 size(Raster_concat);
-
-
+        
+        
                             if NCell == 0 || ...
                                     Nz == 0
-
+        
                                 continue;
                             end
-
-
+        
+        
+                            %==============================================
+                            % Sorting
+                            %==============================================
                             isort_concat = ...
                                 sanitize_isort( ...
                                     isort_concat, ...
                                     NCell);
-
-
+        
+        
+                            %==============================================
+                            % Temps
+                            %==============================================
                             total_time = ...
                                 Nz / ...
                                 sampling_rate_mm;
-
-
+        
+        
                             t_sec = ...
                                 (0:Nz-1) / ...
                                 sampling_rate_mm;
-
-
+        
+        
+                            %==============================================
+                            % Axe
+                            %==============================================
                             ax = ...
                                 subplot( ...
                                     nRows, ...
                                     1, ...
                                     idx);
-
-
+        
+        
                             A = ...
                                 Raster_concat( ...
                                     isort_concat, ...
                                     :);
-
-
+        
+        
                             plot_peak_raster_visible( ...
                                 ax, ...
                                 A, ...
                                 t_sec);
-
-
+        
+        
                             set( ...
                                 ax, ...
                                 'TickLength', ...
                                 [0 0]);
-
-
+        
+        
                             xlim( ...
                                 ax, ...
                                 [0 total_time]);
-
-
+        
+        
                             ylabel( ...
                                 ax, ...
                                 sprintf( ...
                                     '%d neurons', ...
                                     NCell));
-
-
-                            %--------------------------------------
+        
+        
+                            %==============================================
                             % Date
-                            %--------------------------------------
+                            %==============================================
                             if numel(current_dates_group) >= mm && ...
                                     ~isempty(current_dates_group{mm})
-
+        
                                 date_text = ...
                                     char(string( ...
                                         current_dates_group{mm}));
-
+        
                             else
-
+        
                                 date_text = ...
                                     sprintf( ...
                                         'Date_%d', ...
                                         mm);
                             end
-
-
-                            %--------------------------------------
+        
+        
+                            %==============================================
                             % Age
-                            %--------------------------------------
+                            %==============================================
                             if numel(current_ages_group) >= mm && ...
                                     ~isempty(current_ages_group{mm})
-
+        
                                 age_text = ...
                                     char(string( ...
                                         current_ages_group{mm}));
-
+        
                             else
-
+        
                                 age_text = ...
                                     sprintf( ...
                                         'Age_%d', ...
                                         mm);
                             end
-
-
+        
+        
                             title( ...
                                 ax, ...
                                 sprintf( ...
@@ -2081,54 +2224,80 @@ function build_rasterplot_peaks( ...
                                     age_text), ...
                                 'Interpreter', ...
                                 'none');
-
-
+        
+        
                             if idx == nRows
-
+        
                                 xlabel( ...
                                     ax, ...
                                     'Time (s)');
                             end
                         end
-
-
+        
+        
+                        %==================================================
+                        % Global title
+                        %==================================================
                         sgtitle( ...
                             sprintf( ...
                                 '%s - all dates peak concat rasters', ...
                                 current_animal_group), ...
                             'Interpreter', ...
                             'none');
-
-
-                        saveas( ...
-                            fig, ...
-                            fig_save_animal);
-
-
-                        fprintf( ...
-                            ['Animal peak concat raster summary ' ...
-                             'saved in:\n%s\n'], ...
-                            fig_save_animal);
-
-
+        
+        
+                        %==================================================
+                        % 1) Sauvegarde locale animal
+                        %==================================================
+                        if need_animal_summary
+        
+                            saveas( ...
+                                fig, ...
+                                fig_save_animal);
+        
+        
+                            fprintf( ...
+                                ['Animal peak concat raster summary ' ...
+                                 'saved locally in:\n%s\n'], ...
+                                fig_save_animal);
+                        end
+        
+        
+                        %==================================================
+                        % 2) Sauvegarde Summary plots / animal
+                        %==================================================
+                        if need_output_summary
+        
+                            saveas( ...
+                                fig, ...
+                                fig_save_output);
+        
+        
+                            fprintf( ...
+                                ['Animal peak concat raster summary ' ...
+                                 'saved in animal output folder:\n%s\n'], ...
+                                fig_save_output);
+                        end
+        
+        
                         close(fig);
-
+        
                         fig = [];
                     end
                 end
-
-
+        
+        
             catch ME
-
+        
                 fprintf( ...
                     ['\nError for animal peak concat raster ' ...
                      'summary: %s\n'], ...
                     ME.message);
-
-
+        
+        
                 if ~isempty(fig) && ...
                         ishghandle(fig)
-
+        
                     close(fig);
                 end
             end

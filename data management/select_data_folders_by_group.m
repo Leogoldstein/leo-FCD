@@ -10,42 +10,73 @@ function [root_folders, dataFolders_by_group, ...
     ctrl_folder = 'D:\Imaging\WT';
     sham_folder = 'D:\Imaging\SHAM';
 
+
     %==============================================================%
     % Initialisation des sorties
     %==============================================================%
-    nGroups = numel(choices);
+    nGroups = ...
+        numel(choices);
 
-    root_folders = cell(nGroups, 1);
-    dataFolders_by_group = cell(nGroups, 1);
 
-    % automatic_selection est conservé pour chaque groupe.
-    automatic_selection = false(nGroups, 1);
+    root_folders = ...
+        cell(nGroups, 1);
+
+
+    dataFolders_by_group = ...
+        cell(nGroups, 1);
+
 
     %==============================================================%
-    % Inclusion des cellules bleues / mTOR pour les données FCD
+    % Automatic selection
+    %
+    % Une valeur directement associée au type expérimental :
+    %
+    %   automatic_selection.jm
+    %   automatic_selection.FCD
+    %   automatic_selection.WT
+    %   automatic_selection.SHAM
+    %
+    % On ne dépend donc plus de l'ordre des groupes.
     %==============================================================%
-    include_blue_cells = 0;
+    automatic_selection = ...
+        struct();
 
-    if any(ismember(choices, [2 4]))
 
-        include_blue_cells = input( ...
-            ['[FCD] Inclure les cellules électroporées ? ', ...
-             '(1 = vrai, 0 = faux) : ']);
+    %==============================================================%
+    % Inclusion des cellules électroporées / mTOR
+    %==============================================================%
+    include_blue_cells = ...
+        0;
+
+
+    if any( ...
+            ismember( ...
+                choices, ...
+                [2 4]))
+
+        include_blue_cells = ...
+            input( ...
+                ['[FCD] Inclure les cellules électroporées ? ', ...
+                 '(1 = vrai, 0 = faux) : ']);
+
 
         if ~isscalar(include_blue_cells) || ...
-                ~ismember(include_blue_cells, [0, 1])
+                ~ismember(include_blue_cells, [0 1])
 
             error( ...
                 'include_blue_cells doit être égal à 0 ou 1.');
         end
     end
 
+
     %==============================================================%
     % Sélection des groupes
     %==============================================================%
     for i = 1:nGroups
 
-        choice = choices(i);
+        choice = ...
+            choices(i);
+
 
         %==========================================================%
         % Détermination du type et du dossier racine
@@ -53,45 +84,85 @@ function [root_folders, dataFolders_by_group, ...
         switch choice
 
             case 1
-                current_type = 'jm';
-                current_root_folder = jm_folder;
+
+                current_type = ...
+                    'jm';
+
+
+                current_root_folder = ...
+                    jm_folder;
+
 
             case 2
-                current_type = 'FCD';
-                current_root_folder = fcd_folder;
+
+                current_type = ...
+                    'FCD';
+
+
+                current_root_folder = ...
+                    fcd_folder;
+
 
             case 3
-                current_type = 'WT';
-                current_root_folder = ctrl_folder;
+
+                current_type = ...
+                    'WT';
+
+
+                current_root_folder = ...
+                    ctrl_folder;
+
 
             case 4
-                current_type = 'SHAM';
-                current_root_folder = sham_folder;
+
+                current_type = ...
+                    'SHAM';
+
+
+                current_root_folder = ...
+                    sham_folder;
+
 
             otherwise
+
                 error( ...
                     'Choix invalide : %s.', ...
                     mat2str(choice));
         end
 
-        % Enregistrer le dossier racine du groupe courant.
-        root_folders{i} = current_root_folder;
+
+        %==========================================================%
+        % Enregistrer le dossier racine du groupe courant
+        %==========================================================%
+        root_folders{i} = ...
+            current_root_folder;
+
 
         fprintf( ...
             '[SELECT] %s -> %s\n', ...
             current_type, ...
             current_root_folder);
 
+
         %==========================================================%
         % Sélection des dossiers
         %==========================================================%
-        [dataFolders, current_automatic_selection] = ...
+        [ ...
+            dataFolders, ...
+            current_automatic_selection ...
+        ] = ...
             select_folders( ...
                 current_root_folder, ...
                 include_blue_cells);
 
-        automatic_selection(i) = ...
-            logical(current_automatic_selection);
+
+        %==========================================================%
+        % Enregistrer automatic_selection directement par type
+        %==========================================================%
+        automatic_selection.(current_type) = ...
+            logical( ...
+                current_automatic_selection);
+
 
         %==========================================================%
         % Organisation par animal
@@ -101,25 +172,36 @@ function [root_folders, dataFolders_by_group, ...
             case 1
                 % Les données jm ne sont pas réorganisées ici.
 
+
             case 2
-                dataFolders = organize_data_by_animal( ...
-                    dataFolders, ...
-                    group_order{2});
+
+                dataFolders = ...
+                    organize_data_by_animal( ...
+                        dataFolders, ...
+                        group_order{2});
+
 
             case 3
-                dataFolders = organize_data_by_animal( ...
-                    dataFolders, ...
-                    group_order{3});
+
+                dataFolders = ...
+                    organize_data_by_animal( ...
+                        dataFolders, ...
+                        group_order{3});
+
 
             case 4
-                dataFolders = organize_data_by_animal( ...
-                    dataFolders, ...
-                    group_order{4});
+
+                dataFolders = ...
+                    organize_data_by_animal( ...
+                        dataFolders, ...
+                        group_order{4});
         end
+
 
         %==========================================================%
         % Enregistrement des dossiers du groupe
         %==========================================================%
-        dataFolders_by_group{i} = dataFolders;
+        dataFolders_by_group{i} = ...
+            dataFolders;
     end
 end
