@@ -21,13 +21,13 @@ selected_groups = create_data(selected_groups);
 
 recap_all = create_summary_sheets(selected_groups);
 
-% Data processing
+%% Data processing
 selected_groups = process_selected_groups(selected_groups, include_electroporated, automatic_selection);
 %%
 selected_groups = DF_peak_detection(selected_groups, include_electroporated, automatic_selection);
 
 [selected_groups, results_table] = compute_DF(selected_groups, include_electroporated);
-
+%%
 visualize_data(selected_groups, automatic_selection, include_electroporated, results_table);
 
 

@@ -195,8 +195,24 @@ function build_all_selected_DF_raster_summary( ...
                 sprintf( ...
                     '%s_all_animals_all_dates_DF_rasters.png', ...
                     safe_type));
-
-
+        
+        
+        %==========================================================%
+        % Figure déjà existante
+        %
+        % Si le PNG existe déjà, ne pas recalculer les données
+        % et ne pas recréer la figure.
+        %==========================================================%
+        if exist(figure_save_path, 'file') == 2
+        
+            fprintf( ...
+                'Global DF raster summary already exists, skipped:\n%s\n', ...
+                figure_save_path);
+        
+            continue;
+        end
+        
+        
         %==========================================================%
         % Collecter les données
         %==========================================================%
@@ -204,7 +220,6 @@ function build_all_selected_DF_raster_summary( ...
             collect_DF_records( ...
                 current_animals, ...
                 current_type);
-
 
         if isempty(records)
 
@@ -215,11 +230,8 @@ function build_all_selected_DF_raster_summary( ...
             continue;
         end
 
-
         %==========================================================%
         % Figure
-        %
-        % Toujours recalculée et écrasée.
         %==========================================================%
         plot_DF_records( ...
             records, ...

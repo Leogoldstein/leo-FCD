@@ -6482,15 +6482,25 @@ function reset_roi_movie_display(fig)
 
     setappdata(fig,'roi_cursor_dragging',false);
 
-    set( ...
-        fig, ...
-        'WindowButtonMotionFcn', ...
-        '');
+    try
+
+        set( ...
+            fig, ...
+            'WindowButtonMotionFcn', ...
+            '');
     
-    set( ...
-        fig, ...
-        'WindowButtonUpFcn', ...
-        '');
+    catch
+    end
+    
+    try
+    
+        set( ...
+            fig, ...
+            'WindowButtonUpFcn', ...
+            '');
+    
+    catch
+    end
 
     % roi_movie_data n'est volontairement PAS supprime :
     % les fichiers TIFF et imfinfo sont les memes pour toutes les
@@ -7185,12 +7195,39 @@ function start_roi_cursor_drag(fig)
         return;
     end
 
+    %==============================================================
     % Mettre le film en pause pendant le déplacement
+    %==============================================================
+
     if isappdata(fig,'roi_movie_playing') && ...
             getappdata(fig,'roi_movie_playing')
 
         pause_roi_movie(fig);
     end
+
+    %==============================================================
+    % Désactiver les modes MATLAB qui monopolisent les callbacks
+    % souris de la figure
+    %==============================================================
+
+    try
+        zoom(fig,'off');
+    catch
+    end
+
+    try
+        pan(fig,'off');
+    catch
+    end
+
+    try
+        rotate3d(fig,'off');
+    catch
+    end
+
+    %==============================================================
+    % Commencer le drag
+    %==============================================================
 
     setappdata( ...
         fig, ...
@@ -7334,13 +7371,23 @@ function stop_roi_cursor_drag(fig)
         'roi_cursor_dragging', ...
         false);
 
-    set( ...
-        fig, ...
-        'WindowButtonMotionFcn', ...
-        '');
+    try
 
-    set( ...
-        fig, ...
-        'WindowButtonUpFcn', ...
-        '');
+        set( ...
+            fig, ...
+            'WindowButtonMotionFcn', ...
+            '');
+
+    catch
+    end
+
+    try
+
+        set( ...
+            fig, ...
+            'WindowButtonUpFcn', ...
+            '');
+
+    catch
+    end
 end
