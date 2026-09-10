@@ -2,7 +2,8 @@ function selected_groups = build_output_folders( ...
         selected_groups, ...
         root_folders, ...
         automatic_selection, ...
-        include_electroporated)
+        include_electroporated, ...
+        age_group)
 
     %==============================================================%
     % Vérification de selected_groups
@@ -91,6 +92,23 @@ function selected_groups = build_output_folders( ...
     end
 
 
+    if nargin < 5 || ...
+            isempty(age_group)
+
+        age_group = ...
+            struct();
+    end
+
+
+    if ~isstruct(age_group)
+
+        error( ...
+            'build_output_folders:InvalidAgeGroup', ...
+            ['age_group doit être une structure ', ...
+             'indexée par type expérimental.']);
+    end
+
+
     %==============================================================%
     % Normalisation
     %==============================================================%
@@ -107,50 +125,99 @@ function selected_groups = build_output_folders( ...
 
 
     %==============================================================%
-    % Paramètre période
-    %==============================================================%
-
-    development_max_age = ...
-        15;
-
-
-    %==============================================================%
     % Boucle types
     %==============================================================%
-
     for t = 1:n_types
 
         current_type = ...
             type_names{t};
-    
-    
+
+
         current_root_folder = ...
             root_folders{t};
-    
-    
+
+
+        %==========================================================%
+        % Automatic selection
+        %==========================================================%
         if ~isfield( ...
                 automatic_selection, ...
                 current_type)
-    
+
             warning( ...
                 'build_output_folders:MissingAutomaticSelection', ...
                 'automatic_selection.%s absent. false utilisé.', ...
                 current_type);
-    
-    
+
+
             current_automatic_selection = ...
                 false;
-    
+
         else
-    
+
             current_automatic_selection = ...
                 automatic_selection.(current_type);
         end
 
+
+        current_automatic_selection = ...
+            parse_logical_scalar_DF( ...
+                current_automatic_selection, ...
+                false);
+
+
+        %==========================================================%
+        % Groupe d'âge
+        %
+        % Utilisé directement.
+        % Aucun calcul à partir de l'âge des animaux.
+        %==========================================================%
+        current_age_group = ...
+            '';
+
+
+        if isfield( ...
+                age_group, ...
+                current_type)
+
+            current_age_group = ...
+                age_group.(current_type);
+        end
+
+
+        %==========================================================%
+        % Vérification du groupe d'âge
+        %==========================================================%
+        if isempty(current_age_group)
+
+            warning( ...
+                'build_output_folders:MissingAgeGroup', ...
+                ['age_group.%s est vide. ', ...
+                 'Aucun output folder ne sera créé pour ce type.'], ...
+                current_type);
+
+            continue;
+        end
+
+
+        if ~strcmpi( ...
+                current_age_group, ...
+                'Development') && ...
+                ~strcmpi( ...
+                    current_age_group, ...
+                    'Adult')
+
+            error( ...
+                'build_output_folders:InvalidAgeGroupValue', ...
+                ['age_group.%s doit être ', ...
+                 '''Development'' ou ''Adult''.'], ...
+                current_type);
+        end
+
+
         %----------------------------------------------------------%
         % Racine Summary plots
         %----------------------------------------------------------%
-
         summary_root_folder = ...
             fullfile( ...
                 current_root_folder, ...
@@ -160,7 +227,6 @@ function selected_groups = build_output_folders( ...
         %----------------------------------------------------------%
         % Sous-dossier selon mode
         %----------------------------------------------------------%
-
         summary_subfolder = ...
             get_summary_subfolder_DF( ...
                 current_automatic_selection, ...
@@ -174,43 +240,26 @@ function selected_groups = build_output_folders( ...
 
 
         %----------------------------------------------------------%
-        % Dossiers Development / Adult
+        % Dossier Development ou Adult
         %----------------------------------------------------------%
-
-        development_folder = ...
+        current_age_folder = ...
             fullfile( ...
                 current_output_root, ...
-                'Development');
-
-
-        adult_folder = ...
-            fullfile( ...
-                current_output_root, ...
-                'Adult');
+                current_age_group);
 
 
         if exist( ...
-                development_folder, ...
+                current_age_folder, ...
                 'dir') ~= 7
 
             mkdir( ...
-                development_folder);
-        end
-
-
-        if exist( ...
-                adult_folder, ...
-                'dir') ~= 7
-
-            mkdir( ...
-                adult_folder);
+                current_age_folder);
         end
 
 
         %==========================================================%
         % Animaux
         %==========================================================%
-
         num_animals = ...
             numel( ...
                 selected_groups.(current_type));
@@ -223,34 +272,8 @@ function selected_groups = build_output_folders( ...
 
 
             %------------------------------------------------------%
-            % Vérifier ages
-            %------------------------------------------------------%
-
-            if ~isfield( ...
-                    animal_struct, ...
-                    'ages') || ...
-                    isempty(animal_struct.ages)
-
-                warning( ...
-                    'build_output_folders:MissingAges', ...
-                    ['%s | animal %d : aucun âge disponible. ' ...
-                     'paths.output_folders sera vide.'], ...
-                    current_type, ...
-                    k);
-
-
-                selected_groups.(current_type)(k). ...
-                    paths.output_folders = ...
-                    {};
-
-                continue;
-            end
-
-
-            %------------------------------------------------------%
             % Vérifier dates
             %------------------------------------------------------%
-
             if ~isfield( ...
                     animal_struct, ...
                     'dates') || ...
@@ -258,7 +281,7 @@ function selected_groups = build_output_folders( ...
 
                 warning( ...
                     'build_output_folders:MissingDates', ...
-                    ['%s | animal %d : aucune date disponible. ' ...
+                    ['%s | animal %d : aucune date disponible. ', ...
                      'paths.output_folders sera vide.'], ...
                     current_type, ...
                     k);
@@ -275,7 +298,6 @@ function selected_groups = build_output_folders( ...
             %------------------------------------------------------%
             % Identité
             %------------------------------------------------------%
-
             current_line = ...
                 animal_struct.line;
 
@@ -284,33 +306,17 @@ function selected_groups = build_output_folders( ...
                 animal_struct.animal;
 
 
-            current_ages = ...
-                animal_struct.ages;
-
-
             current_dates = ...
                 animal_struct.dates;
 
 
             %------------------------------------------------------%
             % Nombre de recordings
+            %
+            % Déduit uniquement du nombre de dates.
             %------------------------------------------------------%
-
             n_recordings = ...
-                numel(current_ages);
-
-
-            if numel(current_dates) ~= n_recordings
-
-                warning( ...
-                    'build_output_folders:AgeDateCountMismatch', ...
-                    ['%s | animal %s : %d âges mais %d dates. ' ...
-                     'Le nombre d''âges est utilisé.'], ...
-                    current_type, ...
-                    char(string(current_animal)), ...
-                    n_recordings, ...
-                    numel(current_dates));
-            end
+                numel(current_dates);
 
 
             current_output_folders = ...
@@ -322,74 +328,11 @@ function selected_groups = build_output_folders( ...
             %======================================================%
             % Recordings
             %======================================================%
-
             for m = 1:n_recordings
-
-                %--------------------------------------------------%
-                % Age
-                %--------------------------------------------------%
-
-                if iscell(current_ages)
-
-                    current_age = ...
-                        current_ages{m};
-
-                else
-
-                    current_age = ...
-                        current_ages(m);
-                end
-
-
-                age_value = ...
-                    parse_age_for_output_folder( ...
-                        current_age);
-
-
-                %--------------------------------------------------%
-                % Age invalide
-                %--------------------------------------------------%
-
-                if ~isfinite(age_value)
-
-                    warning( ...
-                        'build_output_folders:InvalidAge', ...
-                        ['%s | animal %s | recording %d : ' ...
-                         'âge non interprétable.'], ...
-                        current_type, ...
-                        char(string(current_animal)), ...
-                        m);
-
-
-                    current_output_folders{m} = ...
-                        '';
-
-                    continue;
-                end
-
 
                 %--------------------------------------------------%
                 % Date
                 %--------------------------------------------------%
-
-                if m > numel(current_dates)
-
-                    warning( ...
-                        'build_output_folders:MissingRecordingDate', ...
-                        ['%s | animal %s | recording %d : ' ...
-                         'date absente.'], ...
-                        current_type, ...
-                        char(string(current_animal)), ...
-                        m);
-
-
-                    current_output_folders{m} = ...
-                        '';
-
-                    continue;
-                end
-
-
                 if iscell(current_dates)
 
                     current_date = ...
@@ -403,30 +346,13 @@ function selected_groups = build_output_folders( ...
 
 
                 %--------------------------------------------------%
-                % Choisir Development / Adult
-                %--------------------------------------------------%
-
-                if age_value <= development_max_age
-
-                    current_output_folder = ...
-                        development_folder;
-
-                else
-
-                    current_output_folder = ...
-                        adult_folder;
-                end
-
-
-                %--------------------------------------------------%
-                % Dossier final du recording
+                % Dossier final
                 %
-                % ...\<periode>\<line>\<animal>\<date>
+                % ...\<Development/Adult>\<line>\<animal>\<date>
                 %--------------------------------------------------%
-
                 current_output_folders{m} = ...
                     fullfile( ...
-                        current_output_folder, ...
+                        current_age_folder, ...
                         char(string(current_line)), ...
                         char(string(current_animal)), ...
                         char(string(current_date)));
@@ -435,7 +361,6 @@ function selected_groups = build_output_folders( ...
                 %--------------------------------------------------%
                 % Création du dossier
                 %--------------------------------------------------%
-
                 if exist( ...
                         current_output_folders{m}, ...
                         'dir') ~= 7
@@ -449,95 +374,10 @@ function selected_groups = build_output_folders( ...
             %======================================================%
             % Sauvegarder dans paths
             %======================================================%
-
             selected_groups.(current_type)(k). ...
                 paths.output_folders = ...
                 current_output_folders;
         end
-    end
-end
-
-
-%==========================================================================%
-% HELPER : âge -> valeur numérique
-%==========================================================================%
-function age_value = ...
-    parse_age_for_output_folder( ...
-        age_raw)
-
-    age_value = ...
-        NaN;
-
-
-    if isempty(age_raw)
-        return;
-    end
-
-
-    %----------------------------------------------------------------------%
-    % Numérique
-    %----------------------------------------------------------------------%
-
-    if isnumeric(age_raw) || ...
-            islogical(age_raw)
-
-        age_raw = ...
-            double(age_raw);
-
-
-        if isscalar(age_raw) && ...
-                isfinite(age_raw)
-
-            age_value = ...
-                age_raw;
-        end
-
-        return;
-    end
-
-
-    %----------------------------------------------------------------------%
-    % Cellule
-    %----------------------------------------------------------------------%
-
-    if iscell(age_raw)
-
-        if ~isempty(age_raw)
-
-            age_value = ...
-                parse_age_for_output_folder( ...
-                    age_raw{1});
-        end
-
-        return;
-    end
-
-
-    %----------------------------------------------------------------------%
-    % Texte
-    %
-    % P10 -> 10
-    % P15 -> 15
-    % P30 -> 30
-    %----------------------------------------------------------------------%
-
-    age_text = ...
-        char( ...
-            string(age_raw));
-
-
-    token = ...
-        regexp( ...
-            age_text, ...
-            '[-+]?\d*\.?\d+', ...
-            'match', ...
-            'once');
-
-
-    if ~isempty(token)
-
-        age_value = ...
-            str2double(token);
     end
 end
 
@@ -558,10 +398,6 @@ function root_folders = ...
         return;
     end
 
-
-    %----------------------------------------------------------------------%
-    % Conversion vers cellule
-    %----------------------------------------------------------------------%
 
     if ischar(root_folders)
 
@@ -590,10 +426,6 @@ function root_folders = ...
              'un string array ou une cellule.']);
     end
 
-
-    %----------------------------------------------------------------------%
-    % Validation
-    %----------------------------------------------------------------------%
 
     for i = 1:numel(root_folders)
 
@@ -641,10 +473,6 @@ function root_folders = ...
             current_folder;
     end
 
-
-    %----------------------------------------------------------------------%
-    % Adaptation au nombre de types
-    %----------------------------------------------------------------------%
 
     if isempty(root_folders)
 
@@ -707,10 +535,6 @@ function logical_value = ...
     end
 
 
-    %----------------------------------------------------------------------%
-    % Cellule
-    %----------------------------------------------------------------------%
-
     if iscell(input_value)
 
         if numel(input_value) ~= 1
@@ -730,10 +554,6 @@ function logical_value = ...
     end
 
 
-    %----------------------------------------------------------------------%
-    % Logique
-    %----------------------------------------------------------------------%
-
     if islogical(input_value)
 
         if ~isscalar(input_value)
@@ -750,10 +570,6 @@ function logical_value = ...
         return;
     end
 
-
-    %----------------------------------------------------------------------%
-    % Numérique
-    %----------------------------------------------------------------------%
 
     if isnumeric(input_value)
 
@@ -781,10 +597,6 @@ function logical_value = ...
     end
 
 
-    %----------------------------------------------------------------------%
-    % String
-    %----------------------------------------------------------------------%
-
     if isstring(input_value)
 
         if ~isscalar(input_value)
@@ -799,10 +611,6 @@ function logical_value = ...
             char(input_value);
     end
 
-
-    %----------------------------------------------------------------------%
-    % Texte
-    %----------------------------------------------------------------------%
 
     if ischar(input_value)
 
@@ -851,24 +659,11 @@ function logical_value = ...
         end
 
 
-        warning( ...
-            'build_output_folders:UnknownLogicalText', ...
-            ['Valeur logique textuelle non reconnue : "%s". ', ...
-             'La valeur par défaut est utilisée.'], ...
-            input_value);
-
-
         logical_value = ...
             default_value;
 
         return;
     end
-
-
-    warning( ...
-        'build_output_folders:UnsupportedLogicalType', ...
-        ['Type non pris en charge pour la conversion logique. ', ...
-         'La valeur par défaut est utilisée.']);
 
 
     logical_value = ...

@@ -1,113 +1,205 @@
-function [selectedFolders, automatic_selection] = select_folders( ...
-        initial_folder, include_electroporated_cells)
+function [ ...
+        selectedFolders, ...
+        automatic_selection, ...
+        selection_mode, ...
+        age_group ...
+    ] = ...
+    select_folders( ...
+        initial_folder, ...
+        include_electroporated_cells)
 
+    %==============================================================%
+    % Vérifications
+    %==============================================================%
     if ~isfolder(initial_folder)
-        error('The initial folder does not exist.');
+
+        error( ...
+            'The initial folder does not exist.');
     end
 
-    if nargin < 2 || isempty(include_electroporated_cells)
-        include_electroporated_cells = 0;
+
+    if nargin < 2 || ...
+            isempty(include_electroporated_cells)
+
+        include_electroporated_cells = ...
+            0;
     end
 
-    if ~ismember(include_electroporated_cells, [0 1])
-        error('include_electroporated_cells must be 0 or 1.');
+
+    if ~ismember( ...
+            include_electroporated_cells, ...
+            [0 1])
+
+        error( ...
+            'include_electroporated_cells must be 0 or 1.');
     end
 
-    [~, lastFolderName] = fileparts(initial_folder);
 
-    % False by default:
-    % - manual selection
-    % - canceled selection
-    automatic_selection = false;
+    [~, lastFolderName] = ...
+        fileparts(initial_folder);
+
+
+    %==============================================================%
+    % Outputs par défaut
+    %==============================================================%
+    selectedFolders = ...
+        {};
+
+
+    automatic_selection = ...
+        false;
+
+
+    selection_mode = ...
+        '';
+
+
+    age_group = ...
+        '';
+
 
     %==============================================================%
     % Folder selection mode
     %==============================================================%
-    choice = questdlg( ...
-        'Do you want to select specific folders or all folders?', ...
-        'Folder Selection Mode', ...
-        'Specific Folders', ...
-        'Pre-selected folders', ...
-        'Cancel', ...
-        'Pre-selected folders');
+    choice = ...
+        questdlg( ...
+            'Do you want to select specific folders or all folders?', ...
+            'Folder Selection Mode', ...
+            'Specific Folders', ...
+            'Pre-selected folders', ...
+            'Cancel', ...
+            'Pre-selected folders');
 
-    selectedFolders = {};
 
+    %==============================================================%
+    % Réponse utilisateur
+    %==============================================================%
     switch choice
 
         %==========================================================%
-        % Manual selection
+        % MANUAL SELECTION
         %==========================================================%
         case 'Specific Folders'
 
-            automatic_selection = false;
+            automatic_selection = ...
+                false;
+
+
+            selection_mode = ...
+                'manual';
+
+
+            age_group = ...
+                '';
+
 
             while true
 
-                selectedFolder = uigetdir( ...
-                    initial_folder, ...
-                    'Select a folder');
+                selectedFolder = ...
+                    uigetdir( ...
+                        initial_folder, ...
+                        'Select a folder');
 
-                if isequal(selectedFolder, 0)
-                    disp('User clicked Cancel. Exiting folder selection.');
+
+                if isequal( ...
+                        selectedFolder, ...
+                        0)
+
+                    disp( ...
+                        'User clicked Cancel. Exiting folder selection.');
+
                     break;
                 end
 
+
                 selectedFolders = [ ...
                     selectedFolders, ...
-                    process_folder(selectedFolder)]; %#ok<AGROW>
+                    process_folder( ...
+                        selectedFolder)]; %#ok<AGROW>
 
-                anotherChoice = questdlg( ...
-                    'Select another folder?', ...
-                    'Folder Selection', ...
-                    'Yes', ...
-                    'No', ...
-                    'No');
 
-                if ~strcmp(anotherChoice, 'Yes')
+                anotherChoice = ...
+                    questdlg( ...
+                        'Select another folder?', ...
+                        'Folder Selection', ...
+                        'Yes', ...
+                        'No', ...
+                        'No');
+
+
+                if ~strcmp( ...
+                        anotherChoice, ...
+                        'Yes')
+
                     break;
                 end
             end
 
+
         %==========================================================%
-        % Pre-selected folders
+        % PRE-SELECTED FOLDERS
         %==========================================================%
         case 'Pre-selected folders'
 
-            automatic_selection = true;
+            automatic_selection = ...
+                true;
+
+
+            selection_mode = ...
+                'preselected';
+
 
             %======================================================%
-            % FCD / SHAM:
+            % FCD / SHAM
             %
             % First subdivision:
             %   Development
             %   Adult
             %
             % Then:
-            %   GCaMP
+            %   non-electroporated
             %   electroporated
-            %
-            % according to include_electroporated_cells.
             %======================================================%
-            if ismember(upper(lastFolderName), {'FCD', 'SHAM'})
+            if ismember( ...
+                    upper(lastFolderName), ...
+                    {'FCD', 'SHAM'})
 
                 %--------------------------------------------------%
                 % Select Development / Adult
                 %--------------------------------------------------%
-                age_group = questdlg( ...
-                    sprintf( ...
-                        'Select pre-selected group for %s:', ...
-                        upper(lastFolderName)), ...
-                    'Pre-selected Group', ...
-                    'Development', ...
-                    'Adult', ...
-                    'Cancel', ...
-                    'Development');
+                age_group = ...
+                    questdlg( ...
+                        sprintf( ...
+                            'Select pre-selected group for %s:', ...
+                            upper(lastFolderName)), ...
+                        'Pre-selected Group', ...
+                        'Development', ...
+                        'Adult', ...
+                        'Cancel', ...
+                        'Development');
 
-                if isempty(age_group) || strcmp(age_group, 'Cancel')
 
-                    automatic_selection = false;
-                    selectedFolders = {};
+                %--------------------------------------------------%
+                % Cancel
+                %--------------------------------------------------%
+                if isempty(age_group) || ...
+                        strcmp(age_group, 'Cancel')
+
+                    automatic_selection = ...
+                        false;
+
+
+                    selection_mode = ...
+                        '';
+
+
+                    age_group = ...
+                        '';
+
+
+                    selectedFolders = ...
+                        {};
+
 
                     fprintf( ...
                         '[SELECT] Pre-selected group selection canceled.\n');
@@ -115,36 +207,44 @@ function [selectedFolders, automatic_selection] = select_folders( ...
                     return;
                 end
 
+
                 %--------------------------------------------------%
-                % Determine GCaMP / electroporated
+                % Determine non-electroporated / electroporated
                 %--------------------------------------------------%
                 if include_electroporated_cells
 
-                    folder_type = 'electroporated';
+                    folder_type = ...
+                        'electroporated';
+
 
                     fprintf( ...
-                        ['[SELECT] %s | %s | ' ...
+                        ['[SELECT] %s | %s | ', ...
                          'electroporated folders\n'], ...
                         upper(lastFolderName), ...
                         age_group);
 
                 else
 
-                    folder_type = 'gcamp';
+                    folder_type = ...
+                        'non-electroporated';
+
 
                     fprintf( ...
-                        '[SELECT] %s | %s | GCaMP folders\n', ...
+                        '[SELECT] %s | %s | non-electroporated folders\n', ...
                         upper(lastFolderName), ...
                         age_group);
                 end
 
+
                 %--------------------------------------------------%
                 % Get corresponding folder list
                 %--------------------------------------------------%
-                folder_names = get_folder_list( ...
-                    folder_type, ...
-                    lastFolderName, ...
-                    age_group);
+                folder_names = ...
+                    get_folder_list( ...
+                        folder_type, ...
+                        lastFolderName, ...
+                        age_group);
+
 
                 %--------------------------------------------------%
                 % Empty list
@@ -152,87 +252,145 @@ function [selectedFolders, automatic_selection] = select_folders( ...
                 if isempty(folder_names)
 
                     fprintf( ...
-                        ['[SELECT] No pre-selected folders ' ...
+                        ['[SELECT] No pre-selected folders ', ...
                          'defined for:\n']);
+
 
                     fprintf( ...
                         '         Group : %s\n', ...
                         upper(lastFolderName));
 
+
                     fprintf( ...
                         '         Age   : %s\n', ...
                         age_group);
+
 
                     fprintf( ...
                         '         Type  : %s\n', ...
                         folder_type);
 
-                    selectedFolders = {};
+
+                    selectedFolders = ...
+                        {};
+
+
                     return;
                 end
+
 
                 %--------------------------------------------------%
                 % Process selected list
                 %--------------------------------------------------%
-                selectedFolders = process_folder_list( ...
-                    folder_names, ...
-                    initial_folder);
+                selectedFolders = ...
+                    process_folder_list( ...
+                        folder_names, ...
+                        initial_folder);
+
 
             %======================================================%
             % JM / WT
             %======================================================%
             else
 
-                folder_type = 'gcamp';
+                age_group = ...
+                    '';
+
+
+                folder_type = ...
+                    'non-electroporated';
+
 
                 fprintf( ...
-                    '[SELECT] %s GCaMP folders\n', ...
+                    '[SELECT] %s non-electroporated folders\n', ...
                     lastFolderName);
 
-                folder_names = get_folder_list( ...
-                    folder_type, ...
-                    lastFolderName, ...
-                    '');
 
-                selectedFolders = process_folder_list( ...
-                    folder_names, ...
-                    initial_folder);
+                folder_names = ...
+                    get_folder_list( ...
+                        folder_type, ...
+                        lastFolderName, ...
+                        '');
+
+
+                selectedFolders = ...
+                    process_folder_list( ...
+                        folder_names, ...
+                        initial_folder);
             end
 
+
         %==========================================================%
-        % Cancel
+        % CANCEL
         %==========================================================%
         otherwise
 
-            automatic_selection = false;
+            automatic_selection = ...
+                false;
 
-            disp('User canceled the selection. No folders selected.');
 
-            selectedFolders = {};
+            selection_mode = ...
+                '';
+
+
+            age_group = ...
+                '';
+
+
+            disp( ...
+                'User canceled the selection. No folders selected.');
+
+
+            selectedFolders = ...
+                {};
+
+
             return;
     end
+
 
     %==============================================================%
     % Display selection mode
     %==============================================================%
-    if automatic_selection
+    if strcmp( ...
+            selection_mode, ...
+            'preselected')
 
         fprintf( ...
-            '[SELECT] Automatic folder selection.\n');
+            '[SELECT] Pre-selected folder selection.\n');
 
-    else
+
+    elseif strcmp( ...
+            selection_mode, ...
+            'manual')
 
         fprintf( ...
             '[SELECT] Manual folder selection.\n');
     end
 
+
+    %==============================================================%
+    % Display age group
+    %==============================================================%
+    if ~isempty(age_group)
+
+        fprintf( ...
+            '[SELECT] Age group: %s\n', ...
+            age_group);
+    end
+
+
     %==============================================================%
     % Display selected folders
     %==============================================================%
-    disp('Selected folders:');
+    disp( ...
+        'Selected folders:');
+
 
     for k = 1:numel(selectedFolders)
-        disp(selectedFolders{k});
+
+        disp( ...
+            selectedFolders{k});
     end
 end
 
@@ -241,15 +399,26 @@ end
 % Helper Functions
 % =========================================================================%
 
-function selectedFolders = process_folder_list( ...
-        folder_names, initial_folder)
+function selectedFolders = ...
+    process_folder_list( ...
+        folder_names, ...
+        initial_folder)
 
-    selectedFolders = {};
+    selectedFolders = ...
+        {};
+
 
     for idx = 1:numel(folder_names)
 
-        item_name = folder_names{idx};
-        item_path = fullfile(initial_folder, item_name);
+        item_name = ...
+            folder_names{idx};
+
+
+        item_path = ...
+            fullfile( ...
+                initial_folder, ...
+                item_name);
+
 
         if isfolder(item_path)
 
@@ -257,9 +426,11 @@ function selectedFolders = process_folder_list( ...
                 'Processing folder: %s\n', ...
                 item_path);
 
+
             selectedFolders = [ ...
                 selectedFolders, ...
-                process_folder(item_path)]; %#ok<AGROW>
+                process_folder( ...
+                    item_path)]; %#ok<AGROW>
 
         else
 
@@ -271,10 +442,15 @@ function selectedFolders = process_folder_list( ...
 end
 
 
-function folder_names = get_folder_list( ...
-        type, lastFolderName, age_group)
+function folder_names = ...
+    get_folder_list( ...
+        type, ...
+        lastFolderName, ...
+        age_group)
 
-    folder_names = {};
+    folder_names = ...
+        {};
+
 
     switch upper(lastFolderName)
 
@@ -292,6 +468,7 @@ function folder_names = get_folder_list( ...
                 'jm046'
             };
 
+
         %==========================================================%
         % WT
         %==========================================================%
@@ -301,9 +478,9 @@ function folder_names = get_folder_list( ...
                 'an1\2024-04-03';
                 'an2\2024-04-29';
                 'an2\2024-04-30';
-                %'an2\2024-05-02'; % artefactuel, P17
-                %'an2\2024-05-06'; % artefactuel, P21
-                %'an2\2024-05-07'; % P22
+                %'an2\2024-05-02';
+                %'an2\2024-05-06';
+                %'an2\2024-05-07';
                 'an3\2024-05-15';
                 'an3\2024-05-16';
                 'an3\2024-05-17';
@@ -317,6 +494,7 @@ function folder_names = get_folder_list( ...
                 'an7\2024-09-27';
                 'an8\2024-09-26';
             };
+
 
         %==========================================================%
         % SHAM
@@ -332,19 +510,14 @@ function folder_names = get_folder_list( ...
 
                     switch lower(type)
 
-                        %------------------------------------------%
-                        % SHAM DEVELOPMENT - GCAMP
-                        %------------------------------------------%
-                        case 'gcamp'
+                        case 'non-electroporated'
 
                             folder_names = {
-                                % Add SHAM Development GCaMP
+                                % Add SHAM Development non-electroporated
                                 % recordings here.
                             };
 
-                        %------------------------------------------%
-                        % SHAM DEVELOPMENT - ELECTROPORATED
-                        %------------------------------------------%
+
                         case 'electroporated'
 
                             folder_names = {
@@ -352,10 +525,13 @@ function folder_names = get_folder_list( ...
                                 % electroporated recordings here.
                             };
 
+
                         otherwise
 
-                            folder_names = {};
+                            folder_names = ...
+                                {};
                     end
+
 
                 %==================================================%
                 % SHAM ADULT
@@ -364,10 +540,7 @@ function folder_names = get_folder_list( ...
 
                     switch lower(type)
 
-                        %------------------------------------------%
-                        % SHAM ADULT - GCAMP
-                        %------------------------------------------%
-                        case 'gcamp'
+                        case 'non-electroporated'
 
                             folder_names = {
                                 'mtor38\2199\30-01-2026';
@@ -376,9 +549,7 @@ function folder_names = get_folder_list( ...
                                 'mtor45\2488\22-04-2026';
                             };
 
-                        %------------------------------------------%
-                        % SHAM ADULT - ELECTROPORATED
-                        %------------------------------------------%
+
                         case 'electroporated'
 
                             folder_names = {
@@ -388,15 +559,20 @@ function folder_names = get_folder_list( ...
                                 'mtor45\2486\13-05-2026';
                             };
 
+
                         otherwise
 
-                            folder_names = {};
+                            folder_names = ...
+                                {};
                     end
+
 
                 otherwise
 
-                    folder_names = {};
+                    folder_names = ...
+                        {};
             end
+
 
         %==========================================================%
         % FCD
@@ -413,9 +589,9 @@ function folder_names = get_folder_list( ...
                     switch lower(type)
 
                         %------------------------------------------%
-                        % FCD DEVELOPMENT - GCAMP
+                        % FCD DEVELOPMENT - non-electroporated
                         %------------------------------------------%
-                        case 'gcamp'
+                        case 'non-electroporated'
 
                             folder_names = {
                                 'ani3\2024-06-28';
@@ -431,18 +607,18 @@ function folder_names = get_folder_list( ...
                                 'mTor14\ani1\2024-10-25';
 
                                 'mTor14\ani3\2024-10-24';
-                                %'mTor14\ani3\2024-10-25'; % doit etre croppé
+                                %'mTor14\ani3\2024-10-25';
                                 'mTor14\ani3\2024-10-26';
                                 'mTor14\ani3\2024-10-27';
-                                %'mTor14\ani3\2024-10-28'; % SNR low
+                                %'mTor14\ani3\2024-10-28';
 
-                                %'mTor15\ani5\2024-11-23'; % trop peu de cellules
+                                %'mTor15\ani5\2024-11-23';
                                 'mTor15\ani5\2024-11-24';
                                 'mTor15\ani5\2024-11-25';
                                 'mTor15\ani5\2024-11-26';
 
                                 'mTor16\ani3\2024-11-21';
-                                %'mTor16\ani4\2024-11-21'; % trop d'artefacts
+                                %'mTor16\ani4\2024-11-21';
 
                                 'mTor17\ani1\2024-12-17';
 
@@ -451,6 +627,7 @@ function folder_names = get_folder_list( ...
 
                                 'mTor19\ani6\2025-01-31';
                             };
+
 
                         %------------------------------------------%
                         % FCD DEVELOPMENT - ELECTROPORATED
@@ -459,29 +636,32 @@ function folder_names = get_folder_list( ...
 
                             folder_names = {
                                 'mTor17\ani1\2024-12-17';
-                                %'mTor17\ani1\2024-12-18'; % pas assez de neurones
-                                %'mTor17\ani1\2024-12-19'; % artefacts
-                                %'mTor17\ani1\2024-12-20'; % artefacts
-                                %'mTor17\ani1\2024-12-21'; % artefacts
-                                %'mTor17\ani2\2024-12-19'; % artefacts et peu de neurones
-                                %'mTor17\ani2\2024-12-20'; % pas assez de neurones
+                                %'mTor17\ani1\2024-12-18';
+                                %'mTor17\ani1\2024-12-19';
+                                %'mTor17\ani1\2024-12-20';
+                                %'mTor17\ani1\2024-12-21';
+                                %'mTor17\ani2\2024-12-19';
+                                %'mTor17\ani2\2024-12-20';
 
                                 'mTor17\ani3\2024-12-19';
                                 'mTor17\ani3\2024-12-20';
                                 'mTor17\ani3\2024-12-21';
                                 'mTor17\ani3\2024-12-22';
-                                %'mTor17\ani3\2024-12-23'; % beaucoup d'artefacts
+                                %'mTor17\ani3\2024-12-23';
 
                                 'mTor19\ani6\2025-01-31';
                                 'mTor19\ani6\2025-02-01';
 
-                                %'mTor20\ani5\2025-01-30'; % attention aux artefacts
+                                %'mTor20\ani5\2025-01-30';
                             };
+
 
                         otherwise
 
-                            folder_names = {};
+                            folder_names = ...
+                                {};
                     end
+
 
                 %==================================================%
                 % FCD ADULT
@@ -491,14 +671,14 @@ function folder_names = get_folder_list( ...
                     switch lower(type)
 
                         %------------------------------------------%
-                        % FCD ADULT - GCAMP
+                        % FCD ADULT - non-electroporated
                         %------------------------------------------%
-                        case 'gcamp'
+                        case 'non-electroporated'
 
                             folder_names = {
 
                                 'mtor29\1917\27-08-2025';
-                            
+
                                 'mtor31\1989\02-12-2025';
                                 'mtor31\1989\09-01-2026';
                                 'mtor31\1989\11-12-2025';
@@ -506,26 +686,26 @@ function folder_names = get_folder_list( ...
                                 'mtor31\1989\17-12-2025';
                                 'mtor31\1989\21-01-2026';
                                 'mtor31\1989\27-11-2025';
-                            
+
                                 'mtor31\1992\03-12-2025';
                                 'mtor31\1992\09-01-2026';
                                 'mtor31\1992\10-11-2025';
                                 'mtor31\1992\11-12-2025';
                                 'mtor31\1992\28-11-2025';
-                            
+
                                 'mtor31\1995\01-12-2025';
                                 'mtor31\1995\06-11-2025';
                                 'mtor31\1995\11-12-2025';
-                                
+
                                 'mtor35\2126\26-01-2026';
-                                
+
                                 'mtor35\2132\13-01-2026';
                                 'mtor35\2132\22-01-2026';
 
                                 'mtor35\2133\19-01-2026';
 
                                 %'mtor35\2134\05-02-2026';
-                                'mtor35\2134\05-02-2026(2)'; %deuxieme enregistrement vers 230, plus profond par rapport au 1er du meme jour
+                                'mtor35\2134\05-02-2026(2)';
                                 'mtor35\2134\19-01-2026';
                                 'mtor35\2134\27-01-2026';
 
@@ -533,8 +713,8 @@ function folder_names = get_folder_list( ...
 
                                 'mtor40\2309\05-03-2026';
                                 'mtor40\2309\05-03-2026(2)';
-                              
                             };
+
 
                         %------------------------------------------%
                         % FCD ADULT - ELECTROPORATED
@@ -546,12 +726,12 @@ function folder_names = get_folder_list( ...
                                 'mtor31\1989\14-11-2025';
                                 'mtor31\1989\17-11-2025';
                                 'mtor31\1989\24-11-2025';
-                            
+
                                 'mtor31\1992\14-11-2025';
                                 'mtor31\1992\15-01-2026';
                                 'mtor31\1992\17-12-2025';
                                 'mtor31\1992\26-11-2025';
-                            
+
                                 'mtor31\1995\07-11-2025';
                                 'mtor31\1995\17-11-2025';
                                 'mtor31\1995\25-11-2025';
@@ -563,44 +743,55 @@ function folder_names = get_folder_list( ...
                                 'mtor40\2314\20-02-2026';
                                 'mtor40\2314\25-02-2026';
 
-                                'mtor46\2469\03-06-2026'; % TSeries-001 et 002
-                                'mtor46\2469\10-06-2026\before'; % TSeries-002
-                                'mtor46\2469\15-06-2026\before'; % TSeries-002
-                                'mtor46\2469\19-05-2026'; % TSeries-002
+                                'mtor46\2469\03-06-2026';
+                                'mtor46\2469\10-06-2026\before';
+                                'mtor46\2469\15-06-2026\before';
+                                'mtor46\2469\19-05-2026';
                                 'mtor46\2469\23-06-2026\before';
-                                'mtor46\2469\26-05-2026'; % TSeries-002 : longitudinal avec 19/05 + TSeries-003 : longitudinal avec les jours suivants
+                                'mtor46\2469\26-05-2026';
 
                                 'mtor46\2470\04-06-2026';
                                 'mtor46\2470\11-06-2026\before';
-                                
+
                                 'mtor46\2472\09-06-2026';
                                 'mtor46\2472\17-06-2026\before';
                                 'mtor46\2472\23-06-2026\before';
-
                             };
+
 
                         otherwise
 
-                            folder_names = {};
+                            folder_names = ...
+                                {};
                     end
+
 
                 otherwise
 
-                    folder_names = {};
+                    folder_names = ...
+                        {};
             end
+
 
         otherwise
 
-            folder_names = {};
+            folder_names = ...
+                {};
     end
 end
 
 
-function processedFolders = process_folder(folderPath)
+function processedFolders = ...
+    process_folder( ...
+        folderPath)
 
-    processedFolders = {};
+    processedFolders = ...
+        {};
 
-    [~, folderName] = fileparts(folderPath);
+
+    [~, folderName] = ...
+        fileparts(folderPath);
+
 
     %==============================================================%
     % Le dossier sélectionné est déjà un dossier date
@@ -608,99 +799,103 @@ function processedFolders = process_folder(folderPath)
     if is_date_format(folderName)
 
         processedFolders = ...
-            resolve_before_after_for_date(folderPath);
+            resolve_before_after_for_date( ...
+                folderPath);
 
         return;
     end
 
+
     %==============================================================%
     % Recherche des sous-dossiers
     %==============================================================%
-    subFolders = dir(folderPath);
+    subFolders = ...
+        dir(folderPath);
+
 
     for j = 1:numel(subFolders)
 
-        subFolderName = subFolders(j).name;
+        subFolderName = ...
+            subFolders(j).name;
+
 
         if ~subFolders(j).isdir || ...
-                ismember(subFolderName, {'.', '..'})
+                ismember( ...
+                    subFolderName, ...
+                    {'.', '..'})
+
             continue;
         end
 
-        subFolderPath = fullfile( ...
-            folderPath, ...
-            subFolderName);
 
-        %------------------------------------------------------%
-        % Structure mTOR :
-        %
-        % mTorXX
-        %   animal
-        %       date
-        %
-        % ou :
-        %
-        % mTorXX
-        %   animal
-        %       date
-        %           before
-        %           after
-        %------------------------------------------------------%
-        if contains(folderName, 'mTor', 'IgnoreCase', true)
+        subFolderPath = ...
+            fullfile( ...
+                folderPath, ...
+                subFolderName);
+
+
+        %----------------------------------------------------------%
+        % Structure mTOR
+        %----------------------------------------------------------%
+        if contains( ...
+                folderName, ...
+                'mTor', ...
+                'IgnoreCase', ...
+                true)
 
             secondLevelSubFolders = ...
                 dir(subFolderPath);
+
 
             for k = 1:numel(secondLevelSubFolders)
 
                 secondName = ...
                     secondLevelSubFolders(k).name;
 
+
                 if ~secondLevelSubFolders(k).isdir || ...
-                        ismember(secondName, {'.', '..'}) || ...
+                        ismember( ...
+                            secondName, ...
+                            {'.', '..'}) || ...
                         ~is_date_format(secondName)
 
                     continue;
                 end
+
 
                 dateFolder = ...
                     fullfile( ...
                         subFolderPath, ...
                         secondName);
 
+
                 folders_to_add = ...
                     resolve_before_after_for_date( ...
                         dateFolder);
+
 
                 processedFolders = [ ...
                     processedFolders, ...
                     folders_to_add]; %#ok<AGROW>
             end
 
-        %------------------------------------------------------%
-        % Structure standard :
-        %
-        % animal
-        %   date
-        %
-        % ou :
-        %
-        % animal
-        %   date
-        %       before
-        %       after
-        %------------------------------------------------------%
+
+        %----------------------------------------------------------%
+        % Structure standard
+        %----------------------------------------------------------%
         elseif is_date_format(subFolderName)
 
             folders_to_add = ...
                 resolve_before_after_for_date( ...
                     subFolderPath);
 
+
             processedFolders = [ ...
                 processedFolders, ...
                 folders_to_add]; %#ok<AGROW>
         end
     end
+
 
     %==============================================================%
     % Rien trouvé -> conserver le dossier fourni
@@ -713,130 +908,212 @@ function processedFolders = process_folder(folderPath)
 end
 
 
-function isDate = is_date_format(folderName)
+function isDate = ...
+    is_date_format( ...
+        folderName)
 
-    isDate = false;
+    isDate = ...
+        false;
 
-    if ~ischar(folderName) && ~isstring(folderName)
+
+    if ~ischar(folderName) && ...
+            ~isstring(folderName)
+
         return;
     end
 
-    folderName = char(folderName);
 
-    base = folderName;
+    folderName = ...
+        char(folderName);
+
+
+    base = ...
+        folderName;
+
 
     %==============================================================%
     % Accept suffix "_a"
     %==============================================================%
     if numel(base) >= 2 && ...
-            strcmp(base(end - 1:end), '_a')
+            strcmp( ...
+                base(end - 1:end), ...
+                '_a')
 
-        base = base(1:end - 2);
+        base = ...
+            base(1:end - 2);
     end
 
+
     %==============================================================%
-    % Accept suffix "(2)", "(3)", "(4)", ...
-    %
-    % Examples:
-    %   13-01-2026(2)
-    %   13-01-2026(3)
-    %   2026-01-13(2)
+    % Accept suffix "(2)", "(3)", ...
     %==============================================================%
-    base = regexprep( ...
-        base, ...
-        '\(\d+\)$', ...
-        '');
+    base = ...
+        regexprep( ...
+            base, ...
+            '\(\d+\)$', ...
+            '');
+
 
     if numel(base) ~= 10
+
         return;
     end
+
 
     %==============================================================%
     % YYYY-MM-DD
     %==============================================================%
-    if ~isempty(regexp( ...
-            base, ...
-            '^\d{4}-\d{2}-\d{2}$', ...
-            'once'))
+    if ~isempty( ...
+            regexp( ...
+                base, ...
+                '^\d{4}-\d{2}-\d{2}$', ...
+                'once'))
 
-        y = str2double(base(1:4));
-        m = str2double(base(6:7));
-        d = str2double(base(9:10));
+        y = ...
+            str2double(base(1:4));
 
-        isDate = is_valid_ymd(y, m, d);
+
+        m = ...
+            str2double(base(6:7));
+
+
+        d = ...
+            str2double(base(9:10));
+
+
+        isDate = ...
+            is_valid_ymd( ...
+                y, ...
+                m, ...
+                d);
+
         return;
     end
+
 
     %==============================================================%
     % DD-MM-YYYY
     %==============================================================%
-    if ~isempty(regexp( ...
-            base, ...
-            '^\d{2}-\d{2}-\d{4}$', ...
-            'once'))
+    if ~isempty( ...
+            regexp( ...
+                base, ...
+                '^\d{2}-\d{2}-\d{4}$', ...
+                'once'))
 
-        d = str2double(base(1:2));
-        m = str2double(base(4:5));
-        y = str2double(base(7:10));
+        d = ...
+            str2double(base(1:2));
 
-        isDate = is_valid_ymd(y, m, d);
+
+        m = ...
+            str2double(base(4:5));
+
+
+        y = ...
+            str2double(base(7:10));
+
+
+        isDate = ...
+            is_valid_ymd( ...
+                y, ...
+                m, ...
+                d);
     end
 end
 
 
-function ok = is_valid_ymd(y, m, d)
+function ok = ...
+    is_valid_ymd( ...
+        y, ...
+        m, ...
+        d)
 
-    ok = false;
+    ok = ...
+        false;
 
-    if any(isnan([y, m, d]))
+
+    if any( ...
+            isnan( ...
+                [y, m, d]))
+
         return;
     end
 
-    if y < 1900 || y > 2100
+
+    if y < 1900 || ...
+            y > 2100
+
         return;
     end
 
-    if m < 1 || m > 12
+
+    if m < 1 || ...
+            m > 12
+
         return;
     end
 
-    if d < 1 || d > 31
+
+    if d < 1 || ...
+            d > 31
+
         return;
     end
+
 
     try
 
-        datetime(y, m, d);
-        ok = true;
+        datetime( ...
+            y, ...
+            m, ...
+            d);
+
+
+        ok = ...
+            true;
 
     catch
 
-        ok = false;
+        ok = ...
+            false;
     end
 end
 
-function processedFolders = resolve_before_after_for_date(dateFolder)
 
-    processedFolders = {};
+function processedFolders = ...
+    resolve_before_after_for_date( ...
+        dateFolder)
+
+    processedFolders = ...
+        {};
+
 
     beforeFolder = ...
-        fullfile(dateFolder, 'before');
+        fullfile( ...
+            dateFolder, ...
+            'before');
+
 
     afterFolder = ...
-        fullfile(dateFolder, 'after');
+        fullfile( ...
+            dateFolder, ...
+            'after');
+
 
     has_before = ...
-        isfolder(beforeFolder);
+        isfolder( ...
+            beforeFolder);
+
 
     has_after = ...
-        isfolder(afterFolder);
+        isfolder( ...
+            afterFolder);
+
 
     %==============================================================%
     % Aucun before / after
-    %
-    % On conserve directement la date.
     %==============================================================%
-    if ~has_before && ~has_after
+    if ~has_before && ...
+            ~has_after
 
         processedFolders{1} = ...
             [dateFolder filesep];
@@ -844,25 +1121,26 @@ function processedFolders = resolve_before_after_for_date(dateFolder)
         return;
     end
 
+
     %==============================================================%
     % Uniquement BEFORE
-    %
-    % On demande si l'utilisateur veut utiliser before
-    % ou rester sur la date.
     %==============================================================%
-    if has_before && ~has_after
+    if has_before && ...
+            ~has_after
 
-        choice = questdlg( ...
-            sprintf( ...
-                ['Le dossier sélectionné contient un sous-dossier "before".\n\n' ...
-                 '%s\n\n' ...
-                 'Quel dossier utiliser ?'], ...
-                dateFolder), ...
-            'Before / Date', ...
-            'before', ...
-            'Date', ...
-            'Cancel', ...
-            'before');
+        choice = ...
+            questdlg( ...
+                sprintf( ...
+                    ['Le dossier sélectionné contient un sous-dossier "before".\n\n', ...
+                     '%s\n\n', ...
+                     'Quel dossier utiliser ?'], ...
+                    dateFolder), ...
+                'Before / Date', ...
+                'before', ...
+                'Date', ...
+                'Cancel', ...
+                'before');
+
 
         switch choice
 
@@ -871,35 +1149,43 @@ function processedFolders = resolve_before_after_for_date(dateFolder)
                 processedFolders{1} = ...
                     [beforeFolder filesep];
 
+
             case 'Date'
 
                 processedFolders{1} = ...
                     [dateFolder filesep];
 
+
             otherwise
 
-                processedFolders = {};
+                processedFolders = ...
+                    {};
         end
+
 
         return;
     end
 
+
     %==============================================================%
     % Uniquement AFTER
     %==============================================================%
-    if ~has_before && has_after
+    if ~has_before && ...
+            has_after
 
-        choice = questdlg( ...
-            sprintf( ...
-                ['Le dossier sélectionné contient un sous-dossier "after".\n\n' ...
-                 '%s\n\n' ...
-                 'Quel dossier utiliser ?'], ...
-                dateFolder), ...
-            'After / Date', ...
-            'after', ...
-            'Date', ...
-            'Cancel', ...
-            'after');
+        choice = ...
+            questdlg( ...
+                sprintf( ...
+                    ['Le dossier sélectionné contient un sous-dossier "after".\n\n', ...
+                     '%s\n\n', ...
+                     'Quel dossier utiliser ?'], ...
+                    dateFolder), ...
+                'After / Date', ...
+                'after', ...
+                'Date', ...
+                'Cancel', ...
+                'after');
+
 
         switch choice
 
@@ -908,34 +1194,40 @@ function processedFolders = resolve_before_after_for_date(dateFolder)
                 processedFolders{1} = ...
                     [afterFolder filesep];
 
+
             case 'Date'
 
                 processedFolders{1} = ...
                     [dateFolder filesep];
 
+
             otherwise
 
-                processedFolders = {};
+                processedFolders = ...
+                    {};
         end
+
 
         return;
     end
 
+
     %==============================================================%
     % BEFORE + AFTER présents
     %==============================================================%
+    choice = ...
+        questdlg( ...
+            sprintf( ...
+                ['Le dossier sélectionné contient "before" et "after".\n\n', ...
+                 '%s\n\n', ...
+                 'Quel dossier utiliser ?'], ...
+                dateFolder), ...
+            'Before / After', ...
+            'before', ...
+            'after', ...
+            'Cancel', ...
+            'after');
 
-    choice = questdlg( ...
-        sprintf( ...
-            ['Le dossier sélectionné contient "before" et "after".\n\n' ...
-             '%s\n\n' ...
-             'Quel dossier utiliser ?'], ...
-            dateFolder), ...
-        'Before / After', ...
-        'before', ...
-        'after', ...
-        'Cancel', ...
-        'after');
 
     switch choice
 
@@ -944,13 +1236,16 @@ function processedFolders = resolve_before_after_for_date(dateFolder)
             processedFolders{1} = ...
                 [beforeFolder filesep];
 
+
         case 'after'
 
             processedFolders{1} = ...
                 [afterFolder filesep];
 
+
         otherwise
 
-            processedFolders = {};
+            processedFolders = ...
+                {};
     end
 end

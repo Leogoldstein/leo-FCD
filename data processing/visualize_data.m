@@ -75,21 +75,21 @@ function visualize_data( ...
     % build_all_selected_DF_raster_summary utilisent encore une
     % cellule avec une entrée par type.
     %==============================================================%
-    output_folders = ...
-        build_visualization_output_folders( ...
-            selected_groups, ...
-            type_names);
+    [output_folders_type, output_folders_line] = ...
+    build_visualization_output_folders( ...
+        selected_groups, ...
+        type_names);
 
 
     %==============================================================%
     % 1) Overview général et légende commune
     %==============================================================%
-    [~, ~, ~, legend_table] = ...
-        plot_selected_groups_overview( ...
-            selected_groups, ...
-            include_electroporated, ...
-            automatic_selection, ...
-            output_folders);
+    % [~, ~, ~, legend_table] = ...
+    %     plot_selected_groups_overview( ...
+    %         selected_groups, ...
+    %         include_electroporated, ...
+    %         automatic_selection, ...
+    %         output_folders_type);
 
 
     %==============================================================%
@@ -98,7 +98,7 @@ function visualize_data( ...
     build_all_selected_DF_raster_summary( ...
         selected_groups, ...
         automatic_selection, ...
-        output_folders, ...
+        output_folders_line, ...
         include_electroporated);
 
 
@@ -119,9 +119,17 @@ function visualize_data( ...
     %         legend_table);
     % end
 
+    
+    %==============================================================%
+    % 4) Figures violin par type et âge
+    %==============================================================%
+    plot_basic_metrics_by_line( ...
+        selected_groups, ...
+        include_electroporated, ...
+        output_folders_line);
 
     %==============================================================%
-    % 4) Figures radar par type et âge
+    % 5) Figures radar par type et âge
     %==============================================================%
     % plot_radar_metrics_by_type( ...
     %     selected_groups, ...
@@ -377,407 +385,5 @@ function visualize_data( ...
             %     current_dates, ...
             %     current_ages);
         end
-    end
-end
-
-
-%% ========================================================================
-% Build global visualization output folders
-%
-% Une entrée par type, compatible avec :
-%
-%   plot_selected_groups_overview
-%   build_all_selected_DF_raster_summary
-%
-% Pour chaque type, on cherche le dossier commun à tous les
-% paths.output_folders du type.
-%
-% Exemple :
-%
-%   ...\Adult\mtor41\2001\date1
-%   ...\Adult\mtor41\2002\date2
-%   ...\Adult\mtor42\2100\date3
-%
-% donne :
-%
-%   ...\Adult
-%
-% =========================================================================
-function output_folders = ...
-        build_visualization_output_folders( ...
-            selected_groups, ...
-            type_names)
-
-    output_folders = ...
-        cell(numel(type_names), 1);
-
-
-    for t = 1:numel(type_names)
-
-        current_type = ...
-            type_names{t};
-
-
-        current_groups = ...
-            selected_groups.(current_type);
-
-
-        all_output_paths = {};
-
-
-        %==========================================================%
-        % Collecter tous les output folders de ce type
-        %==========================================================%
-        for k = 1:numel(current_groups)
-
-            current_group = ...
-                current_groups(k);
-
-
-            if ~isfield(current_group, 'paths') || ...
-                    ~isstruct(current_group.paths) || ...
-                    ~isfield( ...
-                        current_group.paths, ...
-                        'output_folders') || ...
-                    isempty( ...
-                        current_group.paths.output_folders)
-
-                continue;
-            end
-
-
-            current_paths = ...
-                current_group.paths.output_folders;
-
-
-            if ~iscell(current_paths)
-
-                current_paths = ...
-                    {current_paths};
-            end
-
-
-            for m = 1:numel(current_paths)
-
-                current_path = ...
-                    current_paths{m};
-
-
-                if isempty(current_path)
-                    continue;
-                end
-
-
-                all_output_paths{end + 1, 1} = ...
-                    char(string(current_path)); %#ok<AGROW>
-            end
-        end
-
-
-        %==========================================================%
-        % Aucun chemin
-        %==========================================================%
-        if isempty(all_output_paths)
-
-            output_folders{t} = ...
-                pwd;
-
-            warning( ...
-                ['No paths.output_folders found for type %s. ', ...
-                 'Using pwd instead.'], ...
-                current_type);
-
-            continue;
-        end
-
-
-        %==========================================================%
-        % Dossier commun
-        %==========================================================%
-        common_folder = ...
-            find_common_folder( ...
-                all_output_paths);
-
-
-        %==========================================================%
-        % Sécurité
-        %
-        % On ne veut pas que le dossier commun descende jusqu'au
-        % dossier d'une date lorsqu'un seul animal/recording existe.
-        %
-        % Structure :
-        %
-        %   ...\Development|Adult\line\animal\date
-        %
-        % Pour une synthèse globale on remonte donc au minimum
-        % de trois niveaux :
-        %
-        %   date   -> animal
-        %   animal -> line
-        %   line   -> Development|Adult
-        %==========================================================%
-        if numel(all_output_paths) == 1
-
-            common_folder = ...
-                all_output_paths{1};
-
-
-            for level = 1:3
-
-                parent_folder = ...
-                    fileparts(common_folder);
-
-
-                if isempty(parent_folder) || ...
-                        strcmp(parent_folder, common_folder)
-
-                    break;
-                end
-
-
-                common_folder = ...
-                    parent_folder;
-            end
-        end
-
-
-        if isempty(common_folder)
-
-            output_folders{t} = ...
-                pwd;
-
-        else
-
-            output_folders{t} = ...
-                common_folder;
-        end
-
-
-        if exist(output_folders{t}, 'dir') ~= 7
-
-            mkdir( ...
-                output_folders{t});
-        end
-    end
-end
-
-
-%% ========================================================================
-% Animal-level output folder
-%
-% paths.output_folders{m} :
-%
-%   ...\line\animal\date
-%
-% retourne :
-%
-%   ...\line\animal
-%
-% Si plusieurs dates sont présentes, le parent commun est utilisé.
-% =========================================================================
-function current_output_folders = ...
-        get_current_output_folders( ...
-            output_folders)
-
-    current_output_folders = '';
-
-
-    if isempty(output_folders)
-        return;
-    end
-
-
-    if ~iscell(output_folders)
-
-        output_folders = ...
-            {output_folders};
-    end
-
-
-    animal_folders = {};
-
-
-    for m = 1:numel(output_folders)
-
-        current_folder = ...
-            output_folders{m};
-
-
-        if isempty(current_folder)
-            continue;
-        end
-
-
-        current_folder = ...
-            char(string(current_folder));
-
-
-        %----------------------------------------------------------%
-        % Enlever le niveau date
-        %----------------------------------------------------------%
-        current_animal_folder = ...
-            fileparts(current_folder);
-
-
-        if isempty(current_animal_folder)
-            continue;
-        end
-
-
-        animal_folders{end + 1, 1} = ...
-            current_animal_folder; %#ok<AGROW>
-    end
-
-
-    if isempty(animal_folders)
-        return;
-    end
-
-
-    current_output_folders = ...
-        find_common_folder( ...
-            animal_folders);
-end
-
-
-%% ========================================================================
-% Find common folder
-%
-% Retourne le dossier parent commun le plus profond.
-% Fonction compatible avec des chemins Windows.
-% =========================================================================
-function common_folder = ...
-        find_common_folder(paths)
-
-    common_folder = '';
-
-
-    if isempty(paths)
-        return;
-    end
-
-
-    paths = ...
-        paths(~cellfun(@isempty, paths));
-
-
-    if isempty(paths)
-        return;
-    end
-
-
-    %==============================================================%
-    % Normaliser les séparateurs
-    %==============================================================%
-    normalized_paths = ...
-        cell(size(paths));
-
-
-    for i = 1:numel(paths)
-
-        current_path = ...
-            char(string(paths{i}));
-
-
-        current_path = ...
-            strrep( ...
-                current_path, ...
-                '/', ...
-                filesep);
-
-
-        while numel(current_path) > 3 && ...
-                current_path(end) == filesep
-
-            current_path(end) = [];
-        end
-
-
-        normalized_paths{i} = ...
-            current_path;
-    end
-
-
-    %==============================================================%
-    % Un seul chemin
-    %==============================================================%
-    if numel(normalized_paths) == 1
-
-        common_folder = ...
-            normalized_paths{1};
-
-        return;
-    end
-
-
-    %==============================================================%
-    % Commencer avec le premier chemin
-    %==============================================================%
-    candidate = ...
-        normalized_paths{1};
-
-
-    %==============================================================%
-    % Remonter jusqu'à ce que tous les chemins soient contenus
-    %==============================================================%
-    while ~isempty(candidate)
-
-        is_common = true;
-
-
-        candidate_with_sep = ...
-            [candidate, filesep];
-
-
-        for i = 1:numel(normalized_paths)
-
-            current_path = ...
-                normalized_paths{i};
-
-
-            same_folder = ...
-                strcmpi( ...
-                    current_path, ...
-                    candidate);
-
-
-            inside_folder = ...
-                strncmpi( ...
-                    current_path, ...
-                    candidate_with_sep, ...
-                    numel(candidate_with_sep));
-
-
-            if ~same_folder && ...
-                    ~inside_folder
-
-                is_common = false;
-                break;
-            end
-        end
-
-
-        if is_common
-
-            common_folder = ...
-                candidate;
-
-            return;
-        end
-
-
-        parent = ...
-            fileparts(candidate);
-
-
-        if isempty(parent) || ...
-                strcmp(parent, candidate)
-
-            break;
-        end
-
-
-        candidate = ...
-            parent;
     end
 end

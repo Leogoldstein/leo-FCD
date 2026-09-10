@@ -3,7 +3,7 @@ function [figs, day_table, animal_table, legend_table] = ...
         selected_groups, ...
         include_electroporated_cells, ...
         automatic_selection, ...
-        output_folders)
+        output_folders_type)
 
 % PLOT_SELECTED_GROUPS_OVERVIEW
 %
@@ -21,6 +21,18 @@ function [figs, day_table, animal_table, legend_table] = ...
 % selected_groups.(type)(k).ages
 % selected_groups.(type)(k).metadata
 % selected_groups.(type)(k).data
+%
+% output_folders_type :
+%
+%   output_folders_type{t}
+%
+% avec une entrée par type dans le même ordre que :
+%
+%   type_names = fieldnames(selected_groups)
+%
+% Exemple :
+%
+%   D:\Imaging\FCD\Summary plots\Pre-selection electroporated cells\Adult
 %
 % Les figures et tables sont systématiquement recalculées et écrasées.
 
@@ -74,24 +86,26 @@ function [figs, day_table, animal_table, legend_table] = ...
 
 
     if nargin < 4 || ...
-            isempty(output_folders)
+            isempty(output_folders_type)
 
-        output_folders = ...
-            cell(numel(type_names), 1);
-
-
-        for t = 1:numel(type_names)
-
-            output_folders{t} = ...
-                pwd;
-        end
+        error( ...
+            'output_folders_type must be provided.');
     end
 
 
-    if ~iscell(output_folders)
+    if ~iscell(output_folders_type)
 
-        output_folders = ...
-            {output_folders};
+        output_folders_type = ...
+            {output_folders_type};
+    end
+
+
+    if numel(output_folders_type) ~= ...
+            numel(type_names)
+
+        error( ...
+            ['output_folders_type must contain ', ...
+             'one output folder per type.']);
     end
 
 
@@ -100,27 +114,29 @@ function [figs, day_table, animal_table, legend_table] = ...
     %==============================================================%
     automatic_fields = ...
         fieldnames(automatic_selection);
-    
+
+
     has_automatic_selection = ...
         false;
-    
+
+
     for i = 1:numel(automatic_fields)
-    
+
         if automatic_selection.(automatic_fields{i})
-    
+
             has_automatic_selection = ...
                 true;
-    
+
             break;
         end
     end
-    
-    
+
+
     if ~has_automatic_selection
-    
+
         fprintf( ...
             '[OVERVIEW] Manual selection: overview plots skipped.\n');
-    
+
         return;
     end
 
@@ -132,40 +148,43 @@ function [figs, day_table, animal_table, legend_table] = ...
 
         current_type = ...
             type_names{t};
-        
-            %==========================================================%
-            % Seulement les types en sélection automatique
-            %==========================================================%
-            if ~isfield( ...
-                    automatic_selection, ...
-                    current_type)
-        
-                warning( ...
-                    'Missing automatic_selection for type %s.', ...
-                    current_type);
-        
-                continue;
-            end
-        
-        
-            current_automatic_selection = ...
-                automatic_selection.(current_type);
-        
-        
-            if ~current_automatic_selection
-        
-                fprintf( ...
-                    '[OVERVIEW] %s: manual selection, skipped.\n', ...
-                    current_type);
-        
-                continue;
-            end
+
+
+        %==========================================================%
+        % Seulement les types en sélection automatique
+        %==========================================================%
+        if ~isfield( ...
+                automatic_selection, ...
+                current_type)
+
+            warning( ...
+                'Missing automatic_selection for type %s.', ...
+                current_type);
+
+            continue;
+        end
+
+
+        current_automatic_selection = ...
+            automatic_selection.(current_type);
+
+
+        if ~current_automatic_selection
+
+            fprintf( ...
+                '[OVERVIEW] %s: manual selection, skipped.\n', ...
+                current_type);
+
+            continue;
+        end
+
 
         current_groups = ...
             selected_groups.(current_type);
 
 
         if isempty(current_groups)
+
             continue;
         end
 
@@ -326,7 +345,10 @@ function [figs, day_table, animal_table, legend_table] = ...
 
 
         %----------------------------------------------------------%
-        % Output folder correspondant au type
+        % Retrouver l'index du type dans type_names
+        %
+        % Nécessaire car plotted_types peut être un sous-ensemble
+        % de type_names.
         %----------------------------------------------------------%
         type_index = ...
             find( ...
@@ -337,16 +359,30 @@ function [figs, day_table, animal_table, legend_table] = ...
                 'first');
 
 
-        if isempty(type_index) || ...
-                type_index > numel(output_folders)
+        if isempty(type_index)
 
-            output_folder = ...
-                output_folders{1};
+            warning( ...
+                'No type index found for %s.', ...
+                char(current_type));
 
-        else
+            continue;
+        end
 
-            output_folder = ...
-                output_folders{type_index};
+
+        %----------------------------------------------------------%
+        % Output folder du type courant
+        %----------------------------------------------------------%
+        output_folder = ...
+            output_folders_type{type_index};
+
+
+        if isempty(output_folder)
+
+            warning( ...
+                'Empty output folder for type %s.', ...
+                char(current_type));
+
+            continue;
         end
 
 
@@ -443,8 +479,32 @@ function [figs, day_table, animal_table, legend_table] = ...
             shared_prefix);
 
 
+    %==============================================================%
+    % Utiliser le premier output folder valide
+    %==============================================================%
     shared_output_folder = ...
-        output_folders{1};
+        '';
+
+
+    for t = 1:numel(output_folders_type)
+
+        if ~isempty(output_folders_type{t})
+
+            shared_output_folder = ...
+                output_folders_type{t};
+
+            break;
+        end
+    end
+
+
+    if isempty(shared_output_folder)
+
+        warning( ...
+            'No valid output folder found for shared legend.');
+
+        return;
+    end
 
 
     if exist(shared_output_folder, 'dir') ~= 7
@@ -550,6 +610,20 @@ function day_table = ...
         %==========================================================%
         % Age et date directement indexés par recording
         %==========================================================%
+        if m > numel(current_ages) || ...
+                m > numel(current_dates)
+
+            warning( ...
+                ['Missing age/date for %s - %s - ', ...
+                 'recording %d. Skipping.'], ...
+                current_type, ...
+                string(current_animal), ...
+                m);
+
+            continue;
+        end
+
+
         age_label = ...
             string( ...
                 current_ages{m});
