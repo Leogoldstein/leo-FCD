@@ -1,5 +1,8 @@
 function selected_groups = process_selected_groups( ...
-        selected_groups, include_electroporated, automatic_selection)
+        selected_groups, ...
+        include_electroporated, ...
+        automatic_selection, ...
+        cellpose_mode)
 
     if nargin < 1 || isempty(selected_groups)
         return;
@@ -9,11 +12,16 @@ function selected_groups = process_selected_groups( ...
         include_electroporated = true;
     end
 
+    if nargin < 4 || isempty(cellpose_mode)
+        cellpose_mode = 'interactive';
+    end
+
     type_names = fieldnames(selected_groups);
 
     for t = 1:numel(type_names)
 
         current_type = type_names{t};
+
         numSelectedGroups = ...
             numel(selected_groups.(current_type));
 
@@ -24,6 +32,7 @@ function selected_groups = process_selected_groups( ...
         fprintf('============================================================\n');
         fprintf('PROCESSING TYPE: %s\n', current_type);
         fprintf('NUMBER OF ANIMALS: %d\n', numSelectedGroups);
+        fprintf('CELLPOSE MODE: %s\n', cellpose_mode);
         fprintf('============================================================\n');
 
         %% =========================================================
@@ -34,7 +43,7 @@ function selected_groups = process_selected_groups( ...
 
             current_animal = ...
                 selected_groups.(current_type)(k).animal;
-            
+
             current_line = ...
                 selected_groups.(current_type)(k).line;
 
@@ -54,7 +63,7 @@ function selected_groups = process_selected_groups( ...
 
             gcamp_output_folders = ...
                 paths.gcamp_output;
-            
+
             gcamp_root_folders = ...
                 paths.gcamp_root;
 
@@ -82,11 +91,7 @@ function selected_groups = process_selected_groups( ...
             %% -----------------------------------------------------
             % Mean images
             % ------------------------------------------------------
-            
-            % ======================================================
-            % GCaMP : toujours colonne 1
-            % ======================================================
-            
+
             meanImgs_gcamp = save_mean_images( ...
                 'GCaMP', ...
                 current_animal, ...
@@ -94,50 +99,46 @@ function selected_groups = process_selected_groups( ...
                 current_dates, ...
                 gcamp_output_folders, ...
                 current_suite2p_group(:, 1));
-            
+
             data.gcamp_plane.meanImgs_gcamp = ...
-                meanImgs_gcamp;            
-            
+                meanImgs_gcamp;
+
             % ======================================================
-            % Electroporated : choisir automatiquement colonne 2 ou 3
+            % Electroporated : colonne 2 ou 3
             % ======================================================
-            
+
             electroporated_column = [];
-            
+
             for c = [2 3]
-            
+
                 if c > size(current_suite2p_group, 2)
                     continue;
                 end
-            
+
                 current_column = ...
                     current_suite2p_group(:, c);
-            
+
                 has_electroporated_data = ...
                     any(cellfun( ...
                         @(x) ~isempty(x) && ...
-                              (~ischar(x) || ~isempty(strtrim(x))), ...
+                        (~ischar(x) || ~isempty(strtrim(x))), ...
                         current_column));
-            
+
                 if has_electroporated_data
-            
+
                     electroporated_column = c;
                     break;
                 end
             end
-            
-            % ======================================================
-            % Mean image electroporated
-            % ======================================================
-            
+
             if ~isempty(electroporated_column)
-            
+
                 if electroporated_column == 2
                     channel_name = 'Red';
                 else
                     channel_name = 'Blue';
                 end
-            
+
                 meanImgs_electroporated = save_mean_images( ...
                     channel_name, ...
                     current_animal, ...
@@ -145,38 +146,43 @@ function selected_groups = process_selected_groups( ...
                     current_dates, ...
                     gcamp_output_folders, ...
                     current_suite2p_group(:, electroporated_column));
-            
+
             else
-            
+
                 meanImgs_electroporated = {};
-            
             end
-            
+
             data.electroporated_plane.meanImgs_electroporated = ...
                 meanImgs_electroporated;
 
             %% -----------------------------------------------------
             % ZSeries reconstruction
             % ------------------------------------------------------
-            
-            % if isfield(paths, 'ZSeries') && ...
-            %         ~isempty(paths.ZSeries)
-            % 
-            %     zseries = ...
-            %         load_or_process_zseries( ...
-            %             paths.ZSeries, ...
-            %             gcamp_root_folders, ...
-            %             metadata.ZSeries);
-            % 
-            %     data.ZSeries = ...
-            %         zseries;
-            % 
-            % else
-            % 
-            %     data.ZSeries = ...
-            %         struct();
-            % end
-            
+
+            if isfield(paths, 'ZSeries') && ...
+                    ~isempty(paths.ZSeries)
+
+                zseries = ...
+                    load_or_process_zseries( ...
+                        paths.ZSeries, ...
+                        gcamp_root_folders, ...
+                        metadata.ZSeries, ...
+                        paths.output_folders, ...
+                        current_automatic_selection, ...
+                        current_line, ...
+                        current_animal, ...
+                        current_dates, ...
+                        current_ages);
+
+                data.ZSeries = ...
+                    zseries;
+
+            else
+
+                data.ZSeries = ...
+                    struct();
+            end
+
             %% -----------------------------------------------------
             % Motion energy
             % ------------------------------------------------------
@@ -191,7 +197,8 @@ function selected_groups = process_selected_groups( ...
                 current_animal, ...
                 data);
 
-            data.motion = motion;
+            data.motion = ...
+                motion;
 
             %% -----------------------------------------------------
             % Whisker stimulation
@@ -215,35 +222,22 @@ function selected_groups = process_selected_groups( ...
             data.gcamp_plane = ...
                 gcamp_plane;
 
-            %% -----------------------------------------------------
-            % Save current animal data
-            % ------------------------------------------------------
-
             selected_groups.(current_type)(k).data = ...
                 data;
         end
 
         %% =========================================================
-        % Cellpose preparation for all animals
+        % Cellpose preparation
         % ==========================================================
-        
+
         processing_cache = ...
             cell(numSelectedGroups, 1);
-        
+
         for k = 1:numSelectedGroups
-        
+
             current_animal = ...
                 selected_groups.(current_type)(k).animal;
-        
-            current_line = ...
-                selected_groups.(current_type)(k).line;
 
-            current_dates = ...
-                selected_groups.(current_type)(k).dates;
-        
-            current_ages = ...
-                selected_groups.(current_type)(k).ages;
-        
             fprintf('\n');
             fprintf('------------------------------------------------------------\n');
             fprintf('Cellpose preparation\n');
@@ -252,20 +246,18 @@ function selected_groups = process_selected_groups( ...
                 char(string(current_animal)), ...
                 k, ...
                 numSelectedGroups);
+            fprintf('Mode  : %s\n', cellpose_mode);
             fprintf('------------------------------------------------------------\n');
-        
+
             paths = ...
                 selected_groups.(current_type)(k).paths;
-        
+
             data = ...
                 selected_groups.(current_type)(k).data;
 
             metadata = ...
                 selected_groups.(current_type)(k).metadata;
-        
-            meanImgs_gcamp = ...
-                data.gcamp_plane.meanImgs_gcamp;
-        
+
             [processing_cache{k}, data] = ...
                 process_electroporated_pass1( ...
                     paths.gcamp_root, ...
@@ -275,14 +267,15 @@ function selected_groups = process_selected_groups( ...
                     paths.TSeries, ...
                     paths.suite2p, ...
                     metadata, ...
-                    data);
-                    
+                    data, ...
+                    cellpose_mode);
+
             selected_groups.(current_type)(k).data = ...
                 data;
         end
-        
+
         %% =========================================================
-        % Blue ROI extraction for all animals
+        % Electroporated ROI extraction
         % ==========================================================
 
         for k = 1:numSelectedGroups
@@ -318,18 +311,37 @@ function selected_groups = process_selected_groups( ...
             metadata = ...
                 selected_groups.(current_type)(k).metadata;
 
-            [electroporated_plane, data] = ...
-                process_electroporated_pass2( ...
-                    processing_cache{k}, ...
-                    paths.gcamp_output, ...
-                    data.gcamp_plane.meanImgs_gcamp, ...
-                    data);
+            % ======================================================
+            % LOAD ONLY
+            %
+            % Les données ont déjà été chargées par PASS 1.
+            % Aucun recalcul ROI.
+            % ======================================================
 
-            data.electroporated_plane = ...
-                electroporated_plane;
+            if strcmpi(cellpose_mode, 'load_only')
+
+                fprintf( ...
+                    ['LOAD ONLY: existing Electroporated ROI data ' ...
+                     'retained.\n']);
+
+                electroporated_plane = ...
+                    data.electroporated_plane;
+
+            else
+
+                [electroporated_plane, data] = ...
+                    process_electroporated_pass2( ...
+                        processing_cache{k}, ...
+                        paths.gcamp_output, ...
+                        data.gcamp_plane.meanImgs_gcamp, ...
+                        data);
+
+                data.electroporated_plane = ...
+                    electroporated_plane;
+            end
 
             %% -----------------------------------------------------
-            % Combined GCaMP + electroporated cells
+            % Combined
             % ------------------------------------------------------
 
             combined_plane = ...
@@ -340,19 +352,17 @@ function selected_groups = process_selected_groups( ...
 
             data.combined_plane = ...
                 combined_plane;
-    
-            %% -----------------------------------------------------
-            % Save current animal data
-            % ------------------------------------------------------
 
             selected_groups.(current_type)(k).data = ...
                 data;
 
-
             %% -----------------------------------------------------
             % Mean image overview
+            %
+            % IMPORTANT :
+            % exécuté AUSSI en load_only.
             % ------------------------------------------------------
-            
+
             save_mean_image_overviews( ...
                 current_line, ...
                 current_animal, ...
@@ -370,4 +380,3 @@ function selected_groups = process_selected_groups( ...
         end
     end
 end
-

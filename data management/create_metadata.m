@@ -7,7 +7,7 @@ function [selected_groups, metadata_table] = create_metadata(selected_groups)
     end
 
     save_to_excel = true;
-    force_rebuild_metadata = true;
+    force_rebuild_metadata = false;
 
     type_names = fieldnames(selected_groups);
 

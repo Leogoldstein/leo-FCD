@@ -80,17 +80,59 @@ function [ ...
         % MANUAL SELECTION
         %==========================================================%
         case 'Specific Folders'
-
-            automatic_selection = ...
-                false;
-
-
-            selection_mode = ...
-                'manual';
-
-
+    
+        automatic_selection = ...
+            false;
+    
+        selection_mode = ...
+            'manual';
+    
+    
+        %======================================================%
+        % Groupe d'âge nécessaire pour FCD / SHAM
+        %======================================================%
+        if ismember( ...
+                upper(lastFolderName), ...
+                {'FCD', 'SHAM'})
+    
+            age_group = ...
+                questdlg( ...
+                    sprintf( ...
+                        'Select age group for %s:', ...
+                        upper(lastFolderName)), ...
+                    'Age Group', ...
+                    'Development', ...
+                    'Adult', ...
+                    'Cancel', ...
+                    'Adult');
+    
+    
+            if isempty(age_group) || ...
+                    strcmp(age_group, 'Cancel')
+    
+                automatic_selection = ...
+                    false;
+    
+                selection_mode = ...
+                    '';
+    
+                age_group = ...
+                    '';
+    
+                selectedFolders = ...
+                    {};
+    
+                fprintf( ...
+                    '[SELECT] Age group selection canceled.\n');
+    
+                return;
+            end
+    
+        else
+    
             age_group = ...
                 '';
+        end
 
 
             while true
@@ -682,7 +724,6 @@ function folder_names = ...
                                 'mtor31\1989\02-12-2025';
                                 'mtor31\1989\09-01-2026';
                                 'mtor31\1989\11-12-2025';
-                                'mtor31\1989\16-01-2026';
                                 'mtor31\1989\17-12-2025';
                                 'mtor31\1989\21-01-2026';
                                 'mtor31\1989\27-11-2025';
@@ -726,6 +767,7 @@ function folder_names = ...
                                 'mtor31\1989\14-11-2025';
                                 'mtor31\1989\17-11-2025';
                                 'mtor31\1989\24-11-2025';
+                                'mtor31\1989\16-01-2026';
 
                                 'mtor31\1992\14-11-2025';
                                 'mtor31\1992\15-01-2026';

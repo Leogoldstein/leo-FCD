@@ -6,7 +6,12 @@ function [processing_cache, data] = process_electroporated_pass1( ...
     TSeries_paths, ...
     suite2p_folders, ...
     metadata, ...
-    data)
+    data, ...
+    cellpose_mode)
+
+    if nargin < 9 || isempty(cellpose_mode)
+        cellpose_mode = 'interactive';
+    end
 
     numFolders = numel(gcamp_root_folders);
 
@@ -575,40 +580,107 @@ function [processing_cache, data] = process_electroporated_pass1( ...
     % ==============================================================
     % PASS 1B
     % ==============================================================
-
+    
     for m = 1:numFolders
-
+    
         cache = ...
             processing_cache{m};
-
+    
         if isempty(cache) || ...
                 cache.skip_group || ...
                 ~cache.valid_group
-
+    
             continue;
         end
-
+    
         % ==========================================================
-        % TSeries
+        % TSeries Electroporated
         % ==========================================================
-
+    
+        if numel(current_electroporated_TSeries_path) >= m
+    
+            current_electroporated_TSeries_path_m = ...
+                current_electroporated_TSeries_path{m};
+    
+        else
+    
+            current_electroporated_TSeries_path_m = '';
+        end
+   
+        % ==========================================================
+        % LOAD ONLY
+        %
+        % Les results_electroporated / results_gcamp ont déjà été
+        % chargés pendant PASS 1A si nécessaire.
+        %
+        % Les champs uniquement en mémoire, notamment :
+        %
+        %   alignedImgs_electroporated
+        %
+        % sont simplement conservés tels qu'ils existent déjà dans
+        % data.electroporated_plane.
+        %
+        % Aucun :
+        %   - questdlg
+        %   - Cellpose
+        %   - recalage
+        %   - contrôle des masks
+        %   - recalcul ROI
+        % ==========================================================
+        
+        if strcmpi(cellpose_mode, 'load_only')
+        
+            fprintf('\n');
+            fprintf('============================================================\n');
+            fprintf('ELECTROPORATED LOAD ONLY\n');
+            fprintf('Recording group: %d/%d\n', m, numFolders);
+            fprintf('============================================================\n');
+        
+            for p = 1:cache.nPlanes
+        
+                cache.planes{p}.process_plane = ...
+                    false;
+        
+                cache.planes{p}.requires_roi_extraction = ...
+                    false;
+        
+                % --------------------------------------------------
+                % Conserver l'image alignée déjà présente en mémoire.
+                % --------------------------------------------------
+        
+                if electroporated_plane_slot_exists( ...
+                        data, ...
+                        'alignedImgs_electroporated', ...
+                        m, ...
+                        p)
+        
+                    cache.planes{p}.aligned_image = ...
+                        data.electroporated_plane. ...
+                            alignedImgs_electroporated{m}{p};
+        
+                else
+        
+                    cache.planes{p}.aligned_image = [];
+                end
+            end
+        
+            processing_cache{m} = ...
+                cache;
+        
+            continue;
+        end
+    
+        % ==========================================================
+        % MODE INTERACTIF NORMAL
+        % ==========================================================
+    
         current_gcamp_TSeries_path_m = ...
             TSeries_paths{m, 1};
-
+    
         fprintf( ...
             'GCaMP TSeries          : %s\n', ...
             current_gcamp_TSeries_path_m);
-
-        if numel(current_electroporated_TSeries_path) >= m
-
-            current_electroporated_TSeries_path_m = ...
-                current_electroporated_TSeries_path{m};
-        
-        else
-        
-            current_electroporated_TSeries_path_m = '';
-        end
-
+    
         fprintf( ...
             'Electroporated TSeries : %s\n', ...
             current_electroporated_TSeries_path_m);

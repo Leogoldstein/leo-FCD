@@ -80,7 +80,7 @@ if ~selected_groups_reloaded
             selected_groups);
 
 
-    % --------------------------------------------------------
+    %% --------------------------------------------------------
     % MÉTADONNÉES
     % ---------------------------------------------------------
 
@@ -94,18 +94,20 @@ if ~selected_groups_reloaded
     %         selected_groups);
 
 
-    % --------------------------------------------------------
+    %% --------------------------------------------------------
     % DATA PROCESSING
     % ---------------------------------------------------------
-
+    cellpose_mode = 'load_only';
+    %cellpose_mode = 'interactive';
     selected_groups = ...
         process_selected_groups( ...
             selected_groups, ...
             include_electroporated, ...
-            automatic_selection);
+            automatic_selection, ...
+            cellpose_mode);
 
 
-    % --------------------------------------------------------
+    %% --------------------------------------------------------
     % PEAK DETECTION
     % ---------------------------------------------------------
 
@@ -118,7 +120,7 @@ if ~selected_groups_reloaded
 end
 
 
-% ============================================================
+%% ============================================================
 % CALCUL DES MÉTRIQUES DF
 %
 % Toujours exécuté, même après reload
