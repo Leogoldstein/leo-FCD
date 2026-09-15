@@ -329,42 +329,82 @@ function selected_groups = build_output_folders( ...
             % Recordings
             %======================================================%
             for m = 1:n_recordings
-
+            
                 %--------------------------------------------------%
                 % Date
                 %--------------------------------------------------%
                 if iscell(current_dates)
-
+            
                     current_date = ...
                         current_dates{m};
-
+            
                 else
-
+            
                     current_date = ...
                         current_dates(m);
                 end
-
-
+            
+            
+                %--------------------------------------------------%
+                % Nom du TSeries GCaMP
+                %
+                % paths.TSeries{m,1} = chemin du TSeries GCaMP
+                %--------------------------------------------------%
+                current_tseries_name = '';
+            
+                if isfield(animal_struct, 'paths') && ...
+                        isstruct(animal_struct.paths) && ...
+                        isfield(animal_struct.paths, 'TSeries') && ...
+                        size(animal_struct.paths.TSeries, 1) >= m && ...
+                        size(animal_struct.paths.TSeries, 2) >= 1 && ...
+                        ~isempty(animal_struct.paths.TSeries{m,1})
+            
+                    current_tseries_path = ...
+                        animal_struct.paths.TSeries{m,1};
+            
+                    [~, current_tseries_name] = ...
+                        fileparts(current_tseries_path);
+                end
+            
+            
                 %--------------------------------------------------%
                 % Dossier final
                 %
-                % ...\<Development/Adult>\<line>\<animal>\<date>
+                % ...\<Development/Adult>\
+                %     <line>\
+                %     <animal>\
+                %     <date>\
+                %     <TSeries GCaMP>
                 %--------------------------------------------------%
-                current_output_folders{m} = ...
-                    fullfile( ...
-                        current_age_folder, ...
-                        char(string(current_line)), ...
-                        char(string(current_animal)), ...
-                        char(string(current_date)));
-
-
+                if isempty(current_tseries_name)
+            
+                    % Sécurité si aucun TSeries GCaMP n'est disponible
+                    current_output_folders{m} = ...
+                        fullfile( ...
+                            current_age_folder, ...
+                            char(string(current_line)), ...
+                            char(string(current_animal)), ...
+                            char(string(current_date)));
+            
+                else
+            
+                    current_output_folders{m} = ...
+                        fullfile( ...
+                            current_age_folder, ...
+                            char(string(current_line)), ...
+                            char(string(current_animal)), ...
+                            char(string(current_date)), ...
+                            current_tseries_name);
+                end
+            
+            
                 %--------------------------------------------------%
                 % Création du dossier
                 %--------------------------------------------------%
                 if exist( ...
                         current_output_folders{m}, ...
                         'dir') ~= 7
-
+            
                     mkdir( ...
                         current_output_folders{m});
                 end

@@ -89,7 +89,7 @@ if ~selected_groups_reloaded
             selected_groups);
 
     
-    % --------------------------------------------------------
+    %% --------------------------------------------------------
     % RECAP
     % ---------------------------------------------------------
 
@@ -101,17 +101,17 @@ if ~selected_groups_reloaded
     %% --------------------------------------------------------
     % DATA PROCESSING
     % ---------------------------------------------------------
-    cellpose_mode = 'load_only';
-    %cellpose_mode = 'interactive';
+    processing_mode = 'load_only';
+    %processing_mode = 'interactive';
     selected_groups = ...
         process_selected_groups( ...
             selected_groups, ...
             include_electroporated, ...
             automatic_selection, ...
-            cellpose_mode);
+            processing_mode);
 
 
-    %% --------------------------------------------------------
+    % --------------------------------------------------------
     % PEAK DETECTION
     % ---------------------------------------------------------
 

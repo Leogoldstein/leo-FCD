@@ -4,6 +4,8 @@ function zseries_all = load_or_process_zseries( ...
         zseries_metadata, ...
         output_folders, ...
         current_automatic_selection, ...
+        processing_mode, ...
+        data, ...
         current_line, ...
         current_animal, ...
         current_dates, ...
@@ -19,29 +21,57 @@ function zseries_all = load_or_process_zseries( ...
     end
 
 
-    if nargin < 6
+    if nargin < 6 || isempty(processing_mode)
+        processing_mode = ...
+            'interactive';
+    end
+
+
+    if ~ismember( ...
+            processing_mode, ...
+            {'load_only', 'interactive'})
+
+        error( ...
+            ['processing_mode doit être ''load_only'' ' ...
+             'ou ''interactive''.']);
+
+    end
+
+
+    if nargin < 7 || isempty(data)
+        data = struct();
+    end
+
+
+    if nargin < 8
         current_line = '';
     end
 
 
-    if nargin < 7
+    if nargin < 9
         current_animal = '';
     end
 
 
-    if nargin < 8 || isempty(current_dates)
+    if nargin < 10 || isempty(current_dates)
         current_dates = {};
     end
 
 
-    if nargin < 9 || isempty(current_ages)
+    if nargin < 11 || isempty(current_ages)
         current_ages = {};
     end
 
     %==============================================================%
     % LOAD OR PROCESS ZSERIES
     %
-    % Pipeline :
+    % processing_mode :
+    %   'load_only'   -> data.ZSeries d'abord, puis disque en fallback ;
+    %                    aucun calcul, aucune interface, aucune écriture.
+    %   'interactive' -> même priorité au cache mémoire, puis comportement
+    %                    interactif habituel avec traitement/reprocess.
+    %
+    % Pipeline interactif :
     %
     %   1) Reconstruction volume brut
     %
@@ -75,31 +105,6 @@ function zseries_all = load_or_process_zseries( ...
     if isempty(zseries_paths)
         return;
     end
-
-
-    %==============================================================%
-    % Supprimer les doublons de ZSeries
-    %
-    % Une même ZSeries peut être référencée plusieurs fois par les
-    % recordings associés. Elle ne doit être traitée / affichée
-    % qu'une seule fois.
-    %==============================================================%
-
-    [ ...
-        zseries_paths, ...
-        gcamp_root_folders, ...
-        zseries_metadata, ...
-        output_folders, ...
-        current_dates, ...
-        current_ages ...
-    ] = ...
-        remove_duplicate_zseries_entries( ...
-            zseries_paths, ...
-            gcamp_root_folders, ...
-            zseries_metadata, ...
-            output_folders, ...
-            current_dates, ...
-            current_ages);
 
 
     %==============================================================%
@@ -200,7 +205,8 @@ function zseries_all = load_or_process_zseries( ...
         end
 
 
-        if ~exist(current_output_folder, 'dir')
+        if ~exist(current_output_folder, 'dir') && ...
+                strcmp(processing_mode, 'interactive')
 
             mkdir(current_output_folder);
 
@@ -450,51 +456,95 @@ function zseries_all = load_or_process_zseries( ...
         % Résultats existants
         %
         % Priorité :
-        %   1) results_zseries.mat
-        %   2) ancien results_movie.mat s'il contient réellement
+        %   1) data.ZSeries(i)
+        %   2) results_zseries.mat
+        %   3) ancien results_movie.mat s'il contient réellement
         %      une structure / des champs de ZSeries
         %
-        % Aucun recalcul si une ZSeries valide est rechargée.
+        % Les ZSeries ne sont plus dédupliquées ici : l'indice i reste
+        % donc identique dans zseries_paths, metadata et data.ZSeries.
+        %
+        % En cas de Reprocess, le cache mémoire et les fichiers existants
+        % sont volontairement ignorés.
         %==========================================================%
 
         use_existing_results = ...
             false;
 
 
-        loaded_from_file = ...
+        loaded_zseries = ...
+            [];
+
+
+        loaded_from = ...
             '';
 
 
         if force_reprocess_current
 
-            loaded_zseries = ...
-                [];
-
-
-            loaded_from_file = ...
-                '';
-
-
             fprintf( ...
-                'Reprocess ZSeries : anciens résultats ignorés pendant le recalcul.\n');
+                ['Reprocess ZSeries : cache data et anciens résultats ' ...
+                 'ignorés pendant le recalcul.\n']);
 
         else
 
-            [ ...
-                loaded_zseries, ...
-                loaded_from_file ...
-            ] = ...
-                load_existing_zseries_result( ...
-                    results_file, ...
-                    legacy_results_movie_file);
+            %======================================================%
+            % 1) Cache mémoire : data.ZSeries(i)
+            %======================================================%
 
-        end
+            if isfield(data, 'ZSeries') && ...
+                    isstruct(data.ZSeries) && ...
+                    numel(data.ZSeries) >= i && ...
+                    is_valid_zseries_result(data.ZSeries(i))
+
+                loaded_zseries = ...
+                    data.ZSeries(i);
 
 
-        if ~isempty(loaded_zseries)
+                use_existing_results = ...
+                    true;
 
-            use_existing_results = ...
-                true;
+
+                loaded_from = ...
+                    'data.ZSeries';
+
+
+                fprintf( ...
+                    'ZSeries déjà disponible en mémoire : data.ZSeries(%d)\n', ...
+                    i);
+
+            else
+
+                %==================================================%
+                % 2) Fallback disque uniquement si nécessaire
+                %==================================================%
+
+                [ ...
+                    loaded_zseries, ...
+                    loaded_from_file ...
+                ] = ...
+                    load_existing_zseries_result( ...
+                        results_file, ...
+                        legacy_results_movie_file);
+
+
+                if ~isempty(loaded_zseries)
+
+                    use_existing_results = ...
+                        true;
+
+
+                    loaded_from = ...
+                        loaded_from_file;
+
+
+                    fprintf( ...
+                        'Résultats ZSeries chargés depuis le disque : %s\n', ...
+                        loaded_from_file);
+
+                end
+
+            end
 
         end
 
@@ -505,17 +555,83 @@ function zseries_all = load_or_process_zseries( ...
 
         if use_existing_results
 
-            fprintf( ...
-                'Résultats ZSeries rechargés : %s\n', ...
-                loaded_from_file);
-
-
             zseries = ...
                 standardize_zseries_result( ...
                     loaded_zseries);
 
 
+            %======================================================%
+            % LOAD ONLY : résultat déjà disponible
+            %
+            % Sortie immédiate : aucune création de TIFF/PNG, aucune
+            % interface et aucune écriture disque.
+            %======================================================%
+
+            if strcmp( ...
+                    processing_mode, ...
+                    'load_only')
+
+                fprintf( ...
+                    'Mode load_only : ZSeries récupérée depuis %s.\n', ...
+                    loaded_from);
+
+
+                zseries_all(i) = ...
+                    zseries;
+
+
+                break;
+
+            end
+
+
         else
+
+            %======================================================%
+            % LOAD ONLY : rien en mémoire et rien sur disque
+            %======================================================%
+
+            if strcmp( ...
+                    processing_mode, ...
+                    'load_only')
+
+                fprintf( ...
+                    ['Mode load_only : aucun résultat ZSeries disponible ' ...
+                     'dans data ou sur disque. ZSeries ignorée.\n']);
+
+
+                zseries = ...
+                    create_empty_zseries_result();
+
+
+                zseries.path = ...
+                    current_zseries_path;
+
+
+                zseries.pixel_size_x_um = ...
+                    pixel_size_x_um;
+
+
+                zseries.pixel_size_y_um = ...
+                    pixel_size_y_um;
+
+
+                zseries.z_step_um = ...
+                    z_step_um;
+
+
+                zseries.z_positions = ...
+                    z_positions;
+
+
+                zseries_all(i) = ...
+                    zseries;
+
+
+                break;
+
+            end
+
 
             fprintf( ...
                 'Nouveau traitement ZSeries.\n');
@@ -1335,6 +1451,50 @@ function zseries = create_empty_zseries_result()
 
 end
 
+
+
+%==========================================================================%
+% VALID ZSERIES RESULT
+%
+% Un placeholder vide dans data.ZSeries(i) ne doit pas empêcher le
+% fallback vers results_zseries.mat.
+%==========================================================================%
+
+function tf = ...
+        is_valid_zseries_result( ...
+            zseries)
+
+    tf = ...
+        false;
+
+
+    if isempty(zseries) || ...
+            ~isstruct(zseries)
+
+        return;
+
+    end
+
+
+    tf = ...
+        ( ...
+            isfield(zseries, 'registered_volume') && ...
+            ~isempty(zseries.registered_volume) ...
+        ) || ...
+        ( ...
+            isfield(zseries, 'filtered_volume') && ...
+            ~isempty(zseries.filtered_volume) ...
+        ) || ...
+        ( ...
+            isfield(zseries, 'detected_cells_2d_mask_3d') && ...
+            ~isempty(zseries.detected_cells_2d_mask_3d) ...
+        ) || ...
+        ( ...
+            isfield(zseries, 'cell_mask_3d') && ...
+            ~isempty(zseries.cell_mask_3d) ...
+        );
+
+end
 
 
 %==========================================================================%
@@ -10814,425 +10974,6 @@ function z_positions = ...
     z_positions = ...
         z_positions( ...
             isfinite(z_positions));
-
-end
-
-
-
-%==========================================================================%
-% REMOVE DUPLICATE ZSERIES ENTRIES
-%==========================================================================%
-
-function [ ...
-        zseries_paths, ...
-        gcamp_root_folders, ...
-        zseries_metadata, ...
-        output_folders, ...
-        current_dates, ...
-        current_ages ...
-    ] = ...
-        remove_duplicate_zseries_entries( ...
-            zseries_paths, ...
-            gcamp_root_folders, ...
-            zseries_metadata, ...
-            output_folders, ...
-            current_dates, ...
-            current_ages)
-
-    if isempty(zseries_paths)
-        return;
-    end
-
-
-    if iscell(zseries_paths)
-
-        if isvector(zseries_paths)
-
-            original_count = ...
-                numel(zseries_paths);
-
-        else
-
-            original_count = ...
-                size(zseries_paths, 1);
-
-        end
-
-    else
-
-        original_count = ...
-            1;
-
-    end
-
-
-    if original_count <= 1
-        return;
-    end
-
-
-    keep_entry = ...
-        true( ...
-            original_count, ...
-            1);
-
-
-    seen_keys = ...
-        cell( ...
-            0, ...
-            1);
-
-
-    for idx_entry = 1:original_count
-
-        if iscell(zseries_paths)
-
-            if isvector(zseries_paths)
-
-                current_path = ...
-                    zseries_paths{idx_entry};
-
-            else
-
-                current_path = ...
-                    zseries_paths{idx_entry, 1};
-
-            end
-
-        else
-
-            current_path = ...
-                zseries_paths;
-
-        end
-
-
-        if isempty(current_path)
-            continue;
-        end
-
-
-        current_key = ...
-            char( ...
-                string(current_path));
-
-
-        current_key = ...
-            strtrim( ...
-                current_key);
-
-
-        current_key = ...
-            strrep( ...
-                current_key, ...
-                '/', ...
-                '\');
-
-
-        while ~isempty(current_key) && ...
-                current_key(end) == '\'
-
-            current_key(end) = [];
-
-        end
-
-
-        current_key = ...
-            lower( ...
-                current_key);
-
-
-        if any( ...
-                strcmp( ...
-                    seen_keys, ...
-                    current_key))
-
-            keep_entry(idx_entry) = ...
-                false;
-
-        else
-
-            seen_keys{end + 1, 1} = ...
-                current_key;
-
-        end
-
-    end
-
-
-    keep_indices = ...
-        find( ...
-            keep_entry);
-
-
-    duplicate_count = ...
-        original_count - ...
-        numel(keep_indices);
-
-
-    if duplicate_count == 0
-        return;
-    end
-
-
-    fprintf( ...
-        '%d ZSeries dupliquée(s) ignorée(s).\n', ...
-        duplicate_count);
-
-
-    %==============================================================%
-    % ZSeries paths
-    %==============================================================%
-
-    if iscell(zseries_paths)
-
-        if isvector(zseries_paths)
-
-            zseries_paths = ...
-                zseries_paths( ...
-                    keep_indices);
-
-        else
-
-            zseries_paths = ...
-                zseries_paths( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
-
-
-    %==============================================================%
-    % GCaMP root folders correspondants
-    %==============================================================%
-
-    if iscell(gcamp_root_folders)
-
-        if isvector(gcamp_root_folders) && ...
-                numel(gcamp_root_folders) >= ...
-                original_count
-
-            gcamp_root_folders = ...
-                gcamp_root_folders( ...
-                    keep_indices);
-
-        elseif size(gcamp_root_folders, 1) >= ...
-                original_count
-
-            gcamp_root_folders = ...
-                gcamp_root_folders( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
-
-
-    %==============================================================%
-    % Output folders correspondants
-    %==============================================================%
-
-    if iscell(output_folders)
-
-        if isvector(output_folders) && ...
-                numel(output_folders) >= ...
-                original_count
-
-            output_folders = ...
-                output_folders( ...
-                    keep_indices);
-
-        elseif size(output_folders, 1) >= ...
-                original_count
-
-            output_folders = ...
-                output_folders( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
-
-
-    %==============================================================%
-    % Dates correspondantes
-    %==============================================================%
-
-    if iscell(current_dates) || ...
-            isstring(current_dates) || ...
-            isnumeric(current_dates) || ...
-            islogical(current_dates)
-
-        if isvector(current_dates) && ...
-                numel(current_dates) >= ...
-                original_count
-
-            current_dates = ...
-                current_dates( ...
-                    keep_indices);
-
-        elseif size(current_dates, 1) >= ...
-                original_count
-
-            current_dates = ...
-                current_dates( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
-
-
-    %==============================================================%
-    % Ages correspondants
-    %==============================================================%
-
-    if iscell(current_ages) || ...
-            isstring(current_ages) || ...
-            isnumeric(current_ages) || ...
-            islogical(current_ages)
-
-        if isvector(current_ages) && ...
-                numel(current_ages) >= ...
-                original_count
-
-            current_ages = ...
-                current_ages( ...
-                    keep_indices);
-
-        elseif size(current_ages, 1) >= ...
-                original_count
-
-            current_ages = ...
-                current_ages( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
-
-
-    %==============================================================%
-    % Métadonnées correspondantes
-    %
-    % metadata.ZSeries est une structure scalaire dont chaque champ
-    % contient une valeur par ZSeries. Il faut donc appliquer
-    % keep_indices à chacun des champs et non à la structure.
-    %==============================================================%
-
-    if isstruct(zseries_metadata) && ...
-            isscalar(zseries_metadata)
-
-        metadata_fields = ...
-            fieldnames( ...
-                zseries_metadata);
-
-
-        for f = 1:numel(metadata_fields)
-
-            current_field = ...
-                metadata_fields{f};
-
-
-            current_value = ...
-                zseries_metadata.(current_field);
-
-
-            if isempty(current_value)
-                continue;
-            end
-
-
-            if iscell(current_value) || ...
-                    isstring(current_value)
-
-                if isvector(current_value) && ...
-                        numel(current_value) >= original_count
-
-                    zseries_metadata.(current_field) = ...
-                        current_value( ...
-                            keep_indices);
-
-                elseif size(current_value, 1) >= original_count
-
-                    zseries_metadata.(current_field) = ...
-                        current_value( ...
-                            keep_indices, ...
-                            :);
-
-                end
-
-
-            elseif isnumeric(current_value) || ...
-                    islogical(current_value)
-
-                if isscalar(current_value)
-
-                    % Valeur commune : ne pas modifier.
-
-                elseif isvector(current_value) && ...
-                        numel(current_value) >= original_count
-
-                    zseries_metadata.(current_field) = ...
-                        current_value( ...
-                            keep_indices);
-
-                elseif size(current_value, 1) >= original_count
-
-                    zseries_metadata.(current_field) = ...
-                        current_value( ...
-                            keep_indices, ...
-                            :);
-
-                elseif size(current_value, 2) >= original_count
-
-                    zseries_metadata.(current_field) = ...
-                        current_value( ...
-                            :, ...
-                            keep_indices);
-
-                end
-
-
-            elseif isstruct(current_value) && ...
-                    numel(current_value) >= original_count
-
-                zseries_metadata.(current_field) = ...
-                    current_value( ...
-                        keep_indices);
-
-            end
-
-        end
-
-
-    elseif iscell(zseries_metadata)
-
-        if isvector(zseries_metadata) && ...
-                numel(zseries_metadata) >= ...
-                original_count
-
-            zseries_metadata = ...
-                zseries_metadata( ...
-                    keep_indices);
-
-        elseif size(zseries_metadata, 1) >= ...
-                original_count
-
-            zseries_metadata = ...
-                zseries_metadata( ...
-                    keep_indices, ...
-                    :);
-
-        end
-
-    end
 
 end
 
