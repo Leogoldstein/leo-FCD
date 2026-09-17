@@ -1,7 +1,8 @@
 function combined_plane = combined_gcamp_electroporated_cells( ...
         gcamp_output_folders, ...
         data, ...
-        include_electroporated)
+        include_electroporated, ...
+        skip_planes_by_recording)
 
     numFolders = ...
         numel(gcamp_output_folders);
@@ -10,6 +11,10 @@ function combined_plane = combined_gcamp_electroporated_cells( ...
             isempty(include_electroporated)
 
         include_electroporated = 1;
+    end
+
+    if nargin < 4 || isempty(skip_planes_by_recording)
+        skip_planes_by_recording = {};
     end
 
     fields_combined_saved = { ...
@@ -180,6 +185,22 @@ function combined_plane = combined_gcamp_electroporated_cells( ...
                 numel(gcamp_output_folders{m}), ...
                 0]);
 
+        % Les plans sans masque final sont ignores : conserver leurs
+        % resultats Combined existants, sans creer de sortie vide.
+        skip_m = false(nPlanes, 1);
+
+        if m <= numel(skip_planes_by_recording) && ...
+                ~isempty(skip_planes_by_recording{m})
+
+            raw = logical(skip_planes_by_recording{m}(:));
+            if all(raw)
+                skip_m(:) = true;
+            else
+                n = min(numel(raw), nPlanes);
+                skip_m(1:n) = raw(1:n);
+            end
+        end
+
         fprintf( ...
             '[COMBINED] group=%d | nPlanes=%d\n', ...
             m, ...
@@ -259,12 +280,22 @@ function combined_plane = combined_gcamp_electroporated_cells( ...
             end
         end
 
+        if all(skip_m)
+            fprintf('[COMBINED] group=%d | all planes skipped; previous saved results retained.\n', m);
+            continue;
+        end
+
         has_new_data_for_group = false;
 
         % ======================================================
         % Loop planes
         % ======================================================
         for p = 1:nPlanes
+
+            if skip_m(p)
+                fprintf('[COMBINED] group=%d plane=%d | skipped, existing values retained.\n', m, p);
+                continue;
+            end
 
             if combined_plane_has_meaningful_content( ...
                     data, ...
