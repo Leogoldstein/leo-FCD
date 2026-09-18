@@ -98,7 +98,7 @@ if ~selected_groups_reloaded
             selected_groups);
 
 
-    %% --------------------------------------------------------
+    % --------------------------------------------------------
     % DATA PROCESSING
     % ---------------------------------------------------------
     processing_mode = 'load_only';
@@ -119,7 +119,8 @@ if ~selected_groups_reloaded
         DF_peak_detection( ...
             selected_groups, ...
             include_electroporated, ...
-            automatic_selection);
+            automatic_selection, ...
+            recap_all);
 
 end
 

@@ -18,10 +18,22 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
     peak_detection_mode, ...
     current_automatic_selection, ...
     current_output_folders, ...
-    clear_outputs_requested)
+    clear_outputs_requested, ...
+    recap_all_animal)
 
     numFolders = ...
         numel(gcamp_output_folders);
+
+    % ==========================================================
+    % Full inputs / full results policy
+    %
+    % All F and detection inputs are assumed complete. The tuner always
+    % receives the entire recording. Newly saved results_*.mat contain the
+    % complete temporal detection matrices, even if include_stims=false.
+    % Only the data RETURNED to the caller is cropped after the tuner
+    % finishes and AFTER the complete results have been saved.
+    % ==========================================================
+    include_stims = false;
 
     % ==========================================================
     % Defaults
@@ -323,8 +335,6 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
         has_new_gcamp_group = false;
         has_new_electroporated_group = false;
         has_new_combined_group = false;
-        has_new_motion_group = false;
-
         % ======================================================
         % Recording information
         % ======================================================
@@ -511,6 +521,47 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
         end
 
         % ======================================================
+        % Commentaire du recording : correspondance DATE + TSeries GCaMP.
+        % Le tableau a deja ete filtre sur Type/Line/Animal par l'appelant.
+        % Un commentaire vide dans recap_all_animal est intentionnel.
+        % ======================================================
+
+        recap_comment_m = '';
+        recap_row_m = [];
+
+        % recap_all_animal est le 21e argument et fait partie de la
+        % signature actuelle de la fonction. Ne pas utiliser de test nargin
+        % ici : l'ancien `nargin >= 22` rendait ce bloc inatteignable.
+        if istable(recap_all_animal) && ...
+                all(ismember({'Date','TSeries','Comment'}, ...
+                             recap_all_animal.Properties.VariableNames)) && ...
+                ~isempty(TSeries_m)
+
+            [recap_comment_m, recap_row_m] = ...
+                get_recap_comment_for_record( ...
+                    recap_all_animal, ...
+                    date_m, ...
+                    TSeries_m);
+
+            if isempty(recap_row_m)
+                fprintf( ...
+                    ['%s : aucune ligne recap associee au TSeries ' ...
+                     'courant (date=%s, TSeries=%s).\n'], ...
+                    record_label_m, ...
+                    char(string(date_m)), ...
+                    get_tseries_basename(TSeries_m));
+
+            elseif isempty(strtrim(recap_comment_m))
+                fprintf( ...
+                    ['%s : aucun commentaire recap associe au TSeries ' ...
+                     'courant (date=%s, TSeries=%s).\n'], ...
+                    record_label_m, ...
+                    char(string(date_m)), ...
+                    get_tseries_basename(TSeries_m));
+            end
+        end
+
+        % ======================================================
         % STIM
         % ======================================================
 
@@ -518,13 +569,38 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
         first_stim_frame_global = [];
 
         if isfield(data,'stim') && ...
-                isfield(data.stim,'stim_frames_log_group') && ...
                 isfield(data.stim,'stim_protocol_group') && ...
-                numel(data.stim.stim_frames_log_group) >= m && ...
                 numel(data.stim.stim_protocol_group) >= m
 
-            stim_frames_tmp = ...
-                data.stim.stim_frames_log_group{m};
+            % --------------------------------------------------
+            % Frame reference for stimulation events
+            %
+            % Priority:
+            %   1) stim_frames_log_group{m}
+            %   2) stim_times_group{m} when stim_frames_log_group
+            %      is absent or empty.
+            %
+            % IMPORTANT: stim_times_group is intentionally treated
+            % here as already expressed in FRAMES (no time->frame
+            % conversion is applied).
+            % --------------------------------------------------
+
+            stim_frames_tmp = [];
+
+            if isfield(data.stim,'stim_frames_log_group') && ...
+                    numel(data.stim.stim_frames_log_group) >= m && ...
+                    ~isempty(data.stim.stim_frames_log_group{m})
+
+                stim_frames_tmp = ...
+                    data.stim.stim_frames_log_group{m};
+
+            elseif isfield(data.stim,'stim_times_group') && ...
+                    numel(data.stim.stim_times_group) >= m && ...
+                    ~isempty(data.stim.stim_times_group{m})
+
+                stim_frames_tmp = ...
+                    data.stim.stim_times_group{m};
+            end
 
             stim_protocol_tmp = ...
                 data.stim.stim_protocol_group{m};
@@ -636,7 +712,9 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 'results_motion.mat');
 
         % ======================================================
-        % Old motion file migration
+        % Motion results are READ-ONLY in this pipeline.
+        % Never create, rename or overwrite results_motion.mat.
+        % If only the legacy results_movie.mat exists, read it directly.
         % ======================================================
 
         oldMotionPath = ...
@@ -644,15 +722,17 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 outdir_m, ...
                 'results_movie.mat');
 
-        if exist(oldMotionPath,'file') == 2 && ...
-                exist(filePath_motion,'file') ~= 2
+        motion_read_path = ...
+            filePath_motion;
 
-            movefile( ...
-                oldMotionPath, ...
-                filePath_motion);
+        if exist(motion_read_path,'file') ~= 2 && ...
+                exist(oldMotionPath,'file') == 2
+
+            motion_read_path = ...
+                oldMotionPath;
 
             fprintf( ...
-                '%s: renamed results_movie.mat -> results_motion.mat\n', ...
+                '%s: legacy results_movie.mat used read-only.\n', ...
                 record_label_m);
         end
 
@@ -780,11 +860,11 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 m);
 
         if ~isempty(fields_to_load_motion) && ...
-                exist(filePath_motion,'file') == 2
+                exist(motion_read_path,'file') == 2
 
             loaded_motion = ...
                 load_available_variables_peak_detection( ...
-                    filePath_motion, ...
+                    motion_read_path, ...
                     fields_to_load_motion);
 
             data = ...
@@ -794,6 +874,9 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                     fields_to_load_motion, ...
                     m);
         end
+
+        % Motion inputs are already complete (or selectively loaded above).
+        % Do not reload the same results_motion.mat a second time.
 
         speed_active_group = ...
             get_motion_group_or_empty( ...
@@ -832,18 +915,12 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 m);
 
         % ======================================================
-        % Crop GLOBAL motion before first stimulation
+        % COMPLETE motion before peak_detection_tuner
+        %
+        % IMPORTANT: nothing is cropped before the tuner anymore.
+        % The Viewer therefore receives motion/speed for the complete
+        % recording, including the stimulation period.
         % ======================================================
-
-        [ ...
-            motion_energy_group, ...
-            speed_active_group, ...
-            motion_was_cropped ...
-        ] = ...
-            crop_motion_before_first_stim( ...
-                motion_energy_group, ...
-                speed_active_group, ...
-                first_stim_frame_global);
 
         data.motion.motion_energy_group{m} = ...
             motion_energy_group;
@@ -851,47 +928,20 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
         data.motion.speed_active_group{m} = ...
             speed_active_group;
 
-        if motion_was_cropped
-
-            has_new_motion_group = ...
-                true;
-
-            if ~isempty(first_stim_frame_global)
-
-                fprintf( ...
-                    ['%s: motion energy / speed active cropped ' ...
-                     'before first stimulation ' ...
-                     '(global frame %d).\n'], ...
-                    record_label_m, ...
-                    first_stim_frame_global);
-            end
-        end
-
         % ======================================================
         % Behavior movie frame limit
         %
-        % IMPORTANT :
-        % reste entièrement dans le référentiel GLOBAL.
-        %
-        % Stim globale S :
-        %   frames comportement autorisées = 1:(S-1)
+        % No pre-stimulation limit here.  When a motion vector is
+        % available its COMPLETE length gives a safe movie limit;
+        % otherwise [] lets peak_detection_tuner use the TIFF extent.
         % ======================================================
 
         behavior_frame_limit_m = [];
 
-        if ~isempty(first_stim_frame_global) && ...
-                isfinite(first_stim_frame_global)
-
-            behavior_frame_limit_m = ...
-                max( ...
-                    0, ...
-                    round(first_stim_frame_global) - 1);
-
-        elseif ~isempty(motion_energy_group)
-
-            behavior_frame_limit_m = ...
-                numel(motion_energy_group);
-        end
+        % Leave this empty here: the per-plane fallback below derives the
+        % complete global acquisition extent from the complete F_view.
+        % This also avoids inheriting an old pre-stim motion length from a
+        % results_motion.mat created by an earlier pipeline version.
 
         % ======================================================
         % Motion reference ops
@@ -1006,9 +1056,6 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
 
                 data.motion.speed_active_group{m} = ...
                     speed_active_group;
-
-                has_new_motion_group = ...
-                    true;
 
             else
 
@@ -1574,6 +1621,11 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                         m, ...
                         p);
 
+                % Existing full-length peaks, sorting and traces were
+                % already retrieved from data, or selectively loaded once
+                % from results_*.mat at recording entry. Never recompute
+                % them just because the Viewer opens.
+
                 % ==================================================
                 % Load only
                 % ==================================================
@@ -1606,168 +1658,37 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                         record_label_m, ...
                         modified_planes{m}(p));
 
+                    if ~include_stims
+                        data = crop_detection_data_for_plane( ...
+                            data,m,p,nPlanes,first_stim_frame_global, ...
+                            sync_frames_m,process_electroporated_combined);
+                    end
+
                     continue;
                 end
             end
 
             % ==================================================
-            % EXACT PER-PLANE TEMPORAL CROP
-            %
-            % Acquisition interlacée :
-            %
-            % global_frame(j,p) =
-            %     p + (j-1)*nPlanes
-            %
-            % On garde seulement :
-            %
-            % global_frame < first_stim_frame_global
-            %
-            % Donc le nombre exact de frames pré-stim du plan p :
-            %
-            % floor((S - 1 - p)/nPlanes) + 1
+            % COMPLETE temporal inputs for peak_detection_tuner.
+            % No calcium, motion or bad-frame crop before the tuner.
             % ==================================================
 
-            last_frame_plane = ...
-                size(F_in,2);
+            F_view = F_in;
 
-            if ~isempty(first_stim_frame_global) && ...
-                    isfinite(first_stim_frame_global)
+            bad_frames = ...
+                bad_frames_group;
 
-                last_frame_plane = ...
-                    floor( ...
-                        ( ...
-                            round(first_stim_frame_global) - ...
-                            1 - ...
-                            p ...
-                        ) / ...
-                        nPlanes) + ...
-                    1;
+            bad_segs = ...
+                bad_segs_group;
 
-                last_frame_plane = ...
-                    max( ...
-                        0, ...
-                        min( ...
-                            size(F_in,2), ...
-                            last_frame_plane));
-            end
+            deviation = ...
+                deviation_group;
 
-            % ==================================================
-            % Prepare F
-            % ==================================================
+            focus_segs = ...
+                focus_segs_group;
 
-            if viewer_mode
-
-                F_view = ...
-                    F_in( ...
-                        :, ...
-                        1:last_frame_plane);
-
-            else
-
-                F_nostims = ...
-                    F_in( ...
-                        :, ...
-                        1:last_frame_plane);
-
-                nT = ...
-                    size(F_nostims,2);
-
-                bad_frames = ...
-                    bad_frames_group;
-
-                bad_segs = ...
-                    bad_segs_group;
-
-                deviation = ...
-                    deviation_group;
-
-                focus_segs = ...
-                    focus_segs_group;
-
-                motion_energy = ...
-                    motion_energy_group;
-
-                if ~isempty(bad_frames)
-
-                    bad_frames = ...
-                        bad_frames(:).';
-
-                    bad_frames = ...
-                        bad_frames( ...
-                            bad_frames >= 1 & ...
-                            bad_frames <= nT);
-                end
-
-                if ~isempty(deviation)
-
-                    deviation = ...
-                        deviation(:).';
-
-                    deviation = ...
-                        deviation( ...
-                            1:min( ...
-                                nT, ...
-                                numel(deviation)));
-                end
-
-                if ~isempty(bad_frames)
-
-                    bad_segs = ...
-                        badframes_to_segments( ...
-                            bad_frames, ...
-                            nT);
-
-                    focus_segs = ...
-                        bad_segs;
-
-                    F_clean = ...
-                        F_nostims;
-
-                    F_clean(:,bad_frames) = ...
-                        NaN;
-
-                    F_clean = ...
-                        fillmissing( ...
-                            F_clean, ...
-                            'linear', ...
-                            2, ...
-                            'EndValues', ...
-                            'nearest');
-
-                    F_nostims = ...
-                        F_clean;
-
-                else
-
-                    bad_segs = [];
-                    focus_segs = [];
-                end
-
-                F_view = ...
-                    F_nostims;
-            end
-
-            % ==================================================
-            % Viewer motion
-            % ==================================================
-
-            if viewer_mode
-
-                bad_frames = ...
-                    bad_frames_group;
-
-                bad_segs = ...
-                    bad_segs_group;
-
-                deviation = ...
-                    deviation_group;
-
-                focus_segs = ...
-                    focus_segs_group;
-
-                motion_energy = ...
-                    motion_energy_group;
-            end
+            motion_energy = ...
+                motion_energy_group;
 
             if isempty(F_view)
 
@@ -1814,17 +1735,16 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
             % Comment
             % ==================================================
 
+            % Commentaire de DETECTION (independant du recapitulatif).
+            % Seul selection_summary.comment alimente le panneau editable
+            % et est sauvegarde dans results_*.mat.
             comment_saved = '';
 
-            if ~isempty(selection_summary_saved) && ...
-                    isstruct(selection_summary_saved) && ...
-                    isfield( ...
-                        selection_summary_saved, ...
-                        'comment') && ...
+            if isstruct(selection_summary_saved) && ...
+                    isfield(selection_summary_saved,'comment') && ...
                     ~isempty(selection_summary_saved.comment)
 
-                comment_saved = ...
-                    selection_summary_saved.comment;
+                comment_saved = selection_summary_saved.comment;
             end
 
             % Le voyant concerne exclusivement le plan courant.
@@ -1902,7 +1822,11 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                     isort1_saved, ...
                     isort2_saved, ...
                     Sm_saved, ...
-                    recording_keep_saved);
+                    recording_keep_saved, ...
+                    first_stim_frame_global, ...
+                    include_stims, ...
+                    stim_frames_m, ...
+                    recap_comment_m);
 
             % ==================================================
             % selected_signal = display / viewer information only
@@ -1928,9 +1852,24 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                         char(string(selected_signal))));
 
             if isstruct(selection_summary)
-
-                selection_summary.selected_signal = ...
-                    selected_signal;
+                selection_summary.selected_signal = selected_signal;
+                % The saved matrices always contain the whole recording.
+                % Only the returned data can be cropped after saving.
+                selection_summary.include_stims = include_stims;
+                selection_summary.results_include_stims = true;
+                selection_summary.n_frames_full = size(F_view,2);
+                selection_summary.n_frames_saved = size(F_view,2);
+                nDataFrames = size(F_view,2);
+                if ~include_stims && ~isempty(first_stim_frame_global) && ...
+                        isscalar(first_stim_frame_global) && ...
+                        isfinite(first_stim_frame_global)
+                    nDataFrames = floor((round(first_stim_frame_global)-1-p) ...
+                        /max(1,nPlanes))+1;
+                    nDataFrames = max(0,min(size(F_view,2),nDataFrames));
+                end
+                selection_summary.n_frames_data = nDataFrames;
+                selection_summary.data_include_stims = ...
+                    nDataFrames >= size(F_view,2);
             end
 
             % ==================================================
@@ -1946,6 +1885,7 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
             % because peak_detection_tuner is not called in that case.
             % ==================================================
 
+            % Preview the complete saved recording, including stimulations.
             call_random_peak_preview( ...
                 valid_cells, ...
                 DF_sg, ...
@@ -2041,7 +1981,7 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 fprintf( ...
                     '%s - plane %d: comment saved.\n', ...
                     record_label_m, ...
-                    p);
+                    p-1);
             end
 
             % ==================================================
@@ -2067,7 +2007,7 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                         filePath_gcamp,filePath_electroporated, ...
                         filePath_combined,process_electroporated_combined);
                     fprintf('%s - plane %d: recording_keep = %d saved (no DF recompute).\n', ...
-                        record_label_m,p,recording_keep);
+                        record_label_m,p-1,recording_keep);
                 end
             end
 
@@ -2075,19 +2015,18 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
             % No new detection
             % ==================================================
 
-            if viewer_mode && ...
-                    ~has_new
-
-                continue;
-            end
-
             if ~has_new
-
-                fprintf( ...
-                    '%s - plane %d: no new outputs.\n', ...
-                    record_label_m, ...
-                    p);
-
+                % In Viewer, no confirmation means no results file is
+                % rewritten. The returned data still obeys include_stims.
+                if ~viewer_mode
+                    fprintf('%s - plane %d: no new outputs.\n', ...
+                        record_label_m,p);
+                end
+                if ~include_stims
+                    data = crop_detection_data_for_plane( ...
+                        data,m,p,nPlanes,first_stim_frame_global, ...
+                        sync_frames_m,process_electroporated_combined);
+                end
                 continue;
             end
 
@@ -2296,9 +2235,9 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
             end
 
             % ==================================================
-            % Save modified plane
-            % ==================================================
-
+            % Save the COMPLETE detection before cropping returned data.
+            % A confirmed Viewer selection may update rows/peaks but never
+            % changes the time span of the recorded matrices.
             if has_new_gcamp_plane
 
                 save_branch_plane_fields( ...
@@ -2355,19 +2294,27 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                     true;
             end
 
+            % ==================================================
+            % DATA-ONLY crop, strictly AFTER all results_*.mat saves.
+            if ~include_stims
+                data = crop_detection_data_for_plane( ...
+                    data,m,p,nPlanes,first_stim_frame_global, ...
+                    sync_frames_m,process_electroporated_combined);
+            end
+
         end
 
         % ======================================================
-        % SAVE MOTION
+        % MOTION IS NOT SAVED
+        %
+        % Motion values computed/loaded above remain available in data for
+        % the current execution only. results_motion.mat is never created
+        % or modified by run_gcamp_peak_detection.
         % ======================================================
 
-        if has_new_motion_group
-
-            save_motion_group_fields( ...
-                filePath_motion, ...
-                data, ...
-                fields_motion_group, ...
-                m);
+        if ~include_stims
+            data = crop_motion_data_only( ...
+                data,m,first_stim_frame_global);
         end
     end
 end
@@ -2378,6 +2325,182 @@ end
 % =========================================================
 % INITIALISATION DES STRUCTURES
 % =========================================================
+
+% =========================================================
+% VALIDATION / DATA-ONLY TEMPORAL POLICY
+% =========================================================
+
+function data = crop_detection_data_for_plane( ...
+        data,m,p,nPlanes,first_stim_frame_global,synchronous_frames,processCombined)
+
+    if isempty(first_stim_frame_global) || ...
+            ~isscalar(first_stim_frame_global) || ...
+            ~isfinite(first_stim_frame_global)
+        return;
+    end
+
+    if processCombined
+        names = {'gcamp','electroporated','combined'};
+    else
+        names = {'gcamp'};
+    end
+
+    S = round(double(first_stim_frame_global));
+    plane_index = max(1,round(double(p)));
+
+    for b = 1:numel(names)
+        name = names{b};
+        branch = [name '_plane'];
+        if ~isfield(data,branch) || ~isstruct(data.(branch))
+            continue;
+        end
+
+        dfName = ['DF_' name '_by_plane'];
+        df = get_branch_plane_or_empty(data,branch,dfName,m,p);
+        if isempty(df)
+            continue;
+        end
+
+        nFull = size(df,2);
+        nKeep = floor((S - 1 - plane_index) / max(1,nPlanes)) + 1;
+        nKeep = max(0,min(nFull,nKeep));
+
+        matrixFields = { ...
+            ['F0_' name '_by_plane'], ...
+            ['DF_' name '_by_plane'], ...
+            ['DF_raw_' name '_by_plane'], ...
+            ['Raster_' name '_by_plane']};
+
+        for k = 1:numel(matrixFields)
+            fn = matrixFields{k};
+            X = get_branch_plane_or_empty(data,branch,fn,m,p);
+            if isempty(X), continue; end
+            nk = max(0,min(size(X,2),nKeep));
+            data.(branch).(fn){m}{p} = X(:,1:nk);
+        end
+
+        actName = ['Acttmp2_' name '_by_plane'];
+        acts = get_branch_plane_or_empty(data,branch,actName,m,p);
+        if iscell(acts)
+            for c = 1:numel(acts)
+                locs = acts{c};
+                if isempty(locs), continue; end
+                wasRow = isrow(locs);
+                locs = round(double(locs(:)));
+                locs = locs(isfinite(locs) & locs>=1 & locs<=nKeep);
+                if wasRow, locs = locs.'; end
+                acts{c} = locs;
+            end
+            data.(branch).(actName){m}{p} = acts;
+        end
+
+        rasterName = ['Raster_' name '_by_plane'];
+        raster = get_branch_plane_or_empty(data,branch,rasterName,m,p);
+        mactName = ['MAct_' name '_by_plane'];
+        if isfield(data.(branch),mactName)
+            data.(branch).(mactName){m}{p} = ...
+                recompute_mact_from_raster(raster,synchronous_frames);
+        end
+
+        segName = ['bad_segs_' name '_plane'];
+        segs = get_branch_plane_or_empty(data,branch,segName,m,p);
+        if ~isempty(segs) && isnumeric(segs) && size(segs,2)>=2
+            segs = double(segs(:,1:2));
+            segs(:,1) = max(1,round(segs(:,1)));
+            segs(:,2) = min(nKeep,round(segs(:,2)));
+            segs = segs(segs(:,1)<=segs(:,2),:);
+            data.(branch).(segName){m}{p} = segs;
+        end
+
+        % Sm may contain a temporal dimension depending on raster_processing.
+        % Crop it only when a dimension unambiguously matches the full time.
+        smName = ['Sm_' name '_by_plane'];
+        Sm = get_branch_plane_or_empty(data,branch,smName,m,p);
+        if ~isempty(Sm)
+            data.(branch).(smName){m}{p} = ...
+                crop_sm_time_if_present(Sm,nFull,nKeep);
+        end
+
+        summaryName = ['selection_summary_' name '_by_plane'];
+        summary = get_branch_plane_or_empty(data,branch,summaryName,m,p);
+        if isstruct(summary)
+            if isfield(summary,'n_frames_full') && ...
+                    isscalar(summary.n_frames_full) && ...
+                    isfinite(summary.n_frames_full)
+                summary.n_frames_saved = round(double(summary.n_frames_full));
+            elseif ~isfield(summary,'n_frames_saved') || ...
+                    isempty(summary.n_frames_saved)
+                summary.n_frames_saved = nFull;
+            end
+            summary.n_frames_data = nKeep;
+            summary.results_include_stims = true;
+            summary.data_include_stims = nKeep >= nFull;
+            data.(branch).(summaryName){m}{p} = summary;
+        end
+    end
+end
+
+function Sm = crop_sm_time_if_present(Sm,nFull,nKeep)
+    if isempty(Sm) || nFull <= 0 || nKeep >= nFull
+        return;
+    end
+    dims = size(Sm);
+    matches = find(dims == nFull);
+    if numel(matches) ~= 1
+        return;
+    end
+    d = matches(1);
+    idx = repmat({':'},1,ndims(Sm));
+    idx{d} = 1:nKeep;
+    Sm = Sm(idx{:});
+end
+
+function data = crop_motion_data_only(data,m,first_stim_frame_global)
+    if isempty(first_stim_frame_global) || ...
+            ~isscalar(first_stim_frame_global) || ...
+            ~isfinite(first_stim_frame_global) || ...
+            ~isfield(data,'motion') || ~isstruct(data.motion)
+        return;
+    end
+
+    nKeep = max(0,round(double(first_stim_frame_global))-1);
+
+    vectorFields = {'motion_energy_group','speed_active_group','deviation_group'};
+    for k = 1:numel(vectorFields)
+        fn = vectorFields{k};
+        if ~isfield(data.motion,fn) || numel(data.motion.(fn))<m || ...
+                isempty(data.motion.(fn){m})
+            continue;
+        end
+        v = data.motion.(fn){m};
+        nk = min(numel(v),nKeep);
+        data.motion.(fn){m} = v(1:nk);
+    end
+
+    if isfield(data.motion,'bad_frames_group') && ...
+            numel(data.motion.bad_frames_group)>=m && ...
+            ~isempty(data.motion.bad_frames_group{m})
+        bf = round(double(data.motion.bad_frames_group{m}(:).'));
+        bf = bf(isfinite(bf) & bf>=1 & bf<=nKeep);
+        data.motion.bad_frames_group{m} = bf;
+    end
+
+    segmentFields = {'bad_segs_group','focus_segs_group'};
+    for k = 1:numel(segmentFields)
+        fn = segmentFields{k};
+        if ~isfield(data.motion,fn) || numel(data.motion.(fn))<m || ...
+                isempty(data.motion.(fn){m})
+            continue;
+        end
+        segs = double(data.motion.(fn){m});
+        if size(segs,2)<2, continue; end
+        segs = segs(:,1:2);
+        segs(:,1) = max(1,round(segs(:,1)));
+        segs(:,2) = min(nKeep,round(segs(:,2)));
+        segs = segs(segs(:,1)<=segs(:,2),:);
+        data.motion.(fn){m} = segs;
+    end
+end
 
 function v = normalize_recording_keep_run(v)
     % Only [] (unknown), 0 or 1 are allowed; never coerce NaN to false.
@@ -3466,96 +3589,6 @@ function segTable = sort_segments_by_deviation(bad_segs, deviation)
     segTable = sortrows(segTable, 'ValMaxDeviation', 'ascend');
 end
 
-function [ ...
-        motion_energy, ...
-        speed_active, ...
-        was_cropped ...
-    ] = crop_motion_before_first_stim( ...
-        motion_energy, ...
-        speed_active, ...
-        first_stim_frame_global)
-
-    was_cropped = false;
-
-    % ==========================================================
-    % No valid first stimulation
-    % ==========================================================
-    if isempty(first_stim_frame_global) || ...
-            ~isfinite(first_stim_frame_global)
-
-        return;
-    end
-
-    first_stim_frame_global = ...
-        round(first_stim_frame_global);
-
-    last_frame = ...
-        first_stim_frame_global - 1;
-
-    % ==========================================================
-    % Motion energy
-    % ==========================================================
-    if ~isempty(motion_energy)
-
-        original_length = ...
-            numel(motion_energy);
-
-        nKeep = ...
-            min( ...
-                last_frame, ...
-                original_length);
-
-        if nKeep >= 1
-
-            motion_energy = ...
-                motion_energy(1:nKeep);
-
-        else
-
-            motion_energy = ...
-                [];
-        end
-
-        if numel(motion_energy) ~= ...
-                original_length
-
-            was_cropped = true;
-        end
-    end
-
-    % ==========================================================
-    % Speed active
-    % ==========================================================
-    if ~isempty(speed_active)
-
-        original_length = ...
-            numel(speed_active);
-
-        nKeep = ...
-            min( ...
-                last_frame, ...
-                original_length);
-
-        if nKeep >= 1
-
-            speed_active = ...
-                speed_active(1:nKeep);
-
-        else
-
-            speed_active = ...
-                [];
-        end
-
-        if numel(speed_active) ~= ...
-                original_length
-
-            was_cropped = true;
-        end
-    end
-end
-
-
 % =========================================================
 % SAUVEGARDE ET EFFACEMENT DES RESULTATS
 % =========================================================
@@ -3581,18 +3614,12 @@ function save_selection_summary_plane( ...
     % Charger uniquement le champ existant si possible
     % ==========================================================
 
-    if exist(filePath,'file') == 2
-
-        S = ...
-            load( ...
-                filePath, ...
-                fieldName);
-
-    else
-
-        S = ...
-            struct();
-    end
+    % Le champ selection_summary peut ne pas encore exister dans le MAT.
+    % Charger uniquement les variables presentes pour eviter le warning
+    % MATLAB "Variable '...' not found" sans toucher aux autres champs.
+    S = load_available_variables_peak_detection( ...
+        filePath, ...
+        {fieldName});
 
     % ==========================================================
     % Anciennes valeurs
@@ -3875,33 +3902,6 @@ function save_branch_plane_fields( ...
             filePath, ...
             '-struct', ...
             'saveStruct');
-    end
-end
-
-function save_motion_group_fields(filePath_motion, data, fields_motion_group, m)
-
-    saveStruct = struct();
-
-    for f = 1:numel(fields_motion_group)
-        fn = fields_motion_group{f};
-
-        if isfield(data,'motion') && ...
-           isfield(data.motion, fn) && ...
-           numel(data.motion.(fn)) >= m
-
-            saveStruct.(fn) = data.motion.(fn){m};
-        end
-    end
-
-    outdir = fileparts(filePath_motion);
-    if ~exist(outdir,'dir')
-        mkdir(outdir);
-    end
-
-    if exist(filePath_motion,'file') == 2
-        save(filePath_motion, '-struct', 'saveStruct', '-append');
-    else
-        save(filePath_motion, '-struct', 'saveStruct');
     end
 end
 
@@ -4582,6 +4582,16 @@ function summary = ...
         summary.recording_keep = [];
     end
 
+    % Preserve temporal-storage metadata from the complete Combined result.
+    temporal_meta = {'include_stims','results_include_stims','data_include_stims', ...
+        'n_frames_full','n_frames_saved','n_frames_data'};
+    for tm = 1:numel(temporal_meta)
+        fn = temporal_meta{tm};
+        if isfield(summary_combined,fn)
+            summary.(fn) = summary_combined.(fn);
+        end
+    end
+
     summary.active_indices = ...
         active_indices;
 
@@ -4699,6 +4709,147 @@ function [isort1,isort2,Sm] = subset_combined_sort( ...
             Sm = combinedSm(:,positions,:);
         end
     end
+end
+
+
+% =========================================================
+% COMMENTAIRE RECAPITULATIF DU RECORDING
+% =========================================================
+
+function [comment_text, row_idx] = get_recap_comment_for_record( ...
+        recap_all_animal, date_value, tseries_value)
+
+    comment_text = '';
+    row_idx = [];
+
+    if ~istable(recap_all_animal) || isempty(recap_all_animal) || ...
+            ~all(ismember({'Date','TSeries','Comment'}, ...
+                          recap_all_animal.Properties.VariableNames))
+        return;
+    end
+
+    current_tseries = string(get_tseries_basename(tseries_value));
+    current_tseries = strtrim(current_tseries);
+
+    if strlength(current_tseries) == 0
+        return;
+    end
+
+    nRows = height(recap_all_animal);
+    recap_tseries = strings(nRows,1);
+
+    for rr = 1:nRows
+        recap_tseries(rr) = string( ...
+            get_tseries_basename(recap_all_animal.TSeries(rr)));
+    end
+
+    recap_tseries = strtrim(recap_tseries);
+    tseries_matches = find(strcmpi(recap_tseries,current_tseries));
+
+    if isempty(tseries_matches)
+        return;
+    end
+
+    % Le nom du TSeries est l'identifiant principal du recording.
+    % La date ne sert qu'a departager si plusieurs lignes portent
+    % exceptionnellement le meme nom de TSeries.
+    if numel(tseries_matches) == 1
+        row_idx = tseries_matches(1);
+    else
+        current_date = normalize_recap_date(date_value);
+        recap_dates = strings(numel(tseries_matches),1);
+
+        for jj = 1:numel(tseries_matches)
+            recap_dates(jj) = normalize_recap_date( ...
+                recap_all_animal.Date(tseries_matches(jj)));
+        end
+
+        date_match = find(strcmpi(recap_dates,current_date),1,'first');
+
+        if ~isempty(date_match)
+            row_idx = tseries_matches(date_match);
+        else
+            row_idx = tseries_matches(1);
+        end
+    end
+
+    comment_value = recap_all_animal.Comment(row_idx);
+
+    if iscell(comment_value)
+        if isempty(comment_value)
+            return;
+        end
+        comment_value = comment_value{1};
+    end
+
+    comment_value = string(comment_value);
+
+    if ~isempty(comment_value) && ~ismissing(comment_value(1))
+        comment_text = char(comment_value(1));
+    end
+end
+
+
+function name = get_tseries_basename(value)
+
+    name = '';
+
+    while iscell(value)
+        if isempty(value)
+            return;
+        end
+        value = value{1};
+    end
+
+    if isempty(value)
+        return;
+    end
+
+    value = char(string(value));
+    value = strtrim(value);
+
+    if isempty(value)
+        return;
+    end
+
+    value = regexprep(value,'[\\/]+$','');
+    [~,name] = fileparts(value);
+
+    % Si la valeur fournie est deja seulement un nom de TSeries,
+    % fileparts le restitue normalement. Ce fallback couvre les cas
+    % pathologiques ou aucun basename n'est obtenu.
+    if isempty(name)
+        name = value;
+    end
+end
+
+
+function date_text = normalize_recap_date(value)
+
+    while iscell(value)
+        if isempty(value)
+            date_text = "";
+            return;
+        end
+        value = value{1};
+    end
+
+    if isdatetime(value)
+        try
+            date_text = string(value,'dd-MM-yyyy');
+        catch
+            date_text = string(value);
+        end
+    else
+        date_text = string(value);
+    end
+
+    if isempty(date_text) || ismissing(date_text(1))
+        date_text = "";
+        return;
+    end
+
+    date_text = strtrim(date_text(1));
 end
 
 
@@ -4825,7 +4976,7 @@ function call_random_peak_preview( ...
         fprintf( ...
             '%s - plane %d: preview skipped, DF unavailable.\n', ...
             record_label, ...
-            plane_index);
+            plane_index-1);
 
         return;
     end

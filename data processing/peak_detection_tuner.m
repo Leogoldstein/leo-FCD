@@ -49,7 +49,11 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         isort1_saved, ...
         isort2_saved, ...
         Sm_saved, ...
-        recording_keep_saved)
+        recording_keep_saved, ...
+        first_stim_frame_global, ...
+        include_stims, ...
+        stim_frames_global, ...
+        recap_comment_saved)
 
     %==============================================================
     % Options
@@ -81,6 +85,31 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     if nargin < 44, isort2_saved = []; end
     if nargin < 45, Sm_saved = []; end
     if nargin < 46, recording_keep_saved = []; end
+    if nargin < 47, first_stim_frame_global = []; end
+    if nargin < 48 || isempty(include_stims), include_stims = false; end
+    if nargin < 49, stim_frames_global = []; end
+    % Commentaire issu exclusivement de recap_all_animal, jamais du
+    % selection_summary de detection. L'argument est facultatif pour
+    % conserver la compatibilite des anciens appels.
+    if nargin < 50 || isempty(recap_comment_saved)
+        recap_comment_saved = '';
+    elseif isstring(recap_comment_saved)
+        recap_comment_saved = char(recap_comment_saved(1));
+    elseif iscell(recap_comment_saved)
+        recap_comment_saved = char(string(recap_comment_saved{1}));
+    end
+    % The tuner always works with full-length signals and returns full
+    % outputs; the caller saves them before cropping its returned data.
+    include_stims = logical(include_stims(1));
+
+    if ~isempty(first_stim_frame_global)
+        first_stim_frame_global = double(first_stim_frame_global(1));
+        if ~isfinite(first_stim_frame_global)
+            first_stim_frame_global = [];
+        else
+            first_stim_frame_global = round(first_stim_frame_global);
+        end
+    end
 
     if nargin < 41 || isempty(selection_summary_saved)
         selection_summary_saved = struct();
@@ -90,9 +119,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         comment_saved = '';
     end
 
-    % En sécurité, si aucun commentaire n'a été fourni explicitement,
-    % récupérer celui déjà présent dans le selection_summary sauvegardé.
-    if isempty(comment_saved) && ...
+    % Compatibilite avec un ancien appel sans argument comment_saved.
+    % Un commentaire explicitement fourni, meme vide, est prioritaire.
+    if nargin < 42 && ...
             isstruct(selection_summary_saved) && ...
             isfield(selection_summary_saved,'comment') && ...
             ~isempty(selection_summary_saved.comment)
@@ -412,9 +441,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     title_parts = {};
     
     if viewer_mode
-    
-        title_parts{end+1} = ...
-            '[VIEWER MODE]';
+        title_parts{end+1} = '[VIEWER MODE]';
     end
     
     title_parts{end+1} = ...
@@ -471,10 +498,12 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     fig = ...
         figure( ...
-            'Name', winTitle, ...
+            'Name', 'Peak detection tuner', ...
             'NumberTitle', 'off', ...
-            'Position', [100 100 1300 820], ...
             'Color', [.97 .97 .98]);
+
+    % La barre native de la figure reste volontairement courte.
+    set(fig,'Name','Peak detection tuner');
 
     set( ...
         fig, ...
@@ -503,6 +532,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     setappdata(fig, 'fs_plane', fs_plane);
     setappdata(fig, 'fs_motion', fs_motion);
+    setappdata(fig, 'include_stims', include_stims);
+    setappdata(fig, 'first_stim_frame_global', first_stim_frame_global);
+    setappdata(fig, 'stim_frames_global', stim_frames_global);
 
     setappdata(fig, 'F_raw', F);
 
@@ -516,6 +548,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'score_quality', score);
 
     setappdata(fig, 'opts', opts);
+    % Etat initial pour tester les modifications REELLES du Viewer :
+    % deplacer un curseur puis revenir a sa valeur d'origine ne compte pas.
+    setappdata(fig, 'opts_initial', opts);
     setappdata(fig,'suite2p_path',suite2p_path);
 
     setappdata(fig, 'selected_signal', selected_signal);
@@ -528,10 +563,11 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     % COMMENTAIRE
     %==============================================================
 
-    setappdata( ...
-        fig, ...
-        'comment', ...
-        comment_saved);
+    % Deux sources strictement separees :
+    % - comment : commentaire editable de la detection / results_*.mat ;
+    % - recap_comment : commentaire du recap, affichage seul en en-tete.
+    setappdata(fig, 'comment', comment_saved);
+    setappdata(fig, 'recap_comment', recap_comment_saved);
 
     setappdata( ...
         fig, ...
@@ -565,12 +601,10 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig,'recording_keep_initial',recording_keep_saved);
     setappdata(fig,'recording_keep_modified',false);
     setappdata(fig,'recording_keep_metadata_commit',false);
-    setappdata(fig,'confirmation_pending',false);
-    setappdata(fig,'recording_keep_prompted_for_confirmation',false);
 
 
-    % Paramètres de détection modifiés dans le Viewer.
-    % Tant que l'utilisateur ne confirme pas, rien n'est sauvegardé.
+    % A Viewer with no effective user edit cannot confirm merely because
+    % it was opened. Only changed selection, parameters or Keep/Reject do.
     setappdata(fig,'detection_params_modified',false);
     setappdata(fig,'viewer_changed_param_fields',{});
 
@@ -726,9 +760,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     % Le TIFF complet n'est jamais charge en RAM : seules les frames
     % demandees sont lues a la volee avec la classe Tiff.
     %
-    % motion_energy est deja croppee dans run_gcamp_peak_detection.
-    % Quand elle est disponible, sa longueur donne donc directement
-    % la derniere frame comportementale autorisee.
+    % motion_energy / speed_active arrivent maintenant COMPLETS depuis
+    % run_gcamp_peak_detection. Aucun crop pre-stimulation n'est fait
+    % avant l'ouverture du Viewer.
     %==============================================================
 
     behavior_movie_path = '';
@@ -1040,6 +1074,30 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         setappdata(fig,'valid_cells_saved',valid_cells);
     end
 
+    % En Viewer, la liste des IDs effectivement enregistres est la seule
+    % source de verite de la selection. Les anciens manual_status sont des
+    % informations de provenance : ils ne doivent jamais pouvoir exclure
+    % en bloc les cellules lors du premier clic sur Exclure cellule.
+    % Les deux masques sont dans le referentiel ORIGINAL de F (nCells).
+    if viewer_mode
+        initial_kept = false(nCells,1);
+        initial_kept(valid_cells_tmp) = true;
+        % Les statuts historiques peuvent etre contradictoires avec le
+        % vecteur valid_cells reellement sauvegarde. Ne pas laisser leur
+        % libelle afficher "exclue" pour une cellule effectivement gardee.
+        manual_status_init = manual_status_init(:);
+        manual_status_init(initial_kept & manual_status_init==-1) = 0;
+        manual_status_init(~initial_kept & manual_status_init==+1) = 0;
+        setappdata(fig,'manual_status',manual_status_init);
+        setappdata(fig,'viewer_initial_kept_mask',initial_kept);
+        setappdata(fig,'viewer_kept_mask',initial_kept);
+        % Une decision par ID ORIGINAL de Combined (NaN = inchangee).
+        % Ne jamais reconstruire la selection a partir des statuts manuels
+        % historiques ou des rangs locaux GCaMP/Electroporated.
+        setappdata(fig,'viewer_cell_decisions',nan(nCells,1));
+        setappdata(fig,'viewer_initial_manual_status',manual_status_init);
+    end
+
     % Viewer : charger la permutation sauvegardee sans la recalculer.
     % Rejet : simple suppression de ligne. Confirmation : nouveau tri.
     if viewer_mode
@@ -1305,10 +1363,10 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'Units', 'normalized', ...
         'Position', [0.05 0.861 0.90 0.045], ...
         'Tag', 'sldr_nav_cell', ...
-        'Callback', ...
-        @(src,~) update_current_cell( ...
-            fig, ...
-            round(get(src,'Value'))));
+        'Callback',@(src,~) queue_cell_navigation(fig,'main'));
+
+        % uicontrol.Callback intervient normalement au relachement. La
+        % navigation couteuse est en plus regroupee apres les clics rapides.
 
     %==============================================================
     % POPULATION CHECKBOXES
@@ -1411,6 +1469,90 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'Callback',@(src,~) toggle_show_rejected_cells(fig,src));
 
     %==============================================================
+    % LECTURE DES FILMS : commandes communes dans le panneau gauche.
+    % Trois choix independants. Aucun impact sur la detection.
+    %==============================================================
+    setappdata(fig,'movie_cell_enabled',false);
+    setappdata(fig,'movie_behavior_enabled',false);
+    setappdata(fig,'movie_full_enabled',false);
+    % Cadence adaptative (jamais plus rapide que l'acquisition).
+    % Le lecteur reduit son debit si la lecture TIFF / mise a jour des
+    % deux films prend du temps ; aucune frame n'est sautee pour rattraper
+    % une horloge reelle. Le temps global reste celui de l'acquisition.
+    setappdata(fig,'movie_playback_fps_max',20);
+    setappdata(fig,'movie_playback_adaptive',[]);
+    setappdata(fig,'cell_navigation_debounce_timer',[]);
+    setappdata(fig,'cell_navigation_pending_kind','');
+    setappdata(fig,'cell_navigation_pending_value',[]);
+
+    movie_controls_panel = uipanel( ...
+        'Parent',ctrl_panel, ...
+        'Units','normalized', ...
+        'Position',[0.05 0.650 0.90 0.115], ...
+        'Title','Lecture des films', ...
+        'FontSize',9, ...
+        'Tag','panel_movie_controls');
+
+    uicontrol( ...
+        'Parent',movie_controls_panel, ...
+        'Style','checkbox', ...
+        'String','Cellule', ...
+        'Units','normalized', ...
+        'Position',[0.020 0.54 0.23 0.39], ...
+        'Value',0, ...
+        'Tag','cb_movie_cell', ...
+        'TooltipString','Film calcique zoome sur la cellule courante', ...
+        'Callback',@(src,~) movie_selection_changed(fig,src,'cell'));
+
+    uicontrol( ...
+        'Parent',movie_controls_panel, ...
+        'Style','checkbox', ...
+        'String','Comportement', ...
+        'Units','normalized', ...
+        'Position',[0.255 0.54 0.38 0.39], ...
+        'Value',1, ...
+        'Tag','cb_movie_behavior', ...
+        'Callback',@(src,~) movie_selection_changed(fig,src,'behavior'));
+
+    uicontrol( ...
+        'Parent',movie_controls_panel, ...
+        'Style','checkbox', ...
+        'String','Champ complet', ...
+        'Units','normalized', ...
+        'Position',[0.640 0.54 0.35 0.39], ...
+        'Value',1, ...
+        'Tag','cb_movie_full', ...
+        'TooltipString','Film calcique plein champ a la place de meanImg', ...
+        'Callback',@(src,~) movie_selection_changed(fig,src,'full'));
+
+    movie_buttons = { ...
+        '◀◀','btn_prev_speed_active',@(~,~) navigate_speed_active(fig,-1), ...
+        'Episode precedent'; ...
+        '▶','btn_shared_movie',@(~,~) play_shared_movie(fig), ...
+        'Lire les films selectionnes'; ...
+        '⏸','btn_pause_movie',@(~,~) pause_shared_movie(fig), ...
+        'Mettre en pause les films'; ...
+        '▶▶','btn_next_speed_active',@(~,~) navigate_speed_active(fig,+1), ...
+        'Episode suivant'};
+    for kb = 1:size(movie_buttons,1)
+        hMovieButton = uicontrol( ...
+            'Parent',movie_controls_panel, ...
+            'Style','pushbutton', ...
+            'String',movie_buttons{kb,1}, ...
+            'Units','normalized', ...
+            'Position',[0.025+(kb-1)*0.245 0.07 0.215 0.43], ...
+            'FontWeight','bold', ...
+            'FontSize',11, ...
+            'Enable','off', ...
+            'Tag',movie_buttons{kb,2}, ...
+            'TooltipString',movie_buttons{kb,4}, ...
+            'Callback',movie_buttons{kb,3});
+        if kb == 2
+            setappdata(fig,'btn_shared_movie',hMovieButton);
+        end
+    end
+
+    %==============================================================
     % SLIDERS
     %==============================================================
 
@@ -1422,7 +1564,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         1, ...
         300, ...
         opts.window_size_s, ...
-        [0.05 0.68 0.90 0.06]);
+        [0.05 0.595 0.90 0.028]);
 
     make_slider( ...
         ctrl_panel, ...
@@ -1432,7 +1574,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         0, ...
         1, ...
         1, ...
-        [0.05 0.57 0.90 0.06]);
+        [0.05 0.535 0.90 0.028]);
 
     make_slider( ...
         ctrl_panel, ...
@@ -1442,7 +1584,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         0, ...
         5000, ...
         opts.refrac_ms, ...
-        [0.05 0.49 0.90 0.06]);
+        [0.05 0.475 0.90 0.028]);
 
     make_slider( ...
         ctrl_panel, ...
@@ -1452,7 +1594,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         100, ...
         3000, ...
         opts.savgol_win_ms, ...
-        [0.05 0.41 0.90 0.06]);
+        [0.05 0.415 0.90 0.028]);
 
     %==============================================================
     % REINITIALISER LES PARAMETRES DE DETECTION
@@ -1470,7 +1612,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         @(~,~) reset_detection_params(fig));
 
     %==============================================================
-    % COMMENTAIRE
+    % COMMENTAIRE DE DETECTION (independant de recap_all)
     %==============================================================
     
     comment_panel = ...
@@ -1478,7 +1620,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             'Parent', ctrl_panel, ...
             'Units', 'normalized', ...
             'Position', [0.05 0.225 0.90 0.115], ...
-            'Title', 'Commentaire', ...
+            'Title', 'Commentaire de détection', ...
             'FontSize', 9, ...
             'Tag', 'comment_panel');
     
@@ -1581,13 +1723,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'FontWeight', 'bold', ...
         'FontSize', 12, ...
         'Tag', 'btn_confirm_selection', ...
+        'Enable',on_off(~viewer_mode), ...
         'Callback', finalize_cb);
-
-    uicontrol('Parent',ctrl_panel,'Style','pushbutton', ...
-        'String','Retour avant confirmation','Units','normalized', ...
-        'Position',[0.55 0.025 0.40 0.065], ...
-        'Tag','btn_undo_confirmation','Visible','off', ...
-        'Callback',@(~,~) undo_recording_confirmation(fig));
 
     if viewer_mode
 
@@ -1600,11 +1737,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             findobj(ctrl_panel,'String','Exclure cellule'), ...
             'Enable','on');
 
-        % update_population_action_buttons() décidera ensuite si la
-        % confirmation est autorisée dans la population affichée.
-        set( ...
-            findobj(ctrl_panel,'String','Confirmer sélection'), ...
-            'Enable','on');
+        % La confirmation reste bloquee avant un VRAI changement.
+        % update_population_action_buttons() calcule ensuite cet etat.
 
     else
 
@@ -1614,31 +1748,132 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     end
     
     update_population_action_buttons(fig);
-    
+
     %==============================================================
-    % AXES
+    % AXES ET ENCADRES PRINCIPAUX
     %==============================================================
 
-    % En Viewer : les cinq graphiques temporels partagent exactement
-    % les memes abscisses et la meme largeur. A droite de la trace DF,
-    % reserver un espace pour l'image moyenne zoomee de la cellule.
-    % Ne pas modifier la disposition en mode detection initiale.
-    % Meme disposition dans les deux modes : le raster trie est visible
-    % des l'application du cutoff, AVANT confirmation d'une detection.
-    pos_trace  = [0.28 0.385 0.47 0.215];
-    pos_raster = [pos_trace(1) 0.645 pos_trace(3) 0.265];
-    pos_f0     = [pos_trace(1) 0.285 pos_trace(3) 0.065];
-    pos_motion = [pos_trace(1) 0.195 pos_trace(3) 0.060];
-    pos_dev    = [pos_trace(1) 0.105 pos_trace(3) 0.060];
+    % Reorganiser l'interface en trois blocs visuels distincts :
+    % 1) raster + mean image complete,
+    % 2) cellule individuelle (trace + ROI/film ROI),
+    % 3) sous-graphes globaux + comportement.
+    panel_raster = uipanel( ...
+        'Parent',fig, ...
+        'Units','normalized', ...
+        'Position',[0.265 0.615 0.71 0.305], ...
+        'Title','Raster et mean image', ...
+        'FontWeight','bold', ...
+        'BackgroundColor',[0.94 0.94 0.94], ...
+        'Tag','panel_raster_mean');
+
+    panel_cell = uipanel( ...
+        'Parent',fig, ...
+        'Units','normalized', ...
+        'Position',[0.265 0.355 0.71 0.225], ...
+        'Title','Cellule individuelle', ...
+        'FontWeight','bold', ...
+        'BackgroundColor',[0.94 0.94 0.94], ...
+        'Tag','panel_cell_detail');
+
+    panel_lower = uipanel( ...
+        'Parent',fig, ...
+        'Units','normalized', ...
+        'Position',[0.265 0.055 0.71 0.270], ...
+        'Title','Sous-graphes et comportement', ...
+        'FontWeight','bold', ...
+        'BackgroundColor',[0.94 0.94 0.94], ...
+        'Tag','panel_subgraphs_behavior');
+
+    setappdata(fig,'panelRaster',panel_raster);
+    setappdata(fig,'panelCell',panel_cell);
+    setappdata(fig,'panelLower',panel_lower);
+
+    % Bandeau AU-DESSUS du raster : identifiants a gauche, commentaire
+    % du RECAPITULATIF uniquement a droite. Ne pas reutiliser le
+    % commentaire de detection editable dans le panneau de gauche.
+    panelRecordingHeader = uipanel( ...
+        'Parent',fig, ...
+        'Units','normalized', ...
+        'Position',[0.265 0.925 0.710 0.064], ...
+        'BorderType','etchedin', ...
+        'BackgroundColor',[0.955 0.968 0.985], ...
+        'Tag','panel_recording_header');
+    setappdata(fig,'panelRecordingHeader',panelRecordingHeader);
+
+    hViewerHeader = uicontrol( ...
+        'Parent',panelRecordingHeader, ...
+        'Style','text', ...
+        'Units','normalized', ...
+        'Position',[0.014 0.12 0.575 0.75], ...
+        'String',winTitle, ...
+        'HorizontalAlignment','left', ...
+        'FontWeight','bold', ...
+        'FontSize',11, ...
+        'BackgroundColor',get(panelRecordingHeader,'BackgroundColor'), ...
+        'Tag','txt_viewer_header');
+    setappdata(fig,'hViewerHeader',hViewerHeader);
+
+    recap_comment_display = recap_comment_saved;
+    if isempty(recap_comment_display) || ...
+            isempty(strtrim(recap_comment_display))
+        recap_comment_display = 'Aucun commentaire recap associe au TSeries';
+    end
+
+    panelHeaderComment = uipanel( ...
+        'Parent',panelRecordingHeader, ...
+        'Units','normalized', ...
+        'Position',[0.610 0.09 0.377 0.83], ...
+        'Title','Commentaire du récapitulatif', ...
+        'FontSize',9, ...
+        'FontWeight','bold', ...
+        'BackgroundColor',[1 1 1], ...
+        'Tag','panel_header_comment');
+
+    hHeaderComment = uicontrol( ...
+        'Parent',panelHeaderComment, ...
+        'Style','edit', ...
+        'Units','normalized', ...
+        'Position',[0.025 0.06 0.950 0.88], ...
+        'String',recap_comment_display, ...
+        'HorizontalAlignment','center', ...
+        'Max',10, ...
+        'Min',0, ...
+        'Enable','inactive', ...
+        'BackgroundColor',[1 1 1], ...
+        'FontSize',9, ...
+        'Tag','txt_header_comment');
+    setappdata(fig,'hHeaderComment',hHeaderComment);
+
+    % Positions relatives DANS les encadres. La colonne de droite est
+    % reservee aux images/video, avec des marges homogenes.
+    pos_raster = [0.035 0.11 0.635 0.80];
+    % Decaler la mean image vers la droite afin de reserver une zone
+    % de legende ENTRE le curseur du raster et l'image complete. La
+    % legende est elle-meme placee dans un sous-encadre intitule Legende.
+    pos_raster_legend_panel = [0.720 0.605 0.070 0.300];
+    pos_raster_legend = [0.035 0.080 0.930 0.820];
+    pos_mean_full = [0.795 0.075 0.190 0.855];
+
+    pos_trace  = [0.035 0.13 0.635 0.74];
+    % Descendre la cellule/film sous les boutons et agrandir nettement
+    % sa zone d'affichage.
+    pos_roi    = [0.715 0.025 0.270 0.845];
+
+    pos_f0     = [0.035 0.72 0.635 0.17];
+    pos_motion = [0.035 0.41 0.635 0.17];
+    pos_dev    = [0.035 0.10 0.635 0.17];
+    % Comportement plus grand dans la colonne de droite.
+    pos_behavior = [0.705 0.055 0.285 0.865];
 
     ax1 = ...
         axes( ...
-            'Parent', fig, ...
+            'Parent', panel_cell, ...
+            'Units','normalized', ...
             'Position', pos_trace);
     
     %==============================================================
     % Un seul temps global partage par la ROI et la camera.
-    % Un seul curseur par axe, sans drag-and-drop.
+    % Un seul curseur temporel commun, deplacable par clic ou drag-and-drop.
     %==============================================================
 
     setappdata(fig,'shared_movie_time',0);
@@ -1651,6 +1886,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     box(ax1,'on');
 
+    set(ax1,'XTickLabelMode','auto','XTickMode','auto');
     xlabel(ax1,'Time (s)');
     ylabel(ax1,'\DeltaF/F (SavGol)');
 
@@ -1659,7 +1895,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     axF0 = ...
         axes( ...
-            'Parent', fig, ...
+            'Parent', panel_lower, ...
+            'Units','normalized', ...
             'Position', pos_f0);
 
     box(axF0,'on');
@@ -1669,7 +1906,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     axDev = ...
         axes( ...
-            'Parent', fig, ...
+            'Parent', panel_lower, ...
+            'Units','normalized', ...
             'Position', pos_dev);
 
     box(axDev,'on');
@@ -1679,7 +1917,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     axMotion = ...
         axes( ...
-            'Parent', fig, ...
+            'Parent', panel_lower, ...
+            'Units','normalized', ...
             'Position', pos_motion);
 
     box(axMotion,'on');
@@ -1693,28 +1932,94 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     % Raster trie en haut, aussi en nouvelle detection avant confirmation.
     axRaster = axes( ...
-        'Parent',fig, ...
+        'Parent',panel_raster, ...
         'Units','normalized', ...
         'Position',pos_raster, ...
         'Tag','ax_peak_raster');
     box(axRaster,'on');
-    set(axRaster,'XTickLabel',[]);
-    ylabel(axRaster,'Cellule (ID)');
-    title(axRaster,'Raster des pics du plan');
+    set(axRaster,'XTickLabelMode','auto','XTickMode','auto');
+    xlabel(axRaster,'Time (s)');
+    ylabel(axRaster,'Rang cellule');
+    title(axRaster,'Raster trié des pics');
+
+    % Curseur vertical dedie a la navigation dans les lignes du raster.
+    % La fleche noire reste un indicateur uniquement : elle n'est plus
+    % cliquable ni draggable. Le curseur est place entre le raster et la
+    % colonne image/film de droite.
+    % Sur Windows, les deux boutons d'extremite du slider vertical
+    % occupent chacun approximativement une hauteur egale a sa largeur.
+    % On fait donc depasser le controle d'un bouton au-dessus et en-dessous
+    % du raster : la course utile du thumb correspond exactement a la
+    % hauteur du raster et son centre reste aligne avec la fleche noire.
+    raster_slider_width = 0.020;
+    raster_slider_endcap = 0.030;
+    raster_slider_pos = [ ...
+        0.695, ...
+        pos_raster(2) - raster_slider_endcap, ...
+        raster_slider_width, ...
+        pos_raster(4) + 2*raster_slider_endcap];
+
+    hRasterCellSlider = uicontrol( ...
+        'Parent',panel_raster, ...
+        'Style','slider', ...
+        'Units','normalized', ...
+        'Position',raster_slider_pos, ...
+        'Min',0, ...
+        'Max',1, ...
+        'Value',1, ...
+        'Enable','off', ...
+        'Tag','raster_cell_slider', ...
+        'TooltipString','Raster Combined : navigation dans la population selectionnee', ...
+        'Callback',@(~,~) queue_cell_navigation(fig,'raster'));
+    setappdata(fig,'hRasterCellSlider',hRasterCellSlider);
+
+    % Legende HORS du raster, dans l'espace libere avant la mean image,
+    % mais DANS un sous-encadre du bloc Raster et mean image.
+    panelRasterLegend = uipanel( ...
+        'Parent',panel_raster, ...
+        'Units','normalized', ...
+        'Position',pos_raster_legend_panel, ...
+        'Title','Légende', ...
+        'FontWeight','bold', ...
+        'FontSize',8, ...
+        'BackgroundColor',get(panel_raster,'BackgroundColor'), ...
+        'Tag','panel_raster_legend');
+    setappdata(fig,'panelRasterLegend',panelRasterLegend);
+
+    axRasterLegend = axes( ...
+        'Parent',panelRasterLegend, ...
+        'Units','normalized', ...
+        'Position',pos_raster_legend, ...
+        'Visible','off', ...
+        'Color','none', ...
+        'Tag','ax_raster_legend');
+    setappdata(fig,'axRasterLegend',axRasterLegend);
+
+    % Image moyenne COMPLETE du plan a droite du raster. Elle reste
+    % toujours non zoomee et n'affiche QUE le contour de la cellule courante.
+    % Elle est independante de l'axe ROI/film situe plus bas.
+    axMeanFull = axes( ...
+        'Parent',panel_raster, ...
+        'Units','normalized', ...
+        'Position',pos_mean_full, ...
+        'Tag','ax_viewer_mean_full');
+    box(axMeanFull,'on');
+    axis(axMeanFull,'image');
+    set(axMeanFull,'XTick',[],'YTick',[]);
+    setappdata(fig,'axMeanFull',axMeanFull);
 
     % Image moyenne / film ROI : meme emplacement a droite du DF.
     % L'image moyenne est visible au repos, le film ROI prend sa place
     % uniquement pendant la lecture. Aucun axe n'est dans une autre figure.
     % Degager l'espace entre le titre ROI et les boutons au-dessus.
-    pos_roi = [0.77 pos_trace(2) 0.20 pos_trace(4)-0.025];
     axROI = axes( ...
-        'Parent',fig, ...
+        'Parent',panel_cell, ...
         'Units','normalized', ...
         'Position',pos_roi, ...
         'Tag','ax_viewer_mean_roi');
     box(axROI,'on');
     axis(axROI,'image');
-    title(axROI,'ROI');
+    title(axROI,'Cellule courante');
     set(axROI,'XTick',[],'YTick',[]);
     if viewer_mode
         setappdata(fig,'axViewerROI',axROI);
@@ -1725,9 +2030,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
 
     % Film comportemental directement sous l'image moyenne.
     % Ne pas relier ces axes image aux axes des traces temporelles.
-    pos_behavior = [0.77 0.105 0.20 0.235];
     axBehavior = axes( ...
-        'Parent',fig, ...
+        'Parent',panel_lower, ...
         'Units','normalized', ...
         'Position',pos_behavior, ...
         'Tag','ax_embedded_behavior');
@@ -1736,6 +2040,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     title(axBehavior,'Comportement');
     setappdata(fig,'axBehavior',axBehavior);
     setappdata(fig,'roi_movie_visible',false);
+    % La vue plein champ partage les MEMES frames reg_tif que le film ROI.
+    setappdata(fig,'full_movie_visible',false);
+    setappdata(fig,'full_movie_hImg',[]);
 
     setappdata(fig,'roi_movie_data',[]);
     setappdata(fig,'roi_movie_timer',[]);
@@ -1752,8 +2059,6 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig,'behavior_movie_frame',1);
     setappdata(fig,'behavior_movie_hImg',[]);
     setappdata(fig,'behavior_movie_clim',[]);
-    setappdata(fig,'behavior_movie_start_frame',1);
-    setappdata(fig,'behavior_movie_start_tic',[]);
 
     setappdata(fig,'ax1',ax1);
     setappdata(fig,'axF0',axF0);
@@ -1761,7 +2066,21 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig,'axMotion',axMotion);
     setappdata(fig,'axRaster',axRaster);
     setappdata(fig,'hBadPatch_axRaster',[]);
+    setappdata(fig,'hBadPatch_axMotion',[]);
+    setappdata(fig,'hStimPatch_ax1',[]);
+    setappdata(fig,'hStimPatch_axF0',[]);
+    setappdata(fig,'hStimPatch_axDev',[]);
+    setappdata(fig,'hStimPatch_axMotion',[]);
+    setappdata(fig,'hStimPatch_axRaster',[]);
+    setappdata(fig,'hRasterLegend',[]);
     setappdata(fig,'hCurrentCellRasterArrow',[]);
+    % hRasterCellSlider est deja cree ci-dessus : conserver son handle.
+    setappdata(fig,'raster_cell_slider_syncing',false);
+    setappdata(fig,'raster_resize_sync_busy',false);
+    setappdata(fig,'shared_cursor_drag_active',false);
+    setappdata(fig,'shared_cursor_drag_source_ax',[]);
+    setappdata(fig,'shared_cursor_old_motion_fcn',[]);
+    setappdata(fig,'shared_cursor_old_up_fcn',[]);
 
     % La fleche est une annotation en coordonnees de figure : contrairement
     % aux pics, elle ne suit pas automatiquement les zooms sur les axes.
@@ -1777,7 +2096,10 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         addlistener(axRaster,'YDir','PostSet', ...
             @(~,~) update_current_cell_raster_arrow(fig))];
     setappdata(fig,'raster_arrow_listeners',raster_arrow_listeners);
-    set(fig,'SizeChangedFcn',@(~,~) update_current_cell_raster_arrow(fig));
+    % Apres chaque redimensionnement (notamment la maximisation),
+    % recalculer ENSEMBLE le slider raster et la fleche noire a partir de
+    % la geometrie finale des panneaux/axes.
+    set(fig,'SizeChangedFcn',@(~,~) sync_raster_navigation_after_resize(fig));
 
     roi_movie_available = ...
         ~isempty(suite2p_path) && ...
@@ -1811,43 +2133,11 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig,'speed_active_stop_time',[]);
     setappdata(fig,'speed_active_last_onset_time',[]);
 
-    % Lecture unique AU-DESSUS de l'image ROI, dans les deux modes.
-    % Les fleches positionnent sans lire ; Play respecte la fin de l'episode.
-    controls_y = 0.608;
-    controls_h = 0.031;
-    navigation_enabled = getappdata(fig,'shared_movie_available') && ...
-        ~isempty(speed_active_onset_times);
-
-    uicontrol( ...
-        'Parent',fig,'Style','pushbutton','String','←', ...
-        'Units','normalized', ...
-        'Position',[0.786 controls_y 0.046 controls_h], ...
-        'FontWeight','bold','FontSize',12, ...
-        'Tag','btn_prev_speed_active', ...
-        'TooltipString','Debut speed_active precedent (sans lecture)', ...
-        'Enable',on_off(navigation_enabled), ...
-        'Callback',@(~,~) navigate_speed_active(fig,-1));
-
-    btn_shared_movie = uicontrol( ...
-        'Parent',fig,'Style','pushbutton','String','▶', ...
-        'Units','normalized', ...
-        'Position',[0.847 controls_y 0.046 controls_h], ...
-        'FontWeight','bold','FontSize',12, ...
-        'Tag','btn_shared_movie', ...
-        'TooltipString','Lire / Pause ROI et comportement synchronises', ...
-        'Enable',on_off(getappdata(fig,'shared_movie_available')), ...
-        'Callback',@(~,~) toggle_shared_movie(fig));
-
-    uicontrol( ...
-        'Parent',fig,'Style','pushbutton','String','→', ...
-        'Units','normalized', ...
-        'Position',[0.908 controls_y 0.046 controls_h], ...
-        'FontWeight','bold','FontSize',12, ...
-        'Tag','btn_next_speed_active', ...
-        'TooltipString','Debut speed_active suivant (sans lecture)', ...
-        'Enable',on_off(navigation_enabled), ...
-        'Callback',@(~,~) navigate_speed_active(fig,+1));
-    setappdata(fig,'btn_shared_movie',btn_shared_movie);
+    % La lecture est pilotee par le panneau gauche sous Population.
+    % Garder les fleches episodes independantes du choix des films.
+    setappdata(fig,'roi_movie_available',roi_movie_available);
+    setappdata(fig,'behavior_movie_available',behavior_movie_available);
+    update_movie_controls(fig);
 
     % Clic sur les courbes : deplacer le curseur + la camera sans lecture.
     set(fig,'WindowButtonDownFcn',@(~,~) click_movie_graph(fig));
@@ -1881,26 +2171,21 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             'k-',...
             'HitTest','off');
 
-        dv = ...
-            dev(isfinite(dev));
-
+        % Ajuster l'axe Y sur TOUT le signal fini, et non sur les
+        % percentiles 2/98 qui tronquaient les excursions de deviation.
+        dv = dev(isfinite(dev));
         if ~isempty(dv)
+            lo = min(dv);
+            hi = max(dv);
 
-            lo = prctile(dv,2);
-            hi = prctile(dv,98);
-
-            if isfinite(lo) && ...
-                    isfinite(hi) && ...
-                    hi > lo
-
-                pad = ...
-                    0.1 * ...
-                    (hi - lo);
-
-                ylim( ...
-                    axDev, ...
-                    [lo-pad hi+pad]);
+            if hi > lo
+                pad = 0.10 * (hi - lo);
+            else
+                % Signal constant : garantir une amplitude non nulle.
+                pad = max(1,0.10 * abs(lo));
             end
+
+            ylim(axDev,[lo-pad hi+pad]);
         end
 
     else
@@ -1966,6 +2251,17 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'focus_segs_time', ...
         focus_segs_time);
 
+    %==============================================================
+    % STIMULATION PERIODS FOR DISPLAY
+    %
+    % stim_frames_global uses the GLOBAL frame reference. Consecutive
+    % stimulation frames are grouped into yellow time bands spanning all
+    % temporal axes. This is display-only and never changes detection.
+    %==============================================================
+    stim_segs_time = stim_frames_to_time_segments( ...
+        stim_frames_global, fs_motion);
+    setappdata(fig,'stim_segs_time',stim_segs_time);
+
     if ~isempty(focus_segs_time)
 
         hBad1 = ...
@@ -1988,7 +2284,19 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
                 focus_segs_time);
 
         setappdata(fig,'hBadPatch_axDev',hBadDev);
+
+        % Meme segmentation temporelle que pour DF, F0 et Deviation.
+        % Le tracé motion conserve son échelle et reste au-dessus des bandes.
+        hBadMotion = ...
+            create_badframe_patch( ...
+                axMotion, ...
+                focus_segs_time);
+
+        setappdata(fig,'hBadPatch_axMotion',hBadMotion);
     end
+
+    % Yellow stimulation bands on every temporal axis, including raster.
+    refresh_stim_patches(fig);
 
     linked_axes = [ax1 axF0 axDev axMotion axRaster];
     linkaxes(linked_axes,'x');
@@ -2109,6 +2417,27 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             'Units','normalized','HorizontalAlignment','center');
     end
     drawnow;
+
+    %==============================================================
+    % MAXIMISATION PUIS SYNCHRONISATION RASTER
+    %==============================================================
+    % Construire d'abord toute l'interface a sa taille initiale, puis
+    % seulement maximiser la figure. La position du thumb du slider et de
+    % la fleche noire est ainsi calculee APRES que Windows/MATLAB a fixe la
+    % geometrie finale de l'ecran, et non pendant la transition.
+    try
+        set(fig,'WindowState','maximized');
+    catch
+        screen_size = get(groot,'ScreenSize');
+        set(fig,'Units','pixels','OuterPosition',screen_size);
+    end
+
+    % Vider la file d'evenements de resize. Deux drawnow encadrant une
+    % courte pause rendent le calcul robuste au resize asynchrone Windows.
+    drawnow;
+    pause(0.05);
+    drawnow;
+    sync_raster_cell_navigation(fig);
 
     %==============================================================
     % WAIT
@@ -2276,6 +2605,21 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         end
     end
     
+    %==============================================================
+    % FULL OUTPUTS: the caller saves before cropping its returned data.
+    %==============================================================
+    if has_new_outputs
+        if ~isstruct(selection_summary)
+            selection_summary = struct();
+        end
+        selection_summary.include_stims = include_stims;
+        selection_summary.results_include_stims = true;
+        selection_summary.n_frames_full = size(F,2);
+        selection_summary.n_frames_saved = size(DF_sg,2);
+        % Actual n_frames_data is set by the caller after determining
+        % the pre-stimulation cutoff in the global frame reference.
+    end
+
     %==============================================================
     % Signaler séparément si le commentaire a changé
     %
@@ -2469,23 +2813,10 @@ function select_population_checkbox( ...
 
     update_population_window_title(fig);
 
+    % Le filtre change uniquement la navigation/trace individuelle.
+    % Le raster reste dans le referentiel Combined (IDs originaux).
     refresh_selection_order(fig);
-
-    if isappdata(fig,'order_cells')
-
-        order_cells = ...
-            getappdata(fig,'order_cells');
-
-        if ~isempty(order_cells)
-
-            update_current_cell( ...
-                fig, ...
-                1);
-
-        else
-
-        end
-    end
+    refresh_peak_raster(fig);
 
     drawnow;
 end
@@ -2500,6 +2831,9 @@ function toggle_show_rejected_cells(fig,src)
 
     setappdata(fig,'show_rejected_cells',logical(get(src,'Value')));
     refresh_selection_order(fig);
+    % Show rejected cells s'applique a tout Combined et non au filtre
+    % GCaMP/Electroporated actif dans la navigation.
+    refresh_peak_raster(fig);
 end
 
 
@@ -2553,9 +2887,7 @@ function update_population_window_title(fig)
 
     if isappdata(fig,'viewer_mode') && ...
             getappdata(fig,'viewer_mode')
-
-        title_parts{end+1} = ...
-            '[VIEWER MODE]';
+        title_parts{end+1} = '[VIEWER MODE]';
     end
 
     title_parts{end+1} = ...
@@ -2637,13 +2969,50 @@ function update_population_window_title(fig)
         end
     end
 
-    set( ...
-        fig, ...
-        'Name', ...
+    header_text = ...
         strjoin( ...
             title_parts, ...
-            ' | '));
+            ' | ');
 
+    % La barre native de la figure reste volontairement sobre. Les
+    % identifiants de l'enregistrement sont affiches au-dessus du raster.
+    set(fig,'Name','Peak detection tuner');
+
+    if isappdata(fig,'hViewerHeader')
+        hHeader = getappdata(fig,'hViewerHeader');
+        if ~isempty(hHeader) && isgraphics(hHeader)
+            set(hHeader,'String',header_text);
+        end
+    end
+
+    update_header_comment(fig);
+end
+
+
+function update_header_comment(fig)
+    % Le bandeau montre SEULEMENT le commentaire de recap_all.
+    % Une modification du commentaire de detection ne le touche jamais.
+    if ~ishghandle(fig) || ~isappdata(fig,'hHeaderComment')
+        return;
+    end
+    hComment = getappdata(fig,'hHeaderComment');
+    if isempty(hComment) || ~isgraphics(hComment)
+        return;
+    end
+
+    comment_text = '';
+    if isappdata(fig,'recap_comment')
+        comment_text = getappdata(fig,'recap_comment');
+    end
+    if iscell(comment_text)
+        comment_text = strjoin(cellstr(string(comment_text)),newline);
+    elseif isstring(comment_text)
+        comment_text = char(join(comment_text,newline));
+    end
+    if isempty(comment_text) || isempty(strtrim(comment_text))
+        comment_text = 'Aucun commentaire recap associe au TSeries';
+    end
+    set(hComment,'String',comment_text);
 end
 
 
@@ -3524,6 +3893,10 @@ end
 
 function update_current_cell(fig, idx_slider)
 
+    % Un changement direct annule toute ancienne selection differee.
+    stop_cell_navigation_timer(fig);
+    setappdata(fig,'cell_navigation_pending_kind','');
+    setappdata(fig,'cell_navigation_pending_value',[]);
     if ~isappdata(fig,'order_cells')
         return;
     end
@@ -3537,13 +3910,21 @@ function update_current_cell(fig, idx_slider)
     % CHANGEMENT DE CELLULE : ARRETER LE FILM PRECEDENT
     %==============================================================
 
-    reset_roi_movie_display(fig);
-    setappdata(fig,'roi_movie_visible',false);
-
     idx = round(idx_slider);
     idx = max(1, min(numel(order_cells), idx));
 
     cid = order_cells(idx);
+    % Ne pas recharger le film et recalculer les traces de la meme cellule.
+    if isappdata(fig,'cell_id') && isequal(getappdata(fig,'cell_id'),cid) && ...
+            isappdata(fig,'current_rank') && ...
+            isequal(getappdata(fig,'current_rank'),idx)
+        sync_raster_cell_navigation(fig);
+        return;
+    end
+
+    % Nouvelle cellule : stopper la lecture et restaurer les deux meanImg.
+    pause_behavior_movie(fig);
+    reset_roi_movie_display(fig);
 
     setappdata(fig,'current_rank', idx);
     setappdata(fig,'nav_rank', idx);
@@ -3569,6 +3950,11 @@ function update_current_cell(fig, idx_slider)
     end
 
     auto_detect_and_add(fig);
+
+    % Synchronisation explicite apres CHAQUE changement de cellule.
+    % Ne pas attendre un clic sur le slider raster pour rafraichir son
+    % thumb et la fleche noire.
+    sync_raster_cell_navigation(fig);
 end
 
 function next_cell(fig)
@@ -3897,10 +4283,33 @@ function validate_selection_filter(fig)
 end
 
 function kept = get_navigation_kept_mask(fig,nCells,viewer_mode)
-    % Referentiel ORIGINAL de F : jamais les rangs tries de navigation.
+    % Referentiel ORIGINAL de F/Combined, jamais les rangs de navigation.
+    % Reconstituer le masque depuis la selection SAUVEGARDEE + les seules
+    % decisions explicites par ID original. Un changement de population
+    % ne peut ainsi jamais exclure en bloc toutes les electroporees.
+    if viewer_mode && isappdata(fig,'viewer_initial_kept_mask') && ...
+            isappdata(fig,'viewer_cell_decisions')
+        initial = getappdata(fig,'viewer_initial_kept_mask');
+        decisions = getappdata(fig,'viewer_cell_decisions');
+        if numel(initial) == nCells && numel(decisions) == nCells
+            kept = logical(initial(:));
+            decisions = double(decisions(:));
+            changed = isfinite(decisions) & ismember(decisions,[0 1]);
+            kept(changed) = logical(decisions(changed));
+            return;
+        end
+    end
+
+    if viewer_mode && isappdata(fig,'viewer_kept_mask')
+        % Ancienne interface, pour la compatibilite uniquement.
+        saved_mask = getappdata(fig,'viewer_kept_mask');
+        if numel(saved_mask) == nCells
+            kept = logical(saved_mask(:));
+            return;
+        end
+    end
+
     if viewer_mode
-        % La selection deja sauvegardee est la source de verite ; le cutoff
-        % historique seul ne permet pas de reconstruire tous les rejets.
         kept = false(nCells,1);
         saved = getappdata(fig,'valid_cells_saved');
         if ~isempty(saved)
@@ -3908,16 +4317,20 @@ function kept = get_navigation_kept_mask(fig,nCells,viewer_mode)
             saved = saved(isfinite(saved) & saved>=1 & saved<=nCells);
             kept(saved) = true;
         end
+        % Ne JAMAIS reutiliser manual_status pour reconstruire le masque
+        % Viewer : ses valeurs historiques ne representent pas necessairement
+        % la selection reellement enregistree dans valid_cells.
+        return;
     else
         % Pendant la detection, le cutoff automatique a deja ete applique.
-        % 0 = non evaluee : ce n'est pas une cellule acceptee.
         effective = get_effective_cell_status(fig);
         kept = false(nCells,1);
         n = min(nCells,numel(effective));
         kept(1:n) = effective(1:n)==1;
     end
 
-    % Les interventions manuelles restent prioritaires dans les deux modes.
+    % Les interventions manuelles pilotent le mode normal. Le Viewer
+    % moderne retourne plus haut son masque explicite (sans ce bloc).
     manual = getappdata(fig,'manual_status');
     if ~isempty(manual)
         manual = manual(:);
@@ -3944,8 +4357,10 @@ function ids = sort_cell_ids_for_display(fig,ids)
         scores(valid) = double(quality(ids(valid)));
         scores(~isfinite(scores)) = -inf;
 
-        % Meilleure qualite EN HAUT. En cas d'egalite, ID croissant.
-        [~,permutation] = sortrows([-scores double(ids)],[1 2]);
+        % Qualite affichee de la PIRE vers la MEILLEURE :
+        % les scores les plus faibles sont en haut du raster et au debut
+        % de la navigation. En cas d'egalite, ID croissant.
+        [~,permutation] = sortrows([scores double(ids)],[1 2]);
         ids = ids(permutation);
     else
         % Viewer : isort1 sauvegarde. Detection : isort1 du cutoff.
@@ -4047,6 +4462,11 @@ function refresh_selection_order(fig)
 
         if ~isempty(k)
             idx = k;
+        elseif isappdata(fig,'current_rank') && ...
+                ~isempty(getappdata(fig,'current_rank'))
+            % La cellule exclue a quitte la liste : rester au meme rang
+            % (cellule suivante), pas revenir brutalement au debut.
+            idx = min(numel(order_cells),getappdata(fig,'current_rank'));
         end
     end
 
@@ -4067,6 +4487,10 @@ function refresh_selection_order(fig)
         'nav_rank', ...
         idx);
 
+    if ~isempty(old_cid) && ~isequal(old_cid,order_cells(idx))
+        pause_behavior_movie(fig);
+        reset_roi_movie_display(fig);
+    end
     setappdata( ...
         fig, ...
         'cell_id', ...
@@ -4132,6 +4556,7 @@ function refresh_selection_order(fig)
     %==========================================================
 
     auto_detect_and_add(fig);
+    sync_raster_cell_navigation(fig);
 end
 
 
@@ -4143,6 +4568,9 @@ function update_empty_navigation(fig)
     setappdata(fig,'nav_rank',[]);
     % Pas de cellule courante : retirer le marqueur a droite du raster.
     update_current_cell_raster_arrow(fig);
+    pause_behavior_movie(fig);
+    reset_roi_movie_display(fig);
+    update_viewer_full_mean_image(fig);
 
     sldr = ...
         findobj( ...
@@ -4190,9 +4618,13 @@ function update_empty_navigation(fig)
             kids = allchild(ax);
             keep_kids = false(size(kids));
             hBad = getappdata(fig,'hBadPatch_ax1');
+            hStim = getappdata(fig,'hStimPatch_ax1');
             hCursor = getappdata(fig,'shared_movie_cursor');
             if ~isempty(hBad) && isgraphics(hBad)
                 keep_kids = keep_kids | kids == hBad;
+            end
+            if ~isempty(hStim) && isgraphics(hStim)
+                keep_kids = keep_kids | kids == hStim;
             end
             if ~isempty(hCursor) && isgraphics(hCursor)
                 keep_kids = keep_kids | kids == hCursor;
@@ -4209,9 +4641,13 @@ function update_empty_navigation(fig)
             kids = allchild(ax);
             keep_kids = false(size(kids));
             hBad = getappdata(fig,'hBadPatch_axF0');
+            hStim = getappdata(fig,'hStimPatch_axF0');
             hCursor = getappdata(fig,'shared_movie_cursor_f0');
             if ~isempty(hBad) && isgraphics(hBad)
                 keep_kids = keep_kids | kids == hBad;
+            end
+            if ~isempty(hStim) && isgraphics(hStim)
+                keep_kids = keep_kids | kids == hStim;
             end
             if ~isempty(hCursor) && isgraphics(hCursor)
                 keep_kids = keep_kids | kids == hCursor;
@@ -4313,116 +4749,182 @@ end
 %% ===================== MANUAL SELECTION =====================
 
 function keep_cell(fig)
-
-    if ~ishghandle(fig) || ...
-            ~isappdata(fig,'cell_id') || ...
-            ~isappdata(fig,'manual_status')
-
-        return;
-    end
-
-    cid = ...
-        round( ...
-            getappdata( ...
-                fig, ...
-                'cell_id'));
-
-    manual_status = ...
-        getappdata( ...
-            fig, ...
-            'manual_status');
-
-    if isempty(cid) || ...
-            cid < 1 || ...
-            cid > numel(manual_status)
-
-        return;
-    end
-
-    %==========================================================
-    % Décision manuelle
-    %
-    % Fonctionne en mode normal ET en Viewer.
-    % La décision manuelle est prioritaire sur le cutoff.
-    %==========================================================
-
-    manual_status(cid) = ...
-        +1;
-
-    setappdata( ...
-        fig, ...
-        'manual_status', ...
-        manual_status);
-    
-    setappdata(fig,'selection_modified',true);
-    update_population_action_buttons(fig);
-
-    %==========================================================
-    % Rafraîchir immédiatement l'affichage
-    %
-    % Si les rejetees sont masquees, une cellule exclue quitte
-    % immediatement la navigation ; elle reste inspectable en cochant
-    % Show rejected cells.
-    %==========================================================
-
-    refresh_selection_order(fig);
-    refresh_peak_raster(fig);
-
-    drawnow;
+    change_single_cell_selection(fig,+1);
 end
 
 function exclude_cell(fig)
+    change_single_cell_selection(fig,-1);
+end
 
-    if ~ishghandle(fig) || ...
+function change_single_cell_selection(fig,decision)
+    % Un clic = une seule modification, reperee par l'ID original de F.
+    % Les callbacks peuvent etre reentres pendant les redraws MATLAB :
+    % empecher qu'un meme clic traite successivement plusieurs cellules.
+    if isempty(fig) || ~ishghandle(fig) || ...
             ~isappdata(fig,'cell_id') || ...
             ~isappdata(fig,'manual_status')
-
         return;
     end
-
-    cid = ...
-        round( ...
-            getappdata( ...
-                fig, ...
-                'cell_id'));
-
-    manual_status = ...
-        getappdata( ...
-            fig, ...
-            'manual_status');
-
-    if isempty(cid) || ...
-            cid < 1 || ...
-            cid > numel(manual_status)
-
+    if isappdata(fig,'manual_selection_busy') && ...
+            getappdata(fig,'manual_selection_busy')
         return;
     end
+    setappdata(fig,'manual_selection_busy',true);
+    cleanup = onCleanup(@() setappdata_if_valid( ...
+        fig,'manual_selection_busy',false)); %#ok<NASGU>
 
-    %==========================================================
-    % Décision manuelle
-    %
-    % Fonctionne en mode normal ET en Viewer.
-    %==========================================================
+    cid = getappdata(fig,'cell_id');
+    manual_status = getappdata(fig,'manual_status');
+    if isempty(cid) || ~isscalar(cid) || ~isnumeric(cid) || ...
+            ~isfinite(cid) || cid~=round(cid) || ...
+            cid<1 || cid>numel(manual_status)
+        return;
+    end
+    cid = double(cid);
+    manual_status = manual_status(:);
+    viewer_mode = isappdata(fig,'viewer_mode') && ...
+        getappdata(fig,'viewer_mode');
+    nCells = numel(manual_status);
 
-    manual_status(cid) = ...
-        -1;
+    % Toujours manipuler l'ID ORIGINAL, meme en mode Process. Le rang dans
+    % la sous-population electroporee n'est jamais un ID de cellule.
+    active_ids = get_active_population_indices(fig,nCells);
+    if ~ismember(cid,active_ids)
+        warning('peak_detection_tuner:invalidCellPopulation', ...
+            'La cellule %d ne fait pas partie de la population active.',cid);
+        return;
+    end
+    kept_before = get_navigation_kept_mask(fig,nCells,viewer_mode);
+    desired = decision==+1;
 
-    setappdata( ...
-        fig, ...
-        'manual_status', ...
-        manual_status);
+    if viewer_mode
 
-    setappdata(fig,'selection_modified',true);
+        if kept_before(cid)==desired
+            update_population_action_buttons(fig);
+            return;
+        end
+
+        initial_kept = getappdata(fig,'viewer_initial_kept_mask');
+        decisions = getappdata(fig,'viewer_cell_decisions');
+        initial_manual = getappdata(fig,'viewer_initial_manual_status');
+        if numel(initial_kept)~=nCells || numel(decisions)~=nCells
+            error('peak_detection_tuner:invalidViewerSelection', ...
+                'Masque Viewer incoherent : exclusion annulee, rien a sauvegarder.');
+        end
+        decisions = double(decisions(:));
+        initial_kept = logical(initial_kept(:));
+        if desired==initial_kept(cid)
+            decisions(cid) = NaN; % action annulee
+        else
+            decisions(cid) = double(desired);
+        end
+
+        kept_after = initial_kept;
+        modified_ids = isfinite(decisions) & ismember(decisions,[0 1]);
+        kept_after(modified_ids) = logical(decisions(modified_ids));
+        % Garde atomique : pour CET clic, une seule cellule peut changer.
+        if ~isequal(find(kept_before~=kept_after),cid)
+            error('peak_detection_tuner:bulkExclusionPrevented', ...
+                'Exclusion multiple evitee : aucun changement applique.');
+        end
+
+        setappdata(fig,'viewer_cell_decisions',decisions);
+        setappdata(fig,'viewer_kept_mask',kept_after);
+        if numel(initial_manual)==nCells && desired==initial_kept(cid)
+            manual_status(cid) = initial_manual(cid);
+        else
+            manual_status(cid) = decision;
+        end
+    else
+        % En mode Process, la decision doit affecter exactement UN bit du
+        % masque d'acceptation. Conserver le statut precedent pour pouvoir
+        % annuler proprement une eventuelle anomalie de sous-population.
+        manual_status_before = manual_status;
+        manual_status(cid) = decision;
+    end
+
+    setappdata(fig,'manual_status',manual_status);
+    if ~viewer_mode
+        expected_kept = kept_before;
+        expected_kept(cid) = desired;
+        kept_after = get_navigation_kept_mask(fig,nCells,false);
+        if ~isequal(kept_after,expected_kept)
+            setappdata(fig,'manual_status',manual_status_before);
+            warning('peak_detection_tuner:bulkExclusionPrevented', ...
+                ['Selection incoherente en mode Process : ' ...
+                 'aucun changement applique.']);
+            return;
+        end
+    end
+
     update_population_action_buttons(fig);
-
-    %==========================================================
-    % Rafraîchir immédiatement l'affichage
-    %==========================================================
-
     refresh_selection_order(fig);
     refresh_peak_raster(fig);
+    % Verifier APRES le redraw : l'affichage ne doit jamais entrainer de
+    % nouvelles exclusions. La meme garde vaut en Viewer et en Process.
+    kept_check = get_navigation_kept_mask(fig,nCells,viewer_mode);
+    if ~isequal(kept_check,kept_after)
+        if ~viewer_mode
+            setappdata(fig,'manual_status',manual_status_before);
+            refresh_selection_order(fig);
+            refresh_peak_raster(fig);
+        end
+        error('peak_detection_tuner:selectionChangedDuringRefresh', ...
+            'Selection modifiee pendant le rafraichissement : operation annulee.');
+    end
+    % Ne pas executer d'autres callbacks pendant l'action utilisateur.
+    try
+        drawnow limitrate nocallbacks;
+    catch
+        drawnow;
+    end
+end
 
-    drawnow;
+function modified = viewer_has_pending_changes(fig)
+    % Source de verite pour Confirmer selection en mode Viewer.
+    % Une action annulee (cellule restauree, parametre remis a sa valeur
+    % initiale, statut du plan retabli) ne doit pas rester marquee modifiee.
+    modified = false;
+    if ~ishghandle(fig) || ~getappdata(fig,'viewer_mode')
+        return;
+    end
+
+    initial_kept = getappdata(fig,'viewer_initial_kept_mask');
+    selection_changed = false;
+    if ~isempty(initial_kept)
+        current_kept = get_navigation_kept_mask( ...
+            fig,numel(initial_kept),true);
+        selection_changed = ~isequal( ...
+            logical(current_kept(:)),logical(initial_kept(:)));
+    end
+    setappdata(fig,'selection_modified',selection_changed);
+
+    opts_initial = getappdata(fig,'opts_initial');
+    opts_current = getappdata(fig,'opts');
+    changed_fields = {};
+    initial_fields = fieldnames(opts_initial);
+    for k = 1:numel(initial_fields)
+        field = initial_fields{k};
+        if ~isfield(opts_current,field) || ...
+                ~isequaln(opts_current.(field),opts_initial.(field))
+            changed_fields{end+1} = field; %#ok<AGROW>
+        end
+    end
+
+    setappdata(fig,'viewer_changed_param_fields',changed_fields);
+    params_changed = ~isempty(changed_fields);
+    setappdata(fig,'detection_params_modified',params_changed);
+    setappdata(fig,'peak_sort_df_changed', ...
+        any(ismember(changed_fields,{'window_size_s','savgol_win_ms'})));
+
+    recording_changed = ~isequal( ...
+        normalize_recording_keep(getappdata(fig,'recording_keep')), ...
+        normalize_recording_keep(getappdata(fig,'recording_keep_initial')));
+    setappdata(fig,'recording_keep_modified',recording_changed);
+
+    % Commentaire, cellule courante, ordre de navigation et population
+    % affichee ne changent pas les resultats de detection.
+    modified = selection_changed || params_changed || recording_changed;
 end
 
 function update_population_action_buttons(fig)
@@ -4449,13 +4951,7 @@ function update_population_action_buttons(fig)
     %==========================================================
 
     if viewer_mode
-
-        modified = ...
-            (isappdata(fig,'selection_modified') && ...
-             getappdata(fig,'selection_modified')) || ...
-            (isappdata(fig,'recording_keep_modified') && ...
-             getappdata(fig,'recording_keep_modified')) || ...
-            isempty(normalize_recording_keep(getappdata(fig,'recording_keep')));
+        modified = viewer_has_pending_changes(fig);
 
         if ~isempty(btn_confirm)
 
@@ -4523,10 +5019,6 @@ end
 
 function set_recording_keep(fig,value)
     if ~ishghandle(fig), return; end
-    % Changing the indicator while confirmation is pending returns to edit.
-    if getappdata(fig,'confirmation_pending')
-        undo_recording_confirmation(fig);
-    end
     value = normalize_recording_keep(value);
     if isempty(value), return; end
     setappdata(fig,'recording_keep',value);
@@ -4537,17 +5029,15 @@ function set_recording_keep(fig,value)
 end
 
 function answered = ask_recording_keep(fig,action)
-    % Cancel (or closing the dialog) is explicitly a VALID undecided state.
-    % It must never block closing the Viewer or confirming cell selection.
+    % Cette question n'est affichee qu'au moment d'une confirmation.
+    % Fermer le Viewer ne demande jamais de statut. Cancel conserve [] et
+    % autorise la confirmation des autres modifications.
     answered = false;
     if ~ishghandle(fig), return; end
-    if nargin < 2, action = 'confirm'; end
+    if nargin < 2, action = 'confirm'; end %#ok<NASGU>
 
-    if strcmp(action,'close')
-        consequence = 'Cancel : fermer sans renseigner le statut.';
-    else
-        consequence = 'Cancel : confirmer la selection sans renseigner le statut.';
-    end
+    consequence = ...
+        'Cancel : confirmer la selection sans renseigner le statut.';
 
     current_plane = getappdata(fig,'plane') - 1;
     response = questdlg( ...
@@ -4569,52 +5059,22 @@ function answered = ask_recording_keep(fig,action)
     end
 end
 
-function undo_recording_confirmation(fig)
-    if ~ishghandle(fig) || ~getappdata(fig,'confirmation_pending')
-        return;
-    end
-    % Un choix impose uniquement par la question est annule avec ce retour.
-    if getappdata(fig,'recording_keep_prompted_for_confirmation')
-        original = getappdata(fig,'recording_keep_initial');
-        setappdata(fig,'recording_keep',original);
-        setappdata(fig,'recording_keep_modified',false);
-    end
-    setappdata(fig,'recording_keep_prompted_for_confirmation',false);
-    setappdata(fig,'confirmation_pending',false);
-    main = findobj(fig,'Tag','btn_confirm_selection');
-    back = findobj(fig,'Tag','btn_undo_confirmation');
-    if ~isempty(main)
-        set(main,'String','Confirmer sélection', ...
-            'Position',[0.05 0.025 0.90 0.065]);
-    end
-    if ~isempty(back), set(back,'Visible','off'); end
-    refresh_recording_keep_indicator(fig);
-    update_population_action_buttons(fig);
-end
-
 function confirm_selection_and_close(fig,synchronous_frames)
     if isempty(fig) || ~ishghandle(fig), return; end
-    if ~getappdata(fig,'confirmation_pending')
-        % Demander le statut avant l'etape de confirmation. Cancel laisse
-        % le voyant gris et ne bloque pas la sauvegarde de la selection.
-        if isempty(normalize_recording_keep(getappdata(fig,'recording_keep')))
-            answered = ask_recording_keep(fig,'confirm');
-            setappdata(fig,'recording_keep_prompted_for_confirmation',answered);
-        else
-            setappdata(fig,'recording_keep_prompted_for_confirmation',false);
-        end
-        % Etape reversible. Aucune sortie / aucun MAT encore modifie.
-        setappdata(fig,'confirmation_pending',true);
-        main = findobj(fig,'Tag','btn_confirm_selection');
-        back = findobj(fig,'Tag','btn_undo_confirmation');
-        if ~isempty(main)
-            set(main,'String','Enregistrer et fermer', ...
-                'Position',[0.05 0.025 0.48 0.065],'Enable','on');
-        end
-        if ~isempty(back), set(back,'Visible','on'); end
+    % Garde supplementaire : interdire aussi l'appel direct du callback
+    % lorsque le bouton est desactive (pas de changement effectif).
+    if getappdata(fig,'viewer_mode') && ~viewer_has_pending_changes(fig)
+        update_population_action_buttons(fig);
         return;
     end
-    % Second clic : validation definitive de la selection + recording.
+    % Si aucun statut recording n'a encore ete choisi, proposer le choix
+    % une seule fois au moment de la confirmation. Cancel laisse le statut
+    % vacant mais n'empeche pas de confirmer les autres modifications.
+    if isempty(normalize_recording_keep(getappdata(fig,'recording_keep')))
+        ask_recording_keep(fig,'confirm');
+    end
+
+    % Confirmation DIRECTE : aucune etape intermediaire.
     setappdata(fig,'selection_confirmed',true);
     finalize_and_close(fig,synchronous_frames);
 end
@@ -4685,67 +5145,20 @@ function [ ...
         size(DF_sg_all,2);
 
     %==============================================================
-    % Sélection qui existait avant l'ouverture du Viewer
+    % Source unique de selection en Viewer : masque par ID original.
+    % L'exclusion ou la reintegration d'une cellule ne doit jamais
+    % reappliquer un ancien vecteur de statuts a tout le plan.
     %==============================================================
+    keep_mask = get_navigation_kept_mask(fig,nCells,true);
 
-    valid_cells_saved = [];
-
-    if isappdata(fig,'valid_cells_saved')
-
-        valid_cells_saved = ...
-            getappdata(fig,'valid_cells_saved');
-    end
-
-    valid_cells_saved = ...
-        round(double(valid_cells_saved(:)));
-
-    valid_cells_saved = ...
-        valid_cells_saved( ...
-            isfinite(valid_cells_saved) & ...
-            valid_cells_saved >= 1 & ...
-            valid_cells_saved <= nCells);
-
-    valid_cells_saved = ...
-        unique(valid_cells_saved,'stable');
-
-    %==============================================================
-    % Base = sélection précédemment sauvegardée
-    %==============================================================
-
-    keep_mask = ...
-        false(nCells,1);
-
-    keep_mask(valid_cells_saved) = ...
-        true;
-
-    %==============================================================
-    % Corrections manuelles Viewer
-    %
-    % +1 = ajout / conservation forcée
-    % -1 = retrait forcé
-    %  0 = garder l'état précédemment sauvegardé
-    %==============================================================
-
-    manual_status = ...
-        getappdata(fig,'manual_status');
-
-    if isempty(manual_status) || ...
-            numel(manual_status) ~= nCells
-
-        manual_status = ...
-            zeros(nCells,1);
-
+    % Conserver les statuts manuels pour le recapitulatif, sans les
+    % utiliser une deuxieme fois pour reconstituer la selection.
+    manual_status = getappdata(fig,'manual_status');
+    if isempty(manual_status) || numel(manual_status)~=nCells
+        manual_status = zeros(nCells,1);
     else
-
-        manual_status = ...
-            manual_status(:);
+        manual_status = manual_status(:);
     end
-
-    keep_mask(manual_status == +1) = ...
-        true;
-
-    keep_mask(manual_status == -1) = ...
-        false;
 
     %==============================================================
     % Résultat final
@@ -4952,25 +5365,17 @@ function finalize_and_close( ...
         end
     end
 
-    if viewer_mode && ~confirmed && isempty(original)
-        % En Viewer, interroger une seule fois en cas de fermeture normale.
-        % Apres une confirmation en cours, la question a deja ete posee.
-        % Cancel ferme sans decision ni sauvegarde de statut.
-        if isempty(normalize_recording_keep(getappdata(fig,'recording_keep'))) && ...
-                ~getappdata(fig,'confirmation_pending')
-            ask_recording_keep(fig,'close');
-        end
-        if ~isempty(normalize_recording_keep(getappdata(fig,'recording_keep')))
-            setappdata(fig,'recording_keep_metadata_commit',true);
-        end
-    end
+    % Une fermeture par la croix ne demande jamais le statut du plan et
+    % ne valide pas une modification Keep/Reject non confirmee. Le statut
+    % n'est engage que par le bouton "Confirmer selection".
 
     %==============================================================
     % STOP ROI MOVIE / TIMER
     %==============================================================
 
-    % Fermer les deux timers et le lecteur TIFF avec le Viewer.
+    % Fermer le debounce et les deux timers ainsi que le lecteur TIFF.
     % La fermeture sans confirmation ne sauvegarde aucune detection.
+    stop_cell_navigation_timer(fig);
     reset_roi_movie_display(fig);
     reset_behavior_movie_display(fig,true);
 
@@ -5326,6 +5731,7 @@ function edit_peak_detection_comment(fig)
             display_comment);
     end
 
+    % Ne pas toucher au commentaire du recap en changeant celui de detection.
     update_population_action_buttons(fig);
     drawnow;
 end
@@ -5344,6 +5750,10 @@ function refresh_data(fig)
     if isappdata(fig,'hBadPatch_ax1')
         hBad = getappdata(fig,'hBadPatch_ax1');
     end
+    hStim = [];
+    if isappdata(fig,'hStimPatch_ax1')
+        hStim = getappdata(fig,'hStimPatch_ax1');
+    end
 
     kids = allchild(ax);
 
@@ -5357,6 +5767,9 @@ function refresh_data(fig)
 
     if ~isempty(hBad) && isgraphics(hBad)
         keep_kids = keep_kids | (kids == hBad);
+    end
+    if ~isempty(hStim) && isgraphics(hStim)
+        keep_kids = keep_kids | (kids == hStim);
     end
 
     if ~isempty(hSharedCursor) && isgraphics(hSharedCursor)
@@ -5373,6 +5786,10 @@ function refresh_data(fig)
         hBadF0 = ...
             getappdata(fig,'hBadPatch_axF0');
     end
+    hStimF0 = [];
+    if isappdata(fig,'hStimPatch_axF0')
+        hStimF0 = getappdata(fig,'hStimPatch_axF0');
+    end
 
     kidsF0 = allchild(axF0);
 
@@ -5381,6 +5798,9 @@ function refresh_data(fig)
 
     if ~isempty(hBadF0) && isgraphics(hBadF0)
         keepF0 = keepF0 | (kidsF0 == hBadF0);
+    end
+    if ~isempty(hStimF0) && isgraphics(hStimF0)
+        keepF0 = keepF0 | (kidsF0 == hStimF0);
     end
 
     if ~isempty(hSharedF0) && isgraphics(hSharedF0)
@@ -5434,9 +5854,9 @@ function refresh_data(fig)
 
     hold(ax,'on');
 
-    % La trace est sous le raster, le temps figure sur Motion en bas.
-    set(ax,'XTickLabel',[]);
-    xlabel(ax,'');
+    % Afficher explicitement l'axe temporel de la cellule individuelle.
+    set(ax,'XTickLabelMode','auto','XTickMode','auto');
+    xlabel(ax,'Time (s)');
 
     %==============================================================
     % TRACE F0
@@ -5525,6 +5945,7 @@ function refresh_data(fig)
                 hBadF0, ...
                 'bottom');
         end
+        update_single_stim_patch(fig,'hStimPatch_axF0',axF0);
 
         ylabel(axF0,'F0');
 
@@ -5674,6 +6095,7 @@ function refresh_data(fig)
 
         uistack(hBad,'bottom');
     end
+    update_single_stim_patch(fig,'hStimPatch_ax1',ax);
 
     %==============================================================
     % MODE VIEWER
@@ -6154,6 +6576,10 @@ function refresh_data(fig)
     % Les identifiants sont dans le panneau Navigation, pas sur la trace.
     update_navigation_identification(fig);
 
+    % cla()/changements de YLim peuvent detruire ou desynchroniser les
+    % bandeaux jaunes : les recreer/ajuster avant le curseur temporel.
+    refresh_stim_patches(fig);
+
     % cla(axF0) peut detruire sa ligne : la recreer au besoin.
     update_shared_movie_cursor(fig,getappdata(fig,'shared_movie_time'));
     % Deplacer uniquement la fleche exterieure sur la ligne courante,
@@ -6164,6 +6590,9 @@ function refresh_data(fig)
     else
         update_roi_zoom(fig);
     end
+    % L'image complete a droite du raster reste toujours non zoomee et
+    % suit uniquement le masque de la cellule courante.
+    update_viewer_full_mean_image(fig);
     % L'axe ROI est partage avec le film ; l'eventuel ancien handle
     % image est detruit par cla() lors du changement de cellule.
     setappdata(fig,'roi_movie_hImg',[]);
@@ -6301,6 +6730,7 @@ function refresh_peak_raster(fig)
     raster_all = getappdata(fig,'Raster_saved');
     if isempty(raster_all) || ~ismatrix(raster_all)
         setappdata(fig,'raster_display_original_ids',[]);
+        update_raster_cell_slider(fig);
         update_current_cell_raster_arrow(fig);
         cla(ax);
         text(ax,0.5,0.5,'Raster indisponible', ...
@@ -6311,14 +6741,36 @@ function refresh_peak_raster(fig)
 
     nCells = size(raster_all,1);
     nFrames = size(raster_all,2);
-    % Viewer : valid_cells sauvegardees + corrections manuelles.
-    % Nouvelle detection : cutoff effectif + corrections manuelles.
-    kept = get_navigation_kept_mask(fig,nCells, ...
-        getappdata(fig,'viewer_mode'));
-    % Meme mode d'affichage que la barre de navigation. Le raster du plan
-    % conserve toutes les cellules acceptees, meme si une sous-population
-    % est choisie pour la navigation.
-    original_ids = sort_cell_ids_for_display(fig,find(kept));
+
+    % Le raster est TOUJOURS Combined : le filtre GCaMP/Electroporated
+    % s'applique seulement a la navigation et aux traces individuelles.
+    % Les IDs sont ceux de F/Combined et permettent de retrouver la ligne
+    % de toute cellule selectionnee, independamment de sa population.
+    viewer_mode = isappdata(fig,'viewer_mode') && ...
+        getappdata(fig,'viewer_mode');
+    kept = logical(get_navigation_kept_mask(fig,nCells,viewer_mode));
+    kept = kept(:);
+    show_rejected = isappdata(fig,'show_rejected_cells') && ...
+        getappdata(fig,'show_rejected_cells');
+
+    combined_ids = (1:nCells).';
+    if strcmp(getappdata(fig,'navigation_sort_mode'),'quality')
+        original_ids = sort_cell_ids_for_display(fig,combined_ids);
+        if ~show_rejected
+            original_ids = original_ids(kept(original_ids));
+        end
+    else
+        accepted_ids = combined_ids(kept);
+        original_ids = sort_cell_ids_for_display(fig,accepted_ids);
+        if show_rejected
+            rejected_ids = combined_ids(~kept);
+            original_ids = [original_ids(:); ...
+                sort_cell_ids_for_display(fig,rejected_ids)];
+        end
+    end
+    % N'ajouter aucune ligne en double ; garder le tri de Combined.
+    original_ids = unique(original_ids(:),'stable');
+
     nKept = numel(original_ids);
     setappdata(fig,'raster_display_original_ids',original_ids);
 
@@ -6339,15 +6791,19 @@ function refresh_peak_raster(fig)
             t = plane_offset + (double(frame(:)')-1)/fs_plane;
             y = double(rank(:)');
             xp = reshape([t;t;nan(size(t))],[],1);
-            yp = reshape([y-0.33;y+0.33;nan(size(y))],[],1);
-            line(ax,xp,yp,'Color',[0 0 0],'LineWidth',0.5, ...
+            yp = reshape([y-0.46;y+0.46;nan(size(y))],[],1);
+            line(ax,xp,yp,'Color',[0 0 0],'LineWidth',1.15, ...
                 'HitTest','off','PickableParts','none');
         end
         ylim(ax,[0.5 nKept+0.5]);
         ticks = unique(round(linspace(1,nKept,min(8,nKept))));
+        % Afficher le RANG dans la liste visible, pas l'ID original. Sinon
+        % une selection de 153 cellules dont la derniere a l'ID 258 donne
+        % visuellement l'impression que le raster contient 258 lignes.
         set(ax,'YTick',ticks, ...
-            'YTickLabel',cellstr(num2str(original_ids(ticks))), ...
-            'YDir','reverse');
+            'YTickLabel',cellstr(num2str(ticks(:))), ...
+            'YDir','reverse', ...
+            'TickLabelInterpreter','tex');
     else
         ylim(ax,[0.5 1.5]);
         set(ax,'YTick',[],'YDir','reverse');
@@ -6363,31 +6819,223 @@ function refresh_peak_raster(fig)
     else
         xlim(ax,[0 max(1/fs_plane,t_end+1/fs_plane)]);
     end
-    % Une seule echelle temporelle lisible tout en bas du Viewer.
-    set(ax,'XTickLabel',[]);
-    xlabel(ax,'');
-    ylabel(ax,'Cellule (ID)');
+    % Le raster possede sa propre echelle temporelle en secondes.
+    set(ax,'XTickLabelMode','auto','XTickMode','auto');
+    xlabel(ax,'Time (s)');
+    ylabel(ax,'Rang cellule');
     box(ax,'on');
     hold(ax,'off');
     setappdata(fig,'raster_display_cell_count',nKept);
     update_peak_raster_title(fig);
 
     % Le raster est efface puis reconstruit avec cla() : recreer aussi
-    % les zones badframes, dans le meme referentiel temporel que DF/F0.
+    % les zones badframes et stimulations, dans le meme referentiel temporel.
     refresh_raster_badframe_patch(fig);
+    refresh_raster_stim_patch(fig);
+    refresh_peak_raster_legend(fig);
 
     % cla() efface la ligne du raster uniquement : recreer le marqueur
     % temporel commun sur les cinq axes au meme instant, sans seek film.
     update_shared_movie_cursor(fig,getappdata(fig,'shared_movie_time'));
+    sync_raster_cell_navigation(fig);
+end
+
+function sync_raster_navigation_after_resize(fig)
+    % Le resize de la figure est asynchrone sous Windows. Attendre que les
+    % positions normalisees/pixels des uipanels et axes soient finalisees,
+    % puis synchroniser le curseur vertical et la fleche noire dans cet
+    % ordre. Un garde evite les callbacks imbriques pendant drawnow.
+    if isempty(fig) || ~ishghandle(fig)
+        return;
+    end
+
+    if isappdata(fig,'raster_resize_sync_busy') && ...
+            getappdata(fig,'raster_resize_sync_busy')
+        return;
+    end
+
+    setappdata(fig,'raster_resize_sync_busy',true);
+    cleanup = onCleanup(@() setappdata_if_valid( ...
+        fig,'raster_resize_sync_busy',false)); %#ok<NASGU>
+
+    try
+        drawnow limitrate nocallbacks;
+    catch
+        drawnow;
+    end
+
+    update_raster_cell_slider(fig);
     update_current_cell_raster_arrow(fig);
+    update_current_cell_raster_tick(fig);
+    update_current_cell_raster_activity(fig);
+end
+
+function sync_raster_cell_navigation(fig)
+    % Met a jour de facon atomique le curseur vertical ET la fleche noire
+    % a partir de cell_id/raster_display_original_ids. Le drawnow force le
+    % repaint des uicontrols sous Windows sans attendre une interaction.
+    if isempty(fig) || ~ishghandle(fig)
+        return;
+    end
+
+    update_raster_cell_slider(fig);
+    update_current_cell_raster_arrow(fig);
+    update_current_cell_raster_tick(fig);
+    update_current_cell_raster_activity(fig);
+
+    try
+        drawnow limitrate nocallbacks;
+    catch
+        drawnow;
+    end
+end
+
+function update_current_cell_raster_tick(fig)
+    % Les graduations Y du raster restent neutres. La cellule courante
+    % n'est PAS identifiee par un numero rouge : ce sont ses marques
+    % d'activite qui sont surlignees en rouge (voir fonction ci-dessous).
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'axRaster') || ...
+            ~isappdata(fig,'raster_display_original_ids')
+        return;
+    end
+
+    ax = getappdata(fig,'axRaster');
+    if isempty(ax) || ~isgraphics(ax,'axes')
+        return;
+    end
+
+    ids = getappdata(fig,'raster_display_original_ids');
+    n = numel(ids);
+    if n == 0
+        set(ax,'YTick',[],'TickLabelInterpreter','none');
+        return;
+    end
+
+    ticks = unique(round(linspace(1,n,min(8,n))));
+    set(ax, ...
+        'YTick',ticks, ...
+        'YTickLabel',cellstr(num2str(ticks(:))), ...
+        'TickLabelInterpreter','none');
+end
+
+function update_current_cell_raster_activity(fig)
+    % Surligne en ROUGE et en trait epais les activites de la cellule
+    % courante. Le surlignage est un UNIQUE objet graphique qui est
+    % deplace d'une cellule a l'autre : lorsque la fleche change de ligne,
+    % les pics de l'ancienne cellule redeviennent donc immediatement NOIRS
+    % grace au raster noir de fond, sans accumulation d'objets rouges.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'axRaster') || ...
+            ~isappdata(fig,'raster_display_original_ids') || ...
+            ~isappdata(fig,'Raster_saved')
+        return;
+    end
+
+    ax = getappdata(fig,'axRaster');
+    if isempty(ax) || ~isgraphics(ax,'axes')
+        return;
+    end
+
+    % Recuperer l'unique objet de surlignage. Apres cla(ax), le handle
+    % stocke peut etre invalide : le recreer uniquement dans ce cas.
+    h = [];
+    if isappdata(fig,'hCurrentCellRasterActivity')
+        h = getappdata(fig,'hCurrentCellRasterActivity');
+    end
+    if isempty(h) || ~isgraphics(h,'line') || ~isequal(ancestor(h,'axes'),ax)
+        old = findobj(ax,'Tag','current_cell_raster_peaks');
+        if ~isempty(old)
+            delete(old);
+        end
+        was_held = ishold(ax);
+        hold(ax,'on');
+        h = line(ax,nan,nan, ...
+            'Color',[0.90 0.05 0.05], ...
+            'LineWidth',2.6, ...
+            'HitTest','off', ...
+            'PickableParts','none', ...
+            'HandleVisibility','off', ...
+            'Visible','off', ...
+            'Tag','current_cell_raster_peaks');
+        if ~was_held, hold(ax,'off'); end
+        setappdata(fig,'hCurrentCellRasterActivity',h);
+    end
+
+    % Par defaut cacher/deplacer le surlignage hors du raster. Cette mise
+    % a zero est importante : elle efface visuellement les anciens pics
+    % rouges AVANT de calculer la nouvelle cellule.
+    set(h,'XData',nan,'YData',nan,'Visible','off');
+
+    if ~isappdata(fig,'cell_id')
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    cid = getappdata(fig,'cell_id');
+    ids = getappdata(fig,'raster_display_original_ids');
+    raster_all = getappdata(fig,'Raster_saved');
+    if isempty(cid) || ~isscalar(cid) || ~isfinite(cid) || ...
+            isempty(ids) || isempty(raster_all) || ~ismatrix(raster_all)
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    cid = round(cid);
+    row = find(ids==cid,1);
+    if isempty(row) || cid<1 || cid>size(raster_all,1)
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    frames = find(raster_all(cid,:));
+    if isempty(frames)
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    fs_plane = getappdata(fig,'fs_plane');
+    fs_motion = getappdata(fig,'fs_motion');
+    plane = getappdata(fig,'plane');
+    if isempty(fs_plane) || ~isfinite(fs_plane) || fs_plane<=0 || ...
+            isempty(fs_motion) || ~isfinite(fs_motion) || fs_motion<=0
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    plane_offset = (plane-1)/fs_motion;
+    t = plane_offset + (double(frames(:)')-1)/fs_plane;
+    y = repmat(double(row),size(t));
+    xp = reshape([t;t;nan(size(t))],[],1);
+    yp = reshape([y-0.49;y+0.49;nan(size(y))],[],1);
+
+    % Deplacer le MEME objet rouge vers la nouvelle cellule. L'ancienne
+    % position disparait et laisse voir les marques noires du raster de fond.
+    set(h, ...
+        'XData',xp, ...
+        'YData',yp, ...
+        'Color',[0.90 0.05 0.05], ...
+        'LineWidth',2.6, ...
+        'Visible','on');
+
+    try
+        uistack(h,'top');
+    catch
+    end
+
+    % Forcer le repaint sous Windows pour que les anciens traits rouges
+    % redeviennent noirs des le changement de cellule, sans clic ulterieur.
+    try
+        drawnow limitrate nocallbacks;
+    catch
+        drawnow;
+    end
 end
 
 function update_current_cell_raster_arrow(fig)
-    % Une fleche a DROITE du raster indique la ligne de la cellule
-    % courante. Aucune recoloration des pics et aucun tick supplementaire.
-    % Une cellule rejetee n'a pas de ligne dans le raster : pas de fleche.
-    % Position calculee depuis YLim/YDir : elle suit le zoom et disparait
-    % si la ligne courante n'est plus visible dans les limites des axes.
+    % Fleche noire a droite du raster, dans le MEME uipanel que le raster.
+    % Utiliser un uicontrol local au panneau evite les problemes de z-order
+    % des annotation() lorsque des uipanels recouvrent la figure.
     if ~ishghandle(fig)
         return;
     end
@@ -6397,76 +7045,340 @@ function update_current_cell_raster_arrow(fig)
         old = getappdata(fig,'hCurrentCellRasterArrow');
     end
 
-    % Nettoyer aussi les surlignages d'une ancienne version de l'interface.
     if ~isappdata(fig,'axRaster')
         if ~isempty(old) && isgraphics(old), delete(old); end
         setappdata(fig,'hCurrentCellRasterArrow',[]);
         return;
     end
+
     ax = getappdata(fig,'axRaster');
     if isempty(ax) || ~isgraphics(ax,'axes')
         if ~isempty(old) && isgraphics(old), delete(old); end
         setappdata(fig,'hCurrentCellRasterArrow',[]);
         return;
     end
-    old_peaks = findobj(ax,'Tag','current_cell_raster_peaks');
-    if ~isempty(old_peaks)
-        delete(old_peaks);
-    end
 
     if ~isappdata(fig,'cell_id') || ...
             ~isappdata(fig,'raster_display_original_ids')
-        if ~isempty(old) && isgraphics(old), delete(old); end
-        setappdata(fig,'hCurrentCellRasterArrow',[]);
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
         return;
     end
 
     cid = getappdata(fig,'cell_id');
     ids = getappdata(fig,'raster_display_original_ids');
     if isempty(cid) || ~isscalar(cid) || ~isfinite(cid) || isempty(ids)
-        if ~isempty(old) && isgraphics(old), delete(old); end
-        setappdata(fig,'hCurrentCellRasterArrow',[]);
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
         return;
     end
 
     row = find(ids==round(cid),1);
     if isempty(row)
-        if ~isempty(old) && isgraphics(old), delete(old); end
-        setappdata(fig,'hCurrentCellRasterArrow',[]);
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
         return;
     end
 
-    % Annotation en coordonnees normalisees de la figure : la fleche reste
-    % a droite du raster meme si les axes temporels sont zoomes/deplaces.
-    % La transformation prend en compte les limites Y du zoom courant.
     yl = get(ax,'YLim');
-    if any(~isfinite(yl)) || yl(2)<=yl(1) || ...
-            row<yl(1) || row>yl(2)
-        if ~isempty(old) && isgraphics(old), delete(old); end
-        setappdata(fig,'hCurrentCellRasterArrow',[]);
+    if any(~isfinite(yl)) || yl(2)<=yl(1) || row<yl(1) || row>yl(2)
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
         return;
     end
 
-    pos = get(ax,'Position'); % axes en Units='normalized'
-    xRight = pos(1)+pos(3);
+    panel = get(ax,'Parent');
+    if isempty(panel) || ~isgraphics(panel)
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
+        return;
+    end
+
+    % Coordonnees pixels RELATIVES au panneau. Le centre vertical du
+    % controle est place exactement au niveau de la ligne du raster.
+    axPix = getpixelposition(ax,false);
+    panelPix = getpixelposition(panel);
+    if numel(axPix)~=4 || numel(panelPix)~=4 || ...
+            panelPix(3)<=0 || panelPix(4)<=0
+        if ~isempty(old) && isgraphics(old), set(old,'Visible','off'); end
+        return;
+    end
+
     fraction = (row-yl(1))/(yl(2)-yl(1));
     if strcmp(get(ax,'YDir'),'reverse')
         fraction = 1-fraction;
     end
-    yRow = pos(2)+pos(4)*fraction;
-    xArrow = [xRight+0.018 xRight+0.002];
-    yArrow = [yRow yRow];
+    fraction = max(0,min(1,fraction));
 
-    if ~isempty(old) && isgraphics(old)
-        set(old,'X',xArrow,'Y',yArrow);
-    else
-        hArrow = annotation(fig,'arrow',xArrow,yArrow, ...
-            'Color',[0.10 0.35 0.85], ...
-            'LineWidth',1.8, ...
-            'HeadLength',7, ...
-            'HeadWidth',7);
-        setappdata(fig,'hCurrentCellRasterArrow',hArrow);
+    yRowPix = axPix(2) + axPix(4)*fraction;
+    arrowW = max(20,round(0.020*panelPix(3)));
+    arrowH = max(18,round(0.035*panelPix(4)));
+    xArrowPix = axPix(1) + axPix(3) + 1;
+
+    % Le glyphe Unicode de la fleche est rendu legerement sous le centre
+    % geometrique du uicontrol sous Windows. Remonter le controle de
+    % quelques pixels pour que la pointe soit visuellement alignee avec
+    % le thumb du curseur vertical. Cette correction est volontairement
+    % fixe en pixels car elle compense le rendu de police, pas le mapping
+    % des donnees du raster.
+    arrow_visual_y_offset_px = 3;
+    yArrowPix = yRowPix - arrowH/2 + arrow_visual_y_offset_px;
+
+    % Ne pas laisser la fleche passer sous le slider vertical.
+    hSlider = [];
+    sliderLeft = inf;
+    if isappdata(fig,'hRasterCellSlider')
+        hSlider = getappdata(fig,'hRasterCellSlider');
+        if ~isempty(hSlider) && isgraphics(hSlider)
+            sliderPix = getpixelposition(hSlider,false);
+            if numel(sliderPix)==4
+                sliderLeft = sliderPix(1);
+            end
+        end
     end
+    if isfinite(sliderLeft)
+        arrowW = max(12,min(arrowW,sliderLeft-xArrowPix-1));
+    end
+
+    needs_new = isempty(old) || ~isgraphics(old) || ...
+        ~strcmp(get(old,'Type'),'uicontrol');
+    if needs_new
+        if ~isempty(old) && isgraphics(old), delete(old); end
+        old = uicontrol( ...
+            'Parent',panel, ...
+            'Style','text', ...
+            'Units','pixels', ...
+            'String',char(8592), ...
+            'FontSize',16, ...
+            'FontWeight','bold', ...
+            'ForegroundColor',[0 0 0], ...
+            'BackgroundColor',get(panel,'BackgroundColor'), ...
+            'HorizontalAlignment','center', ...
+            'Enable','inactive', ...
+            'HitTest','off', ...
+            'Tag','current_cell_raster_arrow');
+        setappdata(fig,'hCurrentCellRasterArrow',old);
+    end
+
+    set(old, ...
+        'Parent',panel, ...
+        'Units','pixels', ...
+        'Position',[xArrowPix yArrowPix arrowW arrowH], ...
+        'String',char(8592), ...
+        'ForegroundColor',[0 0 0], ...
+        'BackgroundColor',get(panel,'BackgroundColor'), ...
+        'Visible','on');
+
+    try
+        uistack(old,'top');
+    catch
+    end
+end
+
+function queue_cell_navigation(fig,kind)
+    % Les sliders uicontrol executent Callback a la fin du clic/drag.
+    % Retarder le gros rafraichissement et ne garder que le dernier clic
+    % d'une rafale : aucun recalcul continu pendant l'appui/deplacement.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~ismember(kind,{'main','raster'})
+        return;
+    end
+    if strcmp(kind,'main')
+        h = findobj(fig,'Tag','sldr_nav_cell');
+        if isempty(h), return; end
+    else
+        if getappdata(fig,'raster_cell_slider_syncing'), return; end
+        h = getappdata(fig,'hRasterCellSlider');
+    end
+    if isempty(h) || ~ishghandle(h(1)), return; end
+    setappdata(fig,'cell_navigation_pending_kind',kind);
+    setappdata(fig,'cell_navigation_pending_value',get(h(1),'Value'));
+    stop_cell_navigation_timer(fig);
+    debounce_timer = timer( ...
+        'ExecutionMode','singleShot', ...
+        'StartDelay',0.20, ...
+        'TimerFcn',@(~,~) commit_cell_navigation(fig));
+    setappdata(fig,'cell_navigation_debounce_timer',debounce_timer);
+    try
+        start(debounce_timer);
+    catch
+        stop_cell_navigation_timer(fig);
+        commit_cell_navigation(fig);
+    end
+end
+
+function stop_cell_navigation_timer(fig)
+    if isempty(fig) || ~ishghandle(fig), return; end
+    t = getappdata(fig,'cell_navigation_debounce_timer');
+    setappdata(fig,'cell_navigation_debounce_timer',[]);
+    if ~isempty(t) && isvalid(t)
+        try, stop(t); catch, end
+        try, delete(t); catch, end
+    end
+end
+
+function commit_cell_navigation(fig)
+    if isempty(fig) || ~ishghandle(fig), return; end
+    kind = getappdata(fig,'cell_navigation_pending_kind');
+    value = getappdata(fig,'cell_navigation_pending_value');
+    setappdata(fig,'cell_navigation_pending_kind','');
+    setappdata(fig,'cell_navigation_pending_value',[]);
+    stop_cell_navigation_timer(fig);
+    if isempty(value) || ~isscalar(value) || ~isfinite(value), return; end
+    if strcmp(kind,'main')
+        update_current_cell(fig,round(value));
+    elseif strcmp(kind,'raster')
+        raster_cell_slider_callback(fig,value);
+    end
+end
+
+function raster_cell_slider_callback(fig,requested_value)
+    % Le curseur vertical est l'unique commande de navigation directe
+    % depuis le raster. Sa valeur augmente du bas vers le haut, alors que
+    % le raster est en YDir='reverse' : la ligne 1 correspond donc au MAX.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'hRasterCellSlider') || ...
+            ~isappdata(fig,'raster_display_original_ids')
+        return;
+    end
+    if isappdata(fig,'raster_cell_slider_syncing') && ...
+            getappdata(fig,'raster_cell_slider_syncing')
+        return;
+    end
+
+    hSlider = getappdata(fig,'hRasterCellSlider');
+    ids = getappdata(fig,'raster_display_original_ids');
+    if isempty(hSlider) || ~isgraphics(hSlider) || isempty(ids)
+        return;
+    end
+
+    n = numel(ids);
+    if n <= 1
+        row = 1;
+    else
+        v = requested_value;
+        row = n - round(v) + 1;
+        row = max(1,min(n,row));
+    end
+    select_cell_from_raster_row(fig,row);
+end
+
+function update_raster_cell_slider(fig)
+    % Synchronise le curseur dedie avec l'ordre actuellement affiche dans
+    % le raster et avec la cellule courante. Aucun changement de cellule
+    % n'est provoque lors de cette mise a jour programmatique.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'hRasterCellSlider')
+        return;
+    end
+    hSlider = getappdata(fig,'hRasterCellSlider');
+    if isempty(hSlider) || ~isgraphics(hSlider)
+        return;
+    end
+
+    ids = [];
+    if isappdata(fig,'raster_display_original_ids')
+        ids = getappdata(fig,'raster_display_original_ids');
+    end
+    n = numel(ids);
+    % Combined peut rester affiche meme si la sous-population ne contient
+    % aucune cellule navigable. Dans ce cas, desactiver le curseur.
+    order_cells = [];
+    if isappdata(fig,'order_cells')
+        order_cells = getappdata(fig,'order_cells');
+    end
+    setappdata(fig,'raster_cell_slider_syncing',true);
+    cleanup = onCleanup(@() setappdata_if_valid(fig,'raster_cell_slider_syncing',false));
+
+    if n == 0 || isempty(order_cells)
+        set(hSlider,'Enable','off','Min',0,'Max',1,'Value',1, ...
+            'SliderStep',[1 1]);
+        try, drawnow limitrate nocallbacks; catch, drawnow; end
+        return;
+    elseif n == 1
+        set(hSlider,'Enable','on','Min',0,'Max',1,'Value',1, ...
+            'SliderStep',[1 1]);
+        try, drawnow limitrate nocallbacks; catch, drawnow; end
+        return;
+    end
+
+    cid = [];
+    if isappdata(fig,'cell_id')
+        cid = getappdata(fig,'cell_id');
+    end
+    row = [];
+    if ~isempty(cid) && isscalar(cid) && isfinite(cid)
+        row = find(ids==round(cid),1);
+    end
+    if isempty(row)
+        % Cellule courante hors raster (p. ex. rejected affichee) : garder
+        % la position du curseur si elle est valide, sans simuler de fleche.
+        oldv = get(hSlider,'Value');
+        if ~isscalar(oldv) || ~isfinite(oldv)
+            oldv = n;
+        end
+        value = max(1,min(n,round(oldv)));
+    else
+        value = n-row+1;
+    end
+
+    small_step = 1/(n-1);
+    large_step = min(1,max(small_step,5/(n-1)));
+    set(hSlider,'Enable','on','Min',1,'Max',n,'Value',value, ...
+        'SliderStep',[small_step large_step]);
+
+    % Forcer l'affichage du thumb a sa nouvelle position sans attendre
+    % un clic utilisateur sur le controle.
+    try
+        drawnow limitrate nocallbacks;
+    catch
+        drawnow;
+    end
+end
+
+function setappdata_if_valid(fig,name,value)
+    if ~isempty(fig) && ishghandle(fig)
+        setappdata(fig,name,value);
+    end
+end
+
+function select_cell_from_raster_row(fig,row)
+    % Selectionne l'ID ORIGINAL associe a la ligne du raster, puis remet
+    % la barre de navigation sur son rang dans le tri actif.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'raster_display_original_ids')
+        return;
+    end
+
+    ids = getappdata(fig,'raster_display_original_ids');
+    if isempty(ids)
+        return;
+    end
+
+    row = max(1,min(numel(ids),round(row)));
+    cid = ids(row);
+
+    order_cells = [];
+    if isappdata(fig,'order_cells')
+        order_cells = getappdata(fig,'order_cells');
+    end
+    idx = find(order_cells==cid,1);
+
+    % Le curseur se deplace sur le raster Combined, mais la selection
+    % reste restreinte aux cellules navigables du filtre en cours.
+    % Une ligne GCaMP pointee en mode Electroporated est projetee sur la
+    % cellule electroporee navigable la plus proche, sans changer le
+    % filtre ni reconstruire un raster electropore.
+    if isempty(idx)
+        [found,ranks] = ismember(order_cells,ids);
+        eligible = find(found);
+        if isempty(eligible)
+            sync_raster_cell_navigation(fig);
+            return;
+        end
+        [~,nearest] = min(abs(ranks(found)-row));
+        idx = eligible(nearest);
+    end
+
+    update_current_cell(fig,idx);
+    % Le deplacement du curseur vertical doit toujours entrainer
+    % immediatement la fleche noire sur la ligne selectionnee.
+    update_current_cell_raster_arrow(fig);
 end
 
 function refresh_raster_badframe_patch(fig)
@@ -6521,13 +7433,156 @@ function update_peak_raster_title(fig)
     if isempty(nKept)
         nKept = 0;
     end
-    caption = sprintf('Raster trie des pics | plan %d | %d cellules retenues', ...
-        plane-1,nKept);
+    source_type = getappdata(fig,'cell_type');
+    if strcmpi(source_type,'combined')
+        raster_name = 'Raster Combined';
+    else
+        raster_name = 'Raster';
+    end
+    caption = sprintf('%s trie des pics | plan %d | %d cellules affichees', ...
+        raster_name,plane-1,nKept);
     if getappdata(fig,'viewer_mode') && ...
             getappdata(fig,'detection_params_modified')
         caption = [caption ' | pics sauvegardes (recalcul complet a confirmer)'];
     end
     title(ax,caption,'Interpreter','none','FontSize',10);
+end
+
+function segs = stim_frames_to_time_segments(stim_frames_global, fs_motion)
+    % Convert GLOBAL stimulation frames to contiguous time intervals.
+    segs = zeros(0,2);
+    if isempty(stim_frames_global) || ~isscalar(fs_motion) || ...
+            ~isfinite(fs_motion) || fs_motion <= 0
+        return;
+    end
+    fr = round(double(stim_frames_global(:)));
+    fr = unique(fr(isfinite(fr) & fr >= 1));
+    if isempty(fr)
+        return;
+    end
+    cuts = [1; find(diff(fr) > 1) + 1; numel(fr) + 1];
+    segs = zeros(numel(cuts)-1,2);
+    for k = 1:numel(cuts)-1
+        a = fr(cuts(k));
+        b = fr(cuts(k+1)-1);
+        segs(k,:) = [(a-1)/fs_motion, b/fs_motion];
+    end
+end
+
+function refresh_stim_patches(fig)
+    if ~ishghandle(fig), return; end
+    axes_fields = { ...
+        'ax1','hStimPatch_ax1'; ...
+        'axF0','hStimPatch_axF0'; ...
+        'axDev','hStimPatch_axDev'; ...
+        'axMotion','hStimPatch_axMotion'; ...
+        'axRaster','hStimPatch_axRaster'};
+    for k = 1:size(axes_fields,1)
+        ax = getappdata(fig,axes_fields{k,1});
+        if ~isempty(ax) && isgraphics(ax,'axes')
+            update_single_stim_patch(fig,axes_fields{k,2},ax);
+        end
+    end
+end
+
+function refresh_raster_stim_patch(fig)
+    if ~ishghandle(fig), return; end
+    ax = getappdata(fig,'axRaster');
+    if isempty(ax) || ~isgraphics(ax,'axes'), return; end
+    update_single_stim_patch(fig,'hStimPatch_axRaster',ax);
+end
+
+function update_single_stim_patch(fig, appdata_name, ax)
+    if isempty(ax) || ~isgraphics(ax,'axes'), return; end
+    segs = getappdata(fig,'stim_segs_time');
+    h = getappdata(fig,appdata_name);
+    if isempty(segs)
+        if ~isempty(h) && isgraphics(h), delete(h); end
+        setappdata(fig,appdata_name,[]);
+        return;
+    end
+    if isempty(h) || ~isgraphics(h)
+        was_held = ishold(ax);
+        hold(ax,'on');
+        h = create_stim_patch(ax,segs);
+        if ~was_held, hold(ax,'off'); end
+        setappdata(fig,appdata_name,h);
+    else
+        update_stim_patch(h,segs,ylim(ax));
+    end
+    if ~isempty(h) && isgraphics(h)
+        % Les stimulations doivent rester derriere les traces/pics, mais
+        % devant les bandes de bad frames. Cela evite qu'une stimulation
+        % superposee a un artefact soit completement masquee.
+        uistack(h,'bottom');
+
+        bad_name = strrep(appdata_name,'hStimPatch_','hBadPatch_');
+        if isappdata(fig,bad_name)
+            hBad = getappdata(fig,bad_name);
+            if ~isempty(hBad) && isgraphics(hBad)
+                % En mettant ensuite le bad-frame tout en bas, le patch
+                % stimulation devient le deuxieme objet le plus bas.
+                uistack(hBad,'bottom');
+            end
+        end
+    end
+end
+
+function h = create_stim_patch(ax, segs)
+    if isempty(segs) || isempty(ax) || ~ishghandle(ax)
+        h = gobjects(1);
+        return;
+    end
+    [X,Y] = segs_to_patchXY(segs,ylim(ax));
+    h = patch(ax,X,Y,[1 0.85 0], ...
+        'FaceAlpha',0.30, ...
+        'EdgeColor',[0.92 0.62 0], ...
+        'LineWidth',1.25, ...
+        'HitTest','off','PickableParts','none', ...
+        'Tag','stim_period_patch');
+    set(h,'XLimInclude','off','YLimInclude','off');
+end
+
+function update_stim_patch(h,segs,yl)
+    if isempty(h) || ~isgraphics(h) || isempty(segs) || numel(yl)~=2
+        return;
+    end
+    [X,Y] = segs_to_patchXY(segs,yl);
+    set(h,'XData',X,'YData',Y);
+end
+
+function refresh_peak_raster_legend(fig)
+    % Legende compacte HORS du raster, dans un axe dedie place dans le
+    % sous-encadre 'Légende' entre le raster et la mean image.
+    if ~ishghandle(fig) || ~isappdata(fig,'axRasterLegend')
+        return;
+    end
+    axL = getappdata(fig,'axRasterLegend');
+    if isempty(axL) || ~isgraphics(axL,'axes')
+        return;
+    end
+
+    cla(axL);
+    set(axL,'Visible','off','XLim',[0 1],'YLim',[0 1]);
+    hold(axL,'on');
+
+    % Traits suffisamment courts pour laisser la place au texte.
+    plot(axL,[0.04 0.25],[0.80 0.80],'k-','LineWidth',2.0, ...
+        'HitTest','off','PickableParts','none');
+    plot(axL,[0.04 0.25],[0.52 0.52],'-','Color',[0.85 0.15 0.15], ...
+        'LineWidth',5,'HitTest','off','PickableParts','none');
+    plot(axL,[0.04 0.25],[0.24 0.24],'-','Color',[1 0.78 0], ...
+        'LineWidth',5,'HitTest','off','PickableParts','none');
+
+    text(axL,0.31,0.80,'Activité','FontSize',7, ...
+        'VerticalAlignment','middle','Interpreter','none');
+    text(axL,0.31,0.52,'Bad frames','FontSize',7, ...
+        'VerticalAlignment','middle','Interpreter','none');
+    text(axL,0.31,0.24,'Stimulation','FontSize',7, ...
+        'VerticalAlignment','middle','Interpreter','none');
+
+    hold(axL,'off');
+    setappdata(fig,'hRasterLegend',axL);
 end
 
 function h = create_badframe_patch(ax, segs)
@@ -6573,6 +7628,208 @@ function [X, Y] = segs_to_patchXY(segs, yl)
     end
 end
 
+
+function update_viewer_full_mean_image(fig)
+    % Image moyenne COMPLETE a droite du raster. Aucun recadrage : les
+    % limites couvrent toujours le plan entier. Le masque de la cellule
+    % courante est indique uniquement par son contour rouge.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'axMeanFull')
+        return;
+    end
+
+    ax = getappdata(fig,'axMeanFull');
+    if isempty(ax) || ~isgraphics(ax,'axes')
+        return;
+    end
+
+    meanImg = getappdata(fig,'meanImg');
+    if isempty(meanImg) || ~ismatrix(meanImg) || ...
+            ~(isnumeric(meanImg) || islogical(meanImg))
+        cla(ax);
+        axis(ax,'off');
+        return;
+    end
+
+    meanImg = double(meanImg);
+    cla(ax);
+    % cla invalide l'ancien handle du film plein champ.
+    setappdata(fig,'full_movie_hImg',[]);
+    imagesc(ax,meanImg);
+    colormap(ax,gray);
+    axis(ax,'image');
+    set(ax,'YDir','reverse','XTick',[],'YTick',[],'Visible','on');
+    xlim(ax,[0.5 size(meanImg,2)+0.5]);
+    ylim(ax,[0.5 size(meanImg,1)+0.5]);
+    title(ax,'Champ complet | meanImg','FontSize',9, ...
+        'Interpreter','none');
+
+    finite_values = meanImg(isfinite(meanImg));
+    if ~isempty(finite_values)
+        lo = prctile(finite_values,5);
+        hi = prctile(finite_values,99.5);
+        if ~isfinite(lo) || ~isfinite(hi) || hi<=lo
+            lo = min(finite_values);
+            hi = max(finite_values);
+        end
+        if isfinite(lo) && isfinite(hi)
+            if hi<=lo
+                hi = lo + max(1,abs(lo)*1e-3);
+            end
+            caxis(ax,[lo hi]);
+        end
+    end
+
+    cid = [];
+    if isappdata(fig,'cell_id')
+        cid = getappdata(fig,'cell_id');
+    end
+    masks = [];
+    if isappdata(fig,'masks')
+        masks = getappdata(fig,'masks');
+    end
+
+    mask = [];
+    if ~isempty(cid) && isscalar(cid) && isfinite(cid) && ...
+            ~isempty(masks) && ...
+            (isnumeric(masks) || islogical(masks)) && ...
+            ndims(masks)>=3 && cid>=1 && cid<=size(masks,1)
+        mask = squeeze(masks(round(cid),:,:)) > 0;
+    end
+
+    if isempty(mask) || ~isequal(size(mask),size(meanImg)) || ~any(mask(:))
+        return;
+    end
+
+    hold(ax,'on');
+
+    % Aucun remplissage colore sur la mean image complete : seul le contour
+    % rouge de la cellule courante est affiche.
+
+    % Contour reel en priorite ; sinon contour extrait du masque.
+    has_outline = false;
+    outlines_x = getappdata(fig,'outlines_x');
+    outlines_y = getappdata(fig,'outlines_y');
+    if iscell(outlines_x) && iscell(outlines_y) && ...
+            cid<=numel(outlines_x) && cid<=numel(outlines_y)
+        xx = double(outlines_x{cid}(:));
+        yy = double(outlines_y{cid}(:));
+        n = min(numel(xx),numel(yy));
+        if n>0
+            xx = xx(1:n);
+            yy = yy(1:n);
+            good = isfinite(xx) & isfinite(yy);
+            xx = xx(good);
+            yy = yy(good);
+            if ~isempty(xx)
+                plot(ax,xx,yy,'r-','LineWidth',1.4, ...
+                    'HitTest','off','PickableParts','none');
+                has_outline = true;
+            end
+        end
+    end
+
+    if ~has_outline
+        boundaries = bwboundaries(mask,'noholes');
+        for k = 1:numel(boundaries)
+            b = boundaries{k};
+            plot(ax,b(:,2),b(:,1),'r-','LineWidth',1.4, ...
+                'HitTest','off','PickableParts','none');
+        end
+    end
+
+    % Reforcer explicitement le plan entier apres les objets superposes.
+    xlim(ax,[0.5 size(meanImg,2)+0.5]);
+    ylim(ax,[0.5 size(meanImg,1)+0.5]);
+    hold(ax,'off');
+end
+
+function show_full_field_movie_frame(fig,I,frame_index,nFrames)
+    % Meme image TIFF que le film ROI, mais affichee SANS recadrage dans
+    % l'emplacement de meanImg. Le contraste reste constant pendant la
+    % lecture ; seul CData est modifie apres la premiere frame.
+    if ~getappdata(fig,'full_movie_visible') || ...
+            ~isappdata(fig,'axMeanFull')
+        return;
+    end
+    ax = getappdata(fig,'axMeanFull');
+    if isempty(ax) || ~isgraphics(ax,'axes') || isempty(I)
+        return;
+    end
+
+    hImg = getappdata(fig,'full_movie_hImg');
+    if isempty(hImg) || ~isgraphics(hImg,'image') || ...
+            ~isequal(ancestor(hImg,'axes'),ax)
+        cla(ax);
+        hImg = imagesc(ax,I);
+        setappdata(fig,'full_movie_hImg',hImg);
+        colormap(ax,gray);
+        axis(ax,'image');
+        set(ax,'YDir','reverse','XTick',[],'YTick',[],'Visible','on');
+        xlim(ax,[0.5 size(I,2)+0.5]);
+        ylim(ax,[0.5 size(I,1)+0.5]);
+
+        % Echelle fixe a partir de la premiere image, comme pour la ROI.
+        v = double(I(isfinite(I)));
+        if ~isempty(v)
+            lo = prctile(v,1);
+            hi = prctile(v,99.5);
+            if ~isfinite(lo) || ~isfinite(hi) || hi<=lo
+                lo = min(v);
+                hi = max(v);
+            end
+            if isfinite(lo) && isfinite(hi)
+                if hi<=lo
+                    hi = lo + max(1,abs(lo)*1e-3);
+                end
+                clim(ax,[lo hi]);
+            end
+        end
+
+        % Le contour de la cellule reste visible sur le film plein champ.
+        cid = getappdata(fig,'cell_id');
+        ox = getappdata(fig,'outlines_x');
+        oy = getappdata(fig,'outlines_y');
+        has_outline = false;
+        if ~isempty(cid) && isscalar(cid) && isfinite(cid) && ...
+                iscell(ox) && iscell(oy) && ...
+                cid>=1 && cid<=min(numel(ox),numel(oy))
+            xx = double(ox{cid}(:));
+            yy = double(oy{cid}(:));
+            n = min(numel(xx),numel(yy));
+            good = isfinite(xx(1:n)) & isfinite(yy(1:n));
+            if any(good)
+                hold(ax,'on');
+                plot(ax,xx(good),yy(good),'r-','LineWidth',1.4, ...
+                    'HitTest','off','PickableParts','none');
+                hold(ax,'off');
+                has_outline = true;
+            end
+        end
+        if ~has_outline && ~isempty(cid) && isscalar(cid) && ...
+                isfinite(cid)
+            masks = getappdata(fig,'masks');
+            if (isnumeric(masks) || islogical(masks)) && ...
+                    ndims(masks)>=3 && cid>=1 && cid<=size(masks,1)
+                mask = squeeze(masks(round(cid),:,:))>0;
+                if isequal(size(mask),size(I)) && any(mask(:))
+                    bounds = bwboundaries(mask,'noholes');
+                    hold(ax,'on');
+                    for k=1:numel(bounds)
+                        b = bounds{k};
+                        plot(ax,b(:,2),b(:,1),'r-','LineWidth',1.4, ...
+                            'HitTest','off','PickableParts','none');
+                    end
+                    hold(ax,'off');
+                end
+            end
+        end
+    else
+        set(hImg,'CData',I);
+    end
+    title(ax,sprintf('Champ complet | frame %d / %d', ...
+        frame_index,nFrames),'Interpreter','none');
+end
 
 function update_viewer_roi_zoom(fig)
     % Image moyenne recadree sur la cellule active dans le Viewer.
@@ -6688,8 +7945,9 @@ function update_viewer_roi_zoom(fig)
 
     pixel_size_um = getappdata(fig,'pixel_size_um');
     add_scale_bar(ax,pixel_size_um);
-    % Conserver le meme titre que pendant le film, y compris a la pause :
-    % seule l'image affichee redevient l'image moyenne avec son contour.
+    % Cette fonction correspond a l'etat mean image (navigation cellule
+    % ou deplacement manuel du curseur). Une pause manuelle du film ne
+    % passe plus par cette fonction et conserve donc la frame courante.
     update_viewer_roi_title(fig);
     hold(ax,'off');
 end
@@ -7284,7 +8542,7 @@ function make_slider(parent,fig,label,field,minv,maxv,val,pos)
     uicontrol('Parent',parent,'Style','text', ...
         'String',sprintf(fmt,label,val), ...
         'Units','normalized', ...
-        'Position',[pos(1) pos(2)+0.05 pos(3) 0.04], ...
+        'Position',[pos(1) pos(2)+pos(4)+0.002 pos(3) 0.020], ...
         'Tag',['lbl_' field], ...
         'HorizontalAlignment','left', ...
         'FontWeight','normal');
@@ -7391,8 +8649,8 @@ function reset_detection_params(fig)
     % curseur est deplace manuellement :
     %   - mise a jour opts
     %   - recalcul interactif de la cellule courante
-    %   - en Viewer : selection_modified = true
-    %   - bouton Confirmer selection debloque
+    %   - en Viewer : comparaison avec les parametres initiaux
+    %   - bouton Confirmer debloque seulement si changement effectif
     %==============================================================
 
     for k = 1:numel(changed_fields)
@@ -7518,7 +8776,8 @@ function update_param(fig, field, value)
     end
 
     %==============================================================
-    % VIEWER : UN CHANGEMENT DE PARAMETRE EST UNE MODIFICATION
+    % VIEWER : comparer avec les valeurs initiales, sans marquer la
+    % selection cellulaire comme modifiee par un simple curseur.
     %
     % - débloque Confirmer sélection
     % - aucune sauvegarde tant que l'utilisateur ne confirme pas
@@ -7526,40 +8785,6 @@ function update_param(fig, field, value)
     %==============================================================
 
     if viewer_mode
-
-        setappdata( ...
-            fig, ...
-            'detection_params_modified', ...
-            true);
-
-        setappdata( ...
-            fig, ...
-            'selection_modified', ...
-            true);
-
-        changed_fields = {};
-
-        if isappdata(fig,'viewer_changed_param_fields')
-
-            changed_fields = ...
-                getappdata( ...
-                    fig, ...
-                    'viewer_changed_param_fields');
-        end
-
-        if isempty(changed_fields)
-            changed_fields = {};
-        end
-
-        if ~ismember(field,changed_fields)
-            changed_fields{end+1} = field;
-        end
-
-        setappdata( ...
-            fig, ...
-            'viewer_changed_param_fields', ...
-            changed_fields);
-
         update_population_action_buttons(fig);
     end
 
@@ -7991,6 +9216,12 @@ function restore_embedded_mean_image(fig)
     end
     setappdata(fig,'roi_movie_visible',false);
     setappdata(fig,'roi_movie_hImg',[]);
+    % Le clic/drag sur le curseur restaure AUSSI l'image plein champ.
+    if getappdata(fig,'full_movie_visible')
+        setappdata(fig,'full_movie_visible',false);
+        setappdata(fig,'full_movie_hImg',[]);
+        update_viewer_full_mean_image(fig);
+    end
     if getappdata(fig,'viewer_mode')
         update_viewer_roi_zoom(fig);
     else
@@ -8036,7 +9267,11 @@ function navigate_speed_active(fig,direction)
     min_time = 0;
     roi_data = getappdata(fig,'roi_movie_data');
     crop = getappdata(fig,'roi_crop_bounds');
-    if ~isempty(roi_data) && ~isempty(crop) && numel(crop)==4
+    if (getappdata(fig,'movie_cell_enabled') || ...
+            getappdata(fig,'movie_full_enabled')) && ...
+            getappdata(fig,'roi_movie_available') && ...
+            ~isempty(roi_data) && ...
+            (numel(crop)==4 || getappdata(fig,'movie_full_enabled'))
         min_time = (getappdata(fig,'plane')-1) / ...
             getappdata(fig,'fs_motion');
     end
@@ -8083,75 +9318,160 @@ function navigate_speed_active(fig,direction)
     setappdata(fig,'speed_active_stop_time',stop_time);
 end
 
-function toggle_shared_movie(fig)
+function movie_selection_changed(fig,src,kind)
+    % Le filtre concerne exclusivement la lecture, pas le raster.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            isempty(src) || ~ishghandle(src)
+        return;
+    end
+    was_playing = getappdata(fig,'roi_movie_playing') || ...
+        getappdata(fig,'behavior_movie_playing');
+    pause_roi_movie(fig);
+    pause_behavior_movie(fig);
+    value = logical(get(src,'Value'));
+    switch kind
+        case 'cell'
+            setappdata(fig,'movie_cell_enabled',value);
+            if ~value
+                setappdata(fig,'roi_movie_visible',false);
+                setappdata(fig,'roi_movie_hImg',[]);
+                if getappdata(fig,'viewer_mode')
+                    update_viewer_roi_zoom(fig);
+                else
+                    update_roi_zoom(fig);
+                end
+            end
+        case 'full'
+            setappdata(fig,'movie_full_enabled',value);
+            if ~value
+                setappdata(fig,'full_movie_visible',false);
+                setappdata(fig,'full_movie_hImg',[]);
+                update_viewer_full_mean_image(fig);
+            end
+        case 'behavior'
+            setappdata(fig,'movie_behavior_enabled',value);
+        otherwise
+            return;
+    end
+    update_movie_controls(fig);
+    % Reprendre avec les vues encore cochees et un seul timer maitre.
+    if was_playing && movie_playback_available(fig)
+        play_shared_movie(fig);
+    end
+end
 
+function tf = movie_playback_available(fig)
+    % Les deux vues calciques partagent le meme reg_tif, mais chacune peut
+    % declencher la lecture independamment de l'autre.
+    tf = ((getappdata(fig,'movie_cell_enabled') || ...
+           getappdata(fig,'movie_full_enabled')) && ...
+          getappdata(fig,'roi_movie_available')) || ...
+         (getappdata(fig,'movie_behavior_enabled') && ...
+          getappdata(fig,'behavior_movie_available'));
+end
+
+function update_movie_controls(fig)
     if isempty(fig) || ~ishghandle(fig)
         return;
     end
-
-    roi_playing = ...
-        isappdata(fig,'roi_movie_playing') && ...
-        getappdata(fig,'roi_movie_playing');
-
-    behavior_playing = ...
-        isappdata(fig,'behavior_movie_playing') && ...
+    available = movie_playback_available(fig);
+    playing = getappdata(fig,'roi_movie_playing') || ...
         getappdata(fig,'behavior_movie_playing');
+    controls = {'btn_shared_movie','btn_pause_movie', ...
+                'btn_prev_speed_active','btn_next_speed_active'};
+    states = [available && ~playing,playing, ...
+        available && ~isempty(getappdata(fig,'speed_active_onset_times')), ...
+        available && ~isempty(getappdata(fig,'speed_active_onset_times'))];
+    for k = 1:numel(controls)
+        h = findobj(fig,'Tag',controls{k});
+        if ~isempty(h) && ishghandle(h(1))
+            set(h(1),'Enable',on_off(states(k)));
+        end
+    end
+end
 
-    if roi_playing || behavior_playing
-        % Pause manuelle : garder l'episode selectionne. Une reprise
-        % continuera jusqu'a sa fin, sans passer a l'episode suivant.
-        pause_roi_movie(fig);
-        pause_behavior_movie(fig);
-        restore_embedded_mean_image(fig);
+function pause_shared_movie(fig)
+    % Pause manuelle : laisser la frame ROI a l'ecran, ne pas remettre
+    % l'image moyenne avant un changement de cellule ou un seek manuel.
+    if isempty(fig) || ~ishghandle(fig)
+        return;
+    end
+    pause_roi_movie(fig);
+    pause_behavior_movie(fig);
+    update_movie_controls(fig);
+end
+
+function toggle_shared_movie(fig)
+    % Compatibilite avec d'eventuels appels historiques.
+    if isempty(fig) || ~ishghandle(fig)
+        return;
+    end
+    if getappdata(fig,'roi_movie_playing') || ...
+            getappdata(fig,'behavior_movie_playing')
+        pause_shared_movie(fig);
+    else
+        play_shared_movie(fig);
+    end
+end
+
+function play_shared_movie(fig)
+    if isempty(fig) || ~ishghandle(fig) || ~movie_playback_available(fig)
+        return;
+    end
+    if getappdata(fig,'roi_movie_playing') || ...
+            getappdata(fig,'behavior_movie_playing')
         return;
     end
 
-    % Apres navigation par fleche, le bouton Play doit respecter la
-    % fin de CET episode. Pour un episode d'une seule frame, ne pas
-    % demarrer un timer qui avancerait immediatement au-dela.
+    % Lecture apres une navigation par episode : ne jamais depasser sa fin.
     stop_time = getappdata(fig,'speed_active_stop_time');
-    if ~isempty(stop_time) && isscalar(stop_time) && ...
-            isfinite(stop_time)
+    if ~isempty(stop_time) && isscalar(stop_time) && isfinite(stop_time)
         current_time = getappdata(fig,'shared_movie_time');
         if ~isempty(current_time) && isscalar(current_time) && ...
                 isfinite(current_time) && current_time >= stop_time-1e-9
             seek_shared_movie_time(fig,stop_time);
             setappdata(fig,'speed_active_stop_time',[]);
-            update_shared_movie_button(fig);
+            update_movie_controls(fig);
             return;
         end
     end
 
-    % La camera est l'horloge maitresse si elle est disponible.
-    % seek_shared_movie_time() aligne chaque frame ROI sur son temps global.
-    camera_data = getappdata(fig,'behavior_movie_data');
-    camera_path = getappdata(fig,'behavior_movie_path');
-
-    if isempty(camera_data) && ~isempty(camera_path) && isfile(camera_path)
-        camera_data = get_behavior_movie_data(fig);
+    % Comportement maitre lorsqu'il est selectionne ; sinon reg_tif est
+    % maitre pour la cellule et/ou le champ complet.
+    use_behavior = getappdata(fig,'movie_behavior_enabled') && ...
+        getappdata(fig,'behavior_movie_available');
+    if use_behavior
+        camera_data = getappdata(fig,'behavior_movie_data');
+        if isempty(camera_data)
+            camera_data = get_behavior_movie_data(fig);
+        end
+        use_behavior = ~isempty(camera_data) && ...
+            isfield(camera_data,'nFrames') && camera_data.nFrames > 1;
+        if ~use_behavior
+            setappdata(fig,'behavior_movie_available',false);
+        end
     end
-
-    % Afficher le film ROI a la place de l'image moyenne uniquement
-    % durant la lecture. Sans reg_tif, conserver l'image moyenne.
-    roi_path = getappdata(fig,'suite2p_path');
+    calcium_available = getappdata(fig,'roi_movie_available');
+    use_cell = getappdata(fig,'movie_cell_enabled') && calcium_available;
+    use_full = getappdata(fig,'movie_full_enabled') && calcium_available;
     crop = getappdata(fig,'roi_crop_bounds');
-    roi_available = ~isempty(roi_path) && ~isempty(crop) && ...
-        isfolder(fullfile(char(string(roi_path)),'reg_tif'));
-    setappdata(fig,'roi_movie_visible',roi_available);
-    if ~isempty(camera_data) && ...
-            isfield(camera_data,'nFrames') && ...
-            camera_data.nFrames > 1
+    setappdata(fig,'roi_movie_visible',use_cell && numel(crop)==4);
+    setappdata(fig,'full_movie_visible',use_full);
+
+    if use_behavior
         toggle_behavior_movie(fig);
-    else
-        % Le film ROI reste utilisable si la camera est absente.
+    elseif use_cell || use_full
         toggle_roi_movie(fig);
+    else
+        restore_embedded_mean_image(fig);
     end
+    update_movie_controls(fig);
 end
 
 
 function reached = stop_at_speed_active_end(fig,t_next)
-    % Le timer peut sauter plusieurs frames en cas de lecture disque lente.
-    % Toujours afficher la DERNIERE frame active, puis arreter les films.
+    % Meme en lecture adaptative sans saut de frame, atteindre la fin exacte
+    % de l'episode et afficher sa derniere image avant l'arret.
     reached = false;
     stop_time = getappdata(fig,'speed_active_stop_time');
     if isempty(stop_time) || ~isscalar(stop_time) || ...
@@ -8169,27 +9489,147 @@ end
 
 
 function update_shared_movie_button(fig)
+    % Les boutons Play et Pause restent distincts dans le panneau gauche.
+    update_movie_controls(fig);
+end
 
-    if isempty(fig) || ~ishghandle(fig)
+function period_sec = movie_playback_period(~,~)
+    % Tick court et fixe du scheduler MATLAB. Le nombre d'images par
+    % seconde est regule separement par adaptive_movie_tick(), sans
+    % modifier la propriete Period pendant qu'un timer tourne.
+    period_sec = 0.025;
+end
+
+
+function start_adaptive_movie_playback(fig,master,source_fps)
+    % Initialiser une mesure neuve a chaque demarrage / changement de film.
+    % Un seul timer maitre gere les deux films quand ils sont coches.
+    fps_max = getappdata(fig,'movie_playback_fps_max');
+    if ~isscalar(fps_max) || ~isfinite(fps_max) || fps_max <= 0
+        fps_max = 20;
+    end
+    if ~isscalar(source_fps) || ~isfinite(source_fps) || source_fps <= 0
+        source_fps = fps_max;
+    end
+    fps_max = min(source_fps,fps_max);
+    state = struct( ...
+        'master',master, ...
+        'fps_max',fps_max, ...
+        'target_fps',min(10,fps_max), ...
+        'avg_render_s',[], ...
+        'last_frame_clock',tic, ...
+        'busy',false);
+    setappdata(fig,'movie_playback_adaptive',state);
+end
+
+
+function adaptive_movie_tick(fig,master)
+    % Mesurer le travail complet (lecture TIFF, rendu ROI + camera, curseur)
+    % pour adapter la vitesse de lecture aux performances reelles.
+    % Le timer est un scheduler ; il ne change jamais le numero de frame.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'movie_playback_adaptive')
+        return;
+    end
+    state = getappdata(fig,'movie_playback_adaptive');
+    if isempty(state) || ~strcmp(state.master,master) || state.busy
+        return;
+    end
+    if toc(state.last_frame_clock) < 1/state.target_fps
         return;
     end
 
-    btn = findobj(fig,'Tag','btn_shared_movie');
-    if isempty(btn) || ~ishghandle(btn)
+    state.busy = true;
+    frame_clock = tic;
+    setappdata(fig,'movie_playback_adaptive',state);
+
+    frame_field = 'roi_movie_frame';
+    if strcmp(master,'behavior')
+        frame_field = 'behavior_movie_frame';
+    end
+    previous_frame = getappdata(fig,frame_field);
+    try
+        if strcmp(master,'behavior')
+            advance_behavior_movie(fig);
+        else
+            advance_roi_movie(fig);
+        end
+    catch ME
+        % Ne jamais laisser un timer continuer indefiniment sur une frame
+        % illisible ou une erreur graphique.
+        if ishghandle(fig)
+            if strcmp(master,'behavior')
+                pause_behavior_movie(fig);
+            else
+                pause_roi_movie(fig);
+            end
+        end
+        warning('peak_detection_tuner:AdaptiveMovieFrameFailed', ...
+            'Lecture adaptative interrompue : %s',ME.message);
+        return;
+    end
+    render_s = toc(frame_clock);
+    if ~ishghandle(fig) || ~isappdata(fig,'movie_playback_adaptive')
+        return;
+    end
+    state = getappdata(fig,'movie_playback_adaptive');
+    if isempty(state) || ~strcmp(state.master,master)
         return;
     end
 
-    playing = ...
-        (isappdata(fig,'roi_movie_playing') && ...
-         getappdata(fig,'roi_movie_playing')) || ...
-        (isappdata(fig,'behavior_movie_playing') && ...
-         getappdata(fig,'behavior_movie_playing'));
+    playing_field = 'roi_movie_playing';
+    if strcmp(master,'behavior')
+        playing_field = 'behavior_movie_playing';
+    end
+    if ~getappdata(fig,playing_field)
+        state.busy = false;
+        setappdata(fig,'movie_playback_adaptive',state);
+        return;
+    end
 
-    if playing
-        set(btn,'String','⏸');
+    % Une lecture echouee ne doit pas declencher une boucle bloquee sur la
+    % meme frame. Les fins de film et d'episode sont gerees par advance_*.
+    current_frame = getappdata(fig,frame_field);
+    if isequal(current_frame,previous_frame)
+        if strcmp(master,'behavior')
+            pause_behavior_movie(fig);
+        else
+            pause_roi_movie(fig);
+        end
+        warning('peak_detection_tuner:AdaptiveMovieNoProgress', ...
+            'Film mis en pause : impossible d''avancer depuis la frame %d.', ...
+            previous_frame);
+        state.busy = false;
+        setappdata(fig,'movie_playback_adaptive',state);
+        return;
+    end
+
+    % Lissage exponentiel : reagir vite aux ralentissements et remonter
+    % progressivement quand le disque / l'interface redevient disponible.
+    if isempty(state.avg_render_s)
+        state.avg_render_s = render_s;
     else
-        set(btn,'String','▶');
+        alpha = 0.15;
+        if render_s > state.avg_render_s
+            alpha = 0.40;
+        end
+        state.avg_render_s = ...
+            (1-alpha)*state.avg_render_s + alpha*render_s;
     end
+    scheduler_overhead_s = movie_playback_period(fig,state.fps_max);
+    sustainable_fps = 0.85 / max(0.001, ...
+        state.avg_render_s + scheduler_overhead_s);
+    desired_fps = max(0.5,min(state.fps_max,sustainable_fps));
+
+    % Eviter les changements brutaux, notamment lors d'une lecture reseau.
+    if desired_fps < state.target_fps
+        state.target_fps = max(desired_fps,0.70*state.target_fps);
+    else
+        state.target_fps = min(desired_fps,1.10*state.target_fps);
+    end
+    state.last_frame_clock = frame_clock;
+    state.busy = false;
+    setappdata(fig,'movie_playback_adaptive',state);
 end
 
 
@@ -8197,9 +9637,9 @@ end
 
 function toggle_roi_movie(fig)
 
-    if isempty(fig) || ...
-            ~ishghandle(fig)
-
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~(getappdata(fig,'movie_cell_enabled') || ...
+              getappdata(fig,'movie_full_enabled'))
         return;
     end
 
@@ -8237,12 +9677,9 @@ function toggle_roi_movie(fig)
             fig, ...
             'roi_crop_bounds');
 
-    if isempty(crop_bounds) || ...
-            numel(crop_bounds) ~= 4
-
-        fprintf( ...
-            'ROI movie: aucun crop disponible pour cette cellule.\n');
-
+    if numel(crop_bounds) ~= 4 && ...
+            ~getappdata(fig,'full_movie_visible')
+        fprintf('Film calcique : ni crop ni vue plein champ disponible.\n');
         return;
     end
 
@@ -8283,7 +9720,7 @@ function toggle_roi_movie(fig)
     end
 
     %==============================================================
-    % VITESSE REELLE DU PLAN
+    % CADENCE D'AFFICHAGE : LECTURE RALENTIE, TEMPS SOURCE CONSERVE
     %==============================================================
 
     fs_plane = ...
@@ -8298,10 +9735,7 @@ function toggle_roi_movie(fig)
         fs_plane = 10;
     end
 
-    period_sec = ...
-        max( ...
-            0.02, ...
-            1 / fs_plane);
+    period_sec = movie_playback_period(fig,fs_plane);
 
     %==============================================================
     % SUPPRIMER UN ANCIEN TIMER
@@ -8337,13 +9771,13 @@ function toggle_roi_movie(fig)
     movie_timer = ...
         timer( ...
             'ExecutionMode', ...
-            'fixedRate', ...
+            'fixedSpacing', ...
             'Period', ...
             period_sec, ...
             'BusyMode', ...
             'drop', ...
             'TimerFcn', ...
-            @(~,~) advance_roi_movie(fig));
+            @(~,~) adaptive_movie_tick(fig,'roi'));
 
     setappdata( ...
         fig, ...
@@ -8355,6 +9789,7 @@ function toggle_roi_movie(fig)
         'roi_movie_playing', ...
         true);
 
+    start_adaptive_movie_playback(fig,'roi',fs_plane);
     update_shared_movie_button(fig);
 
     try
@@ -8527,6 +9962,8 @@ function reset_roi_movie_display(fig)
     setappdata(fig,'roi_movie_hImg',[]);
     setappdata(fig,'roi_movie_clim',[]);
     setappdata(fig,'roi_crop_bounds',[]);
+    setappdata(fig,'full_movie_visible',false);
+    setappdata(fig,'full_movie_hImg',[]);
 
     %==============================================================
     % Le curseur partage reste visible pendant la navigation cellulaire.
@@ -8781,25 +10218,9 @@ function show_roi_movie_frame( ...
         return;
     end
 
-    if ~isappdata(fig,'roi_crop_bounds')
-        return;
-    end
-
-    crop_bounds = ...
-        getappdata( ...
-            fig, ...
-            'roi_crop_bounds');
-
-    if isempty(crop_bounds) || ...
-            numel(crop_bounds) ~= 4
-
-        return;
-    end
-
-    xmin = crop_bounds(1);
-    xmax = crop_bounds(2);
-    ymin = crop_bounds(3);
-    ymax = crop_bounds(4);
+    crop_bounds = getappdata(fig,'roi_crop_bounds');
+    show_roi = getappdata(fig,'roi_movie_visible') && ...
+        numel(crop_bounds)==4;
 
     %==============================================================
     % FRAME -> FICHIER TIFF + PAGE
@@ -8859,8 +10280,26 @@ function show_roi_movie_frame( ...
         return;
     end
 
-    I = ...
-        double(I);
+    % La vue plein champ et le crop reçoivent exactement la MEME frame.
+    % Aucune deuxieme lecture de reg_tif n'est necessaire.
+    show_full_field_movie_frame(fig,I,frame_index,movie_data.nFrames);
+
+    % Sans masque/crop valide, le film plein champ reste lisible.
+    if ~show_roi
+        setappdata(fig,'roi_movie_frame',frame_index);
+        fs_plane = getappdata(fig,'fs_plane');
+        fs_motion = getappdata(fig,'fs_motion');
+        plane = getappdata(fig,'plane');
+        update_shared_movie_cursor(fig, ...
+            (plane-1)/fs_motion + (frame_index-1)/fs_plane);
+        drawnow limitrate nocallbacks;
+        return;
+    end
+
+    xmin = crop_bounds(1);
+    xmax = crop_bounds(2);
+    ymin = crop_bounds(3);
+    ymax = crop_bounds(4);
 
     %==============================================================
     % SECURISER LE CROP
@@ -8886,16 +10325,24 @@ function show_roi_movie_frame( ...
             size(I,1), ...
             round(ymax));
 
-    if xmax < xmin || ...
-            ymax < ymin
-
+    if xmax < xmin || ymax < ymin
+        % Dimensions inattendues : conserver la lecture plein champ.
+        setappdata(fig,'roi_movie_visible',false);
+        setappdata(fig,'roi_movie_frame',frame_index);
+        fs_plane = getappdata(fig,'fs_plane');
+        fs_motion = getappdata(fig,'fs_motion');
+        plane = getappdata(fig,'plane');
+        update_shared_movie_cursor(fig, ...
+            (plane-1)/fs_motion + (frame_index-1)/fs_plane);
+        drawnow limitrate nocallbacks;
         return;
     end
 
+    % Convertir uniquement le petit crop, pas l'image TIFF entiere.
     cropImg = ...
-        I( ...
+        double(I( ...
             ymin:ymax, ...
-            xmin:xmax);
+            xmin:xmax));
 
     ax = ...
         getappdata( ...
@@ -9136,7 +10583,8 @@ function show_roi_movie_frame( ...
         'roi_movie_frame', ...
         frame_index);
 
-    drawnow limitrate;
+    % Ne pas autoriser un timer/callback imbrique pendant le rendu.
+    drawnow limitrate nocallbacks;
 
     %==============================================================
     % La frame du plan p est decalee de (p-1)/fs_motion dans le
@@ -9225,7 +10673,10 @@ function seek_shared_movie_time(fig,t_requested)
 
     % Le movie ROI est indexe une seule fois, si le crop est disponible.
     crop = getappdata(fig,'roi_crop_bounds');
-    if ~isempty(crop) && numel(crop)==4
+    if (getappdata(fig,'movie_cell_enabled') || ...
+            getappdata(fig,'movie_full_enabled')) && ...
+            getappdata(fig,'roi_movie_available') && ...
+            (numel(crop)==4 || getappdata(fig,'full_movie_visible'))
         roi_data = getappdata(fig,'roi_movie_data');
         if isempty(roi_data)
             suite2p_path = getappdata(fig,'suite2p_path');
@@ -9242,21 +10693,26 @@ function seek_shared_movie_time(fig,t_requested)
         end
     end
 
-    behavior_data = getappdata(fig,'behavior_movie_data');
-    if isempty(behavior_data)
-        movie_path = getappdata(fig,'behavior_movie_path');
-        if ~isempty(movie_path) && isfile(movie_path)
-            behavior_data = get_behavior_movie_data(fig);
+    if getappdata(fig,'movie_behavior_enabled') && ...
+            getappdata(fig,'behavior_movie_available')
+        behavior_data = getappdata(fig,'behavior_movie_data');
+        if isempty(behavior_data)
+            movie_path = getappdata(fig,'behavior_movie_path');
+            if ~isempty(movie_path) && isfile(movie_path)
+                behavior_data = get_behavior_movie_data(fig);
+            end
         end
-    end
-    if ~isempty(behavior_data) && behavior_data.nFrames>=1
-        t_min = max(t_min,0);
-        t_max = min(t_max,(behavior_data.nFrames-1)/fs_motion);
-    else
-        behavior_data = [];
+        if ~isempty(behavior_data) && behavior_data.nFrames>=1
+            t_min = max(t_min,0);
+            t_max = min(t_max,(behavior_data.nFrames-1)/fs_motion);
+        else
+            behavior_data = [];
+        end
     end
 
     if isempty(roi_data) && isempty(behavior_data)
+        % Aucun film selectionne/lisible : les graphes restent navigables.
+        update_shared_movie_cursor(fig,t_requested);
         return;
     end
 
@@ -9268,15 +10724,21 @@ function seek_shared_movie_time(fig,t_requested)
     t_requested = max(t_min,min(t_max,t_requested));
     setappdata(fig,'shared_movie_max_time',t_max);
 
-    if ~isempty(roi_data) && getappdata(fig,'roi_movie_visible')
+    if ~isempty(roi_data) && ...
+            (getappdata(fig,'roi_movie_visible') || ...
+             getappdata(fig,'full_movie_visible'))
         roi_idx = round((t_requested-plane_offset)*fs_plane)+1;
         roi_idx = max(1,min(roi_data.nFrames,roi_idx));
         h_roi = getappdata(fig,'roi_movie_hImg');
+        h_full = getappdata(fig,'full_movie_hImg');
         current_roi = getappdata(fig,'roi_movie_frame');
+        roi_missing = getappdata(fig,'roi_movie_visible') && ...
+            (isempty(h_roi) || ~isgraphics(h_roi,'image'));
+        full_missing = getappdata(fig,'full_movie_visible') && ...
+            (isempty(h_full) || ~isgraphics(h_full,'image'));
         if isempty(current_roi) || current_roi~=roi_idx || ...
-                isempty(h_roi) || ~isgraphics(h_roi)
-            show_roi_movie_frame(fig,roi_idx, ...
-                isempty(h_roi) || ~isgraphics(h_roi));
+                roi_missing || full_missing
+            show_roi_movie_frame(fig,roi_idx,roi_missing);
         end
     end
 
@@ -9295,7 +10757,8 @@ function seek_shared_movie_time(fig,t_requested)
     % Les deux frames sont quantifiees sur des grilles differentes.
     % Ne pas laisser la derniere lecture choisir une deuxieme ligne.
     update_shared_movie_cursor(fig,t_requested);
-    % Meme titre de frame a l'arret, bien que l'axe affiche la moyenne.
+    % Si l'axe ROI est actuellement en mode mean image (par exemple apres
+    % un clic/drag du curseur), garder le titre synchronise avec le temps.
     if getappdata(fig,'viewer_mode') && ...
             ~getappdata(fig,'roi_movie_visible') && ...
             ~isempty(getappdata(fig,'roi_crop_bounds'))
@@ -9324,10 +10787,161 @@ function update_shared_movie_cursor(fig,t_global)
         h = getappdata(fig,cursor_fields{k});
         if isempty(h) || ~isgraphics(h)
             h = xline(ax,t_global,'r-','LineWidth',1.6);
-            set(h,'HitTest','off','PickableParts','none');
+            set(h, ...
+                'HitTest','on', ...
+                'PickableParts','visible', ...
+                'ButtonDownFcn',@(~,~) start_shared_cursor_drag(fig,ax));
             setappdata(fig,cursor_fields{k},h);
         else
             h.Value = t_global;
+            set(h, ...
+                'HitTest','on', ...
+                'PickableParts','visible', ...
+                'ButtonDownFcn',@(~,~) start_shared_cursor_drag(fig,ax));
+        end
+    end
+end
+
+function start_shared_cursor_drag(fig,source_ax)
+    % Drag-and-drop du curseur temporel commun. Cliquer une des lignes
+    % rouges permet de la glisser ; les cinq axes et les films integres
+    % restent synchronises pendant le mouvement.
+    if isempty(fig) || ~ishghandle(fig) || ...
+            isempty(source_ax) || ~isgraphics(source_ax,'axes')
+        return;
+    end
+
+    pause_roi_movie(fig);
+    pause_behavior_movie(fig);
+    setappdata(fig,'speed_active_stop_time',[]);
+    setappdata(fig,'speed_active_last_onset_time',[]);
+
+    setappdata(fig,'shared_cursor_old_motion_fcn',get(fig,'WindowButtonMotionFcn'));
+    setappdata(fig,'shared_cursor_old_up_fcn',get(fig,'WindowButtonUpFcn'));
+    setappdata(fig,'shared_cursor_drag_active',true);
+    setappdata(fig,'shared_cursor_drag_source_ax',source_ax);
+
+    set(fig,'WindowButtonMotionFcn',@(~,~) drag_shared_cursor(fig));
+    set(fig,'WindowButtonUpFcn',@(~,~) stop_shared_cursor_drag(fig));
+
+    drag_shared_cursor(fig);
+end
+
+function drag_shared_cursor(fig)
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~isappdata(fig,'shared_cursor_drag_active') || ...
+            ~getappdata(fig,'shared_cursor_drag_active')
+        return;
+    end
+
+    ax = getappdata(fig,'shared_cursor_drag_source_ax');
+    if isempty(ax) || ~isgraphics(ax,'axes')
+        return;
+    end
+
+    cp = get(ax,'CurrentPoint');
+    if isempty(cp) || ~isfinite(cp(1,1))
+        return;
+    end
+
+    xl = xlim(ax);
+    t = max(min(xl),min(max(xl),double(cp(1,1))));
+
+    restore_embedded_mean_image(fig);
+    seek_shared_movie_time(fig,t);
+end
+
+function stop_shared_cursor_drag(fig)
+    % La position au RELACHEMENT est prioritaire sur le dernier
+    % WindowButtonMotionFcn (qui peut ne pas avoir ete execute).
+    if isempty(fig) || ~ishghandle(fig)
+        return;
+    end
+
+    drag_active = isappdata(fig,'shared_cursor_drag_active') && ...
+        getappdata(fig,'shared_cursor_drag_active');
+
+    t_release = NaN;
+    if drag_active && isappdata(fig,'shared_cursor_drag_source_ax')
+        ax = getappdata(fig,'shared_cursor_drag_source_ax');
+        t_release = shared_cursor_time_at_release(fig,ax);
+    end
+
+    % Restaurer les callbacks AVANT le seek final pour eviter toute
+    % reentree durant un rafraichissement de film ou un drawnow.
+    setappdata(fig,'shared_cursor_drag_active',false);
+
+    old_motion = [];
+    old_up = [];
+    if isappdata(fig,'shared_cursor_old_motion_fcn')
+        old_motion = getappdata(fig,'shared_cursor_old_motion_fcn');
+    end
+    if isappdata(fig,'shared_cursor_old_up_fcn')
+        old_up = getappdata(fig,'shared_cursor_old_up_fcn');
+    end
+
+    set(fig,'WindowButtonMotionFcn',old_motion);
+    set(fig,'WindowButtonUpFcn',old_up);
+    setappdata(fig,'shared_cursor_drag_source_ax',[]);
+    setappdata(fig,'shared_cursor_old_motion_fcn',[]);
+    setappdata(fig,'shared_cursor_old_up_fcn',[]);
+
+    if isfinite(t_release)
+        % Dernier repositionnement impose par la souris AU LACHER.
+        % seek_shared_movie_time synchronise les cinq traits et les films.
+        restore_embedded_mean_image(fig);
+        seek_shared_movie_time(fig,t_release);
+    end
+end
+
+function t = shared_cursor_time_at_release(fig,ax)
+    % Le CurrentPoint de l'axe peut rester sur le dernier mouvement
+    % traite quand la souris est relachee hors de l'axe. Lire plutot
+    % le CurrentPoint de la FIGURE, puis convertir ses pixels en temps.
+    t = NaN;
+    if isempty(fig) || ~ishghandle(fig) || ...
+            isempty(ax) || ~isgraphics(ax,'axes')
+        return;
+    end
+
+    old_units = get(fig,'Units');
+    try
+        if ~strcmpi(old_units,'pixels')
+            set(fig,'Units','pixels');
+        end
+        mouse_px = get(fig,'CurrentPoint');
+        if ~strcmpi(old_units,'pixels')
+            set(fig,'Units',old_units);
+        end
+        % true : inclure tous les uipanels parents, jusqu'a la figure.
+        ax_px = getpixelposition(ax,true);
+        xl = xlim(ax);
+        if numel(mouse_px)<2 || numel(ax_px)~=4 || ...
+                ax_px(3)<=0 || numel(xl)~=2 || ...
+                any(~isfinite(mouse_px(1:2))) || ...
+                any(~isfinite(ax_px)) || any(~isfinite(xl)) || ...
+                xl(2)<=xl(1)
+            return;
+        end
+
+        fraction = (double(mouse_px(1))-ax_px(1))/ax_px(3);
+        fraction = max(0,min(1,fraction));
+        if strcmpi(get(ax,'XDir'),'reverse')
+            fraction = 1-fraction;
+        end
+        t = xl(1) + fraction*(xl(2)-xl(1));
+    catch
+        % Remettre les unites de la figure meme en cas d'erreur.
+        if ishghandle(fig)
+            set(fig,'Units',old_units);
+        end
+        % Repli sur le CurrentPoint de l'axe si necessaire.
+        if isgraphics(ax,'axes')
+            cp = get(ax,'CurrentPoint');
+            xl = xlim(ax);
+            if ~isempty(cp) && isfinite(cp(1,1))
+                t = max(xl(1),min(xl(2),double(cp(1,1))));
+            end
         end
     end
 end
@@ -9336,9 +10950,8 @@ end
 
 function toggle_behavior_movie(fig)
 
-    if isempty(fig) || ...
-            ~ishghandle(fig)
-
+    if isempty(fig) || ~ishghandle(fig) || ...
+            ~getappdata(fig,'movie_behavior_enabled')
         return;
     end
 
@@ -9404,7 +11017,8 @@ function toggle_behavior_movie(fig)
         fs_motion = getappdata(fig,'fs_motion');
         plane = getappdata(fig,'plane');
         t_first = 0;
-        if ~isempty(getappdata(fig,'roi_crop_bounds')) && ...
+        if (getappdata(fig,'movie_cell_enabled') || ...
+                getappdata(fig,'movie_full_enabled')) && ...
                 ~isempty(getappdata(fig,'roi_movie_data'))
             t_first = (plane-1)/fs_motion;
         end
@@ -9428,13 +11042,9 @@ function toggle_behavior_movie(fig)
         fs_motion = 10;
     end
 
-    % Le timer peut etre legerement plus lent que le framerate reel :
-    % advance_behavior_movie recalcule la frame cible avec toc() et
-    % saute les frames necessaires si la lecture disque prend du retard.
-    period_sec = ...
-        max( ...
-            0.02, ...
-            1 / fs_motion);
+    % Scheduler court ; la cadence effective est auto-regulee en fonction
+    % du temps necessaire pour lire et afficher les deux films.
+    period_sec = movie_playback_period(fig,fs_motion);
 
     %==============================================================
     % SUPPRIMER ANCIEN TIMER
@@ -9464,33 +11074,19 @@ function toggle_behavior_movie(fig)
     end
 
     %==============================================================
-    % BASE TEMPORELLE DU PLAY
-    %==============================================================
-
-    setappdata( ...
-        fig, ...
-        'behavior_movie_start_frame', ...
-        frame_idx);
-
-    setappdata( ...
-        fig, ...
-        'behavior_movie_start_tic', ...
-        tic);
-
-    %==============================================================
     % TIMER CAMERA : seul timer actif, la ROI suit son temps.
     %==============================================================
 
     movie_timer = ...
         timer( ...
             'ExecutionMode', ...
-            'fixedRate', ...
+            'fixedSpacing', ...
             'Period', ...
             period_sec, ...
             'BusyMode', ...
             'drop', ...
             'TimerFcn', ...
-            @(~,~) advance_behavior_movie(fig));
+            @(~,~) adaptive_movie_tick(fig,'behavior'));
 
     setappdata( ...
         fig, ...
@@ -9502,13 +11098,15 @@ function toggle_behavior_movie(fig)
         'behavior_movie_playing', ...
         true);
 
+    start_adaptive_movie_playback(fig,'behavior',fs_motion);
     update_shared_movie_button(fig);
 
+    playback_state = getappdata(fig,'movie_playback_adaptive');
     fprintf( ...
-        'Behavior movie: play frame %d / %d | %.3f Hz.\n', ...
-        frame_idx, ...
-        movie_data.nFrames, ...
-        fs_motion);
+        ['Behavior movie: frame %d / %d | acquisition %.3f Hz | ' ...
+         'lecture adaptative (depart %.1f, plafond %.1f images/s).\n'], ...
+        frame_idx, movie_data.nFrames, fs_motion, ...
+        playback_state.target_fps, playback_state.fps_max);
 
     try
         start(movie_timer);
@@ -9561,45 +11159,6 @@ function advance_behavior_movie(fig)
         fs_motion = 10;
     end
 
-    start_frame = 1;
-
-    if isappdata(fig,'behavior_movie_start_frame')
-
-        start_frame = ...
-            getappdata( ...
-                fig, ...
-                'behavior_movie_start_frame');
-    end
-
-    start_tic = [];
-
-    if isappdata(fig,'behavior_movie_start_tic')
-
-        start_tic = ...
-            getappdata( ...
-                fig, ...
-                'behavior_movie_start_tic');
-    end
-
-    if isempty(start_tic)
-
-        start_tic = tic;
-
-        setappdata( ...
-            fig, ...
-            'behavior_movie_start_tic', ...
-            start_tic);
-    end
-
-    elapsed_sec = ...
-        toc(start_tic);
-
-    frame_idx = ...
-        start_frame + ...
-        floor( ...
-            elapsed_sec * ...
-            fs_motion);
-
     current_frame = 1;
 
     if isappdata(fig,'behavior_movie_frame')
@@ -9610,10 +11169,8 @@ function advance_behavior_movie(fig)
                 'behavior_movie_frame');
     end
 
-    % Pas de nouvelle lecture si la frame cible n'a pas change.
-    if frame_idx <= current_frame
-        return;
-    end
+    % Ne jamais sauter de frames si une lecture TIFF ou un redraw tarde.
+    frame_idx = round(current_frame) + 1;
 
     t_next = (frame_idx-1)/fs_motion;
     if stop_at_speed_active_end(fig,t_next)
@@ -9753,7 +11310,6 @@ function reset_behavior_movie_display( ...
 
     setappdata(fig,'behavior_movie_timer',[]);
     setappdata(fig,'behavior_movie_playing',false);
-    setappdata(fig,'behavior_movie_start_tic',[]);
 
     %==============================================================
     % TIFF
@@ -10717,7 +12273,8 @@ function ok = show_behavior_movie_frame( ...
     % Le comportement utilise le meme curseur que la ROI.
     update_shared_movie_cursor(fig,time_sec);
 
-    drawnow limitrate;
+    % Eviter la reentree d'un timer durant la mise a jour des films.
+    drawnow limitrate nocallbacks;
 
     ok = true;
 end
