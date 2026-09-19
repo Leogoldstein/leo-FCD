@@ -1,26 +1,49 @@
-function selected_groups = DF_peak_detection( ...
+function [selected_groups, recap_all] = DF_peak_detection( ...
         selected_groups, ...
         include_electroporated, ...
         automatic_selection, ...
-        recap_all)
+        recap_all, ...
+        detection_mode)
 
     if nargin < 1 || isempty(selected_groups)
         return;
     end
 
     type_names = ...
-        fieldnames(selected_groups);
+        fieldnames(selected_groups);  
 
-    [ ...
-        peak_detection_mode, ...
-        clear_outputs_requested ...
-    ] = ...
-        ask_initial_peak_detection_mode();
+    % Mode facultatif
+    if nargin < 5 || isempty(detection_mode)
     
+        [peak_detection_mode, clear_outputs_requested] = ...
+            ask_initial_peak_detection_mode();
+    
+    else
+    
+        peak_detection_mode = char(lower(strtrim(string(detection_mode))));
+        clear_outputs_requested = false;
+    
+        if strcmp(peak_detection_mode, 'clear')
+            peak_detection_mode = 'global';
+            clear_outputs_requested = true;
+        end
+    
+    end
+
     if isempty(peak_detection_mode)
         return;
     end
 
+    % Une ligne par enregistrement ; chaque case contient un cell(nPlanes,1).
+    % Ne pas ecraser les valeurs deja presentes dans le recap global.
+    if ~ismember('recording_keep',recap_all.Properties.VariableNames) || ...
+            ~iscell(recap_all.recording_keep)
+        recap_all.recording_keep = cell(height(recap_all),1);
+    end
+    if ~ismember('comment_saved',recap_all.Properties.VariableNames) || ...
+            ~iscell(recap_all.comment_saved)
+        recap_all.comment_saved = cell(height(recap_all),1);
+    end
 
     for t = 1:numel(type_names)
 
@@ -198,17 +221,21 @@ function selected_groups = DF_peak_detection( ...
             % (Type + Line + Animal pour eviter les homonymes).
             %======================================================
 
-            recap_all_animal = recap_all( ...
+            % Memoriser les indices du tableau GLOBAL avant extraction.
+            % Ils garantissent le retour sur les bonnes lignes, meme si
+            % plusieurs TSeries partagent une date ou un animal.
+            recap_rows = ...
                 strcmp(string(recap_all.Type), string(current_type)) & ...
                 strcmp(string(recap_all.Line), string(current_line)) & ...
-                strcmp(string(recap_all.Animal), string(current_animal)), ...
-                :);
+                strcmp(string(recap_all.Animal), string(current_animal));
+
+            recap_all_animal = recap_all(recap_rows,:);
 
             %======================================================
             % DF processing and peak detection
             %======================================================
 
-            [data, has_new_saved, modified_planes] = ...
+            [data, has_new_saved, modified_planes, recap_all_animal] = ...
                 run_gcamp_peak_detection( ...
                     current_type, ...
                     current_line, ...
@@ -236,7 +263,22 @@ function selected_groups = DF_peak_detection( ...
             selected_groups.(current_type)(k).data = ...
                 data;
 
-            
+            %======================================================
+            % Reconstruire recap_all depuis le recap de cet animal.
+            % Conserver l'ordre des enregistrements, les colonnes initiales
+            % et les lignes des autres animaux. Le cell(nPlanes,1) reste
+            % contenu dans UNE case de la ligne correspondante.
+            %======================================================
+            if height(recap_all_animal) ~= nnz(recap_rows)
+                error('DF_peak_detection:RecapRowMismatch', ...
+                    'Le nombre de lignes du recap animal a change.');
+            end
+
+            recap_all.recording_keep(recap_rows) = ...
+                recap_all_animal.recording_keep;
+            recap_all.comment_saved(recap_rows) = ...
+                recap_all_animal.comment_saved;
+
             %======================================================
             % Si de nouvelles données ont été sauvegardées,
             % forcer la reconstruction des figures de tous les plans.

@@ -1,4 +1,4 @@
-function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
+function [data, has_new_saved, modified_planes, recap_all_animal] = run_gcamp_peak_detection( ...
     current_type, ...
     current_line, ...
     animal, ...
@@ -23,6 +23,19 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
 
     numFolders = ...
         numel(gcamp_output_folders);
+
+    % Une ligne du recap par enregistrement, une cellule par plan dans
+    % chaque colonne. Conserver toutes les autres colonnes et lignes.
+    if istable(recap_all_animal)
+        if ~ismember('recording_keep',recap_all_animal.Properties.VariableNames) || ...
+                ~iscell(recap_all_animal.recording_keep)
+            recap_all_animal.recording_keep = cell(height(recap_all_animal),1);
+        end
+        if ~ismember('comment_saved',recap_all_animal.Properties.VariableNames) || ...
+                ~iscell(recap_all_animal.comment_saved)
+            recap_all_animal.comment_saved = cell(height(recap_all_animal),1);
+        end
+    end
 
     % ==========================================================
     % Full inputs / full results policy
@@ -533,7 +546,7 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
         % signature actuelle de la fonction. Ne pas utiliser de test nargin
         % ici : l'ancien `nargin >= 22` rendait ce bloc inatteignable.
         if istable(recap_all_animal) && ...
-                all(ismember({'Date','TSeries','Comment'}, ...
+                all(ismember({'Date','TSeries'}, ...
                              recap_all_animal.Properties.VariableNames)) && ...
                 ~isempty(TSeries_m)
 
@@ -679,6 +692,13 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                 '%s: dossier gcamp_root invalide.\n', ...
                 record_label_m);
 
+            % Retourner aussi les statuts deja presents en memoire si ce
+            % recording ne peut pas etre traite faute de dossier.
+            if ~isempty(recap_row_m)
+                recap_all_animal = update_recap_detection_row( ...
+                    recap_all_animal,recap_row_m,data,m,nPlanes, ...
+                    process_electroporated_combined);
+            end
             continue;
         end
 
@@ -2302,6 +2322,15 @@ function [data, has_new_saved, modified_planes] = run_gcamp_peak_detection( ...
                     sync_frames_m,process_electroporated_combined);
             end
 
+        end
+
+        % Mettre a jour la ligne du recording APRES tous les plans :
+        % couvre le Viewer sans confirmation, load_only, detection nouvelle,
+        % modification du commentaire ou du statut sans recalcul.
+        if ~isempty(recap_row_m)
+            recap_all_animal = update_recap_detection_row( ...
+                recap_all_animal,recap_row_m,data,m,nPlanes, ...
+                process_electroporated_combined);
         end
 
         % ======================================================
@@ -4723,7 +4752,7 @@ function [comment_text, row_idx] = get_recap_comment_for_record( ...
     row_idx = [];
 
     if ~istable(recap_all_animal) || isempty(recap_all_animal) || ...
-            ~all(ismember({'Date','TSeries','Comment'}, ...
+            ~all(ismember({'Date','TSeries'}, ...
                           recap_all_animal.Properties.VariableNames))
         return;
     end
@@ -4750,29 +4779,31 @@ function [comment_text, row_idx] = get_recap_comment_for_record( ...
         return;
     end
 
-    % Le nom du TSeries est l'identifiant principal du recording.
-    % La date ne sert qu'a departager si plusieurs lignes portent
-    % exceptionnellement le meme nom de TSeries.
-    if numel(tseries_matches) == 1
-        row_idx = tseries_matches(1);
-    else
-        current_date = normalize_recap_date(date_value);
-        recap_dates = strings(numel(tseries_matches),1);
+    % Exiger Date ET TSeries : jamais attribuer les valeurs au mauvais
+    % enregistrement en cas d'homonyme ou de date differente.
+    current_date = normalize_recap_date(date_value);
+    recap_dates = strings(numel(tseries_matches),1);
 
-        for jj = 1:numel(tseries_matches)
-            recap_dates(jj) = normalize_recap_date( ...
-                recap_all_animal.Date(tseries_matches(jj)));
-        end
-
-        date_match = find(strcmpi(recap_dates,current_date),1,'first');
-
-        if ~isempty(date_match)
-            row_idx = tseries_matches(date_match);
-        else
-            row_idx = tseries_matches(1);
-        end
+    for jj = 1:numel(tseries_matches)
+        recap_dates(jj) = normalize_recap_date( ...
+            recap_all_animal.Date(tseries_matches(jj)));
     end
 
+    matches = tseries_matches(strcmpi(recap_dates,current_date));
+    if numel(matches) ~= 1
+        if numel(matches) > 1
+            warning('run_gcamp_peak_detection:AmbiguousRecapRow', ...
+                'Date + TSeries non uniques dans recap_all_animal. Ligne non modifiee.');
+        end
+        return;
+    end
+    row_idx = matches(1);
+
+    % La colonne Comment du recap est facultative et reste independante
+    % de comment_saved (commentaire de detection par plan).
+    if ~ismember('Comment',recap_all_animal.Properties.VariableNames)
+        return;
+    end
     comment_value = recap_all_animal.Comment(row_idx);
 
     if iscell(comment_value)
@@ -4787,6 +4818,58 @@ function [comment_text, row_idx] = get_recap_comment_for_record( ...
     if ~isempty(comment_value) && ~ismissing(comment_value(1))
         comment_text = char(comment_value(1));
     end
+end
+
+
+% =========================================================
+% RECAP : UNE LIGNE PAR RECORDING, UNE CELLULE PAR PLAN
+% =========================================================
+function recap_all_animal = update_recap_detection_row( ...
+        recap_all_animal,row_idx,data,m,nPlanes,processCombined)
+
+    keep_by_plane = cell(nPlanes,1);
+    comment_by_plane = repmat({''},nPlanes,1);
+
+    for pp = 1:nPlanes
+        % Priorite aux decisions individuelles, sans recopier le statut
+        % d'un autre plan ou convertir [] en 0.
+        keep_by_plane{pp} = get_recording_keep_for_plane(data,m,pp);
+
+        % Meme branche que celle selectionnee pour le signal du plan :
+        % Combined s'il existe et est demande, sinon GCaMP.
+        useCombined = processCombined && ~isempty( ...
+            get_branch_plane_or_empty(data,'combined_plane', ...
+                'F_combined_by_plane',m,pp));
+        if useCombined
+            branch_names = {'combined','gcamp'};
+        else
+            branch_names = {'gcamp','combined'};
+        end
+
+        for bb = 1:numel(branch_names)
+            name = branch_names{bb};
+            if strcmp(name,'combined') && ~processCombined
+                continue;
+            end
+            summary = get_branch_plane_or_empty( ...
+                data,[name '_plane'], ...
+                ['selection_summary_' name '_by_plane'],m,pp);
+            if ~isstruct(summary) || isempty(summary)
+                continue;
+            end
+            % Un commentaire vide d'un summary valide est intentionnel :
+            % ne pas restaurer un commentaire obsolete de l'autre branche.
+            if isfield(summary,'comment') && ~isempty(summary.comment)
+                comment_by_plane{pp} = summary.comment;
+            end
+            break;
+        end
+    end
+
+    % Indexation par accolades : chaque ligne contient elle-meme un
+    % cell(nPlanes,1), et non nPlanes lignes supplementaires dans la table.
+    recap_all_animal.recording_keep{row_idx} = keep_by_plane;
+    recap_all_animal.comment_saved{row_idx} = comment_by_plane;
 end
 
 
