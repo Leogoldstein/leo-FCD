@@ -34,7 +34,8 @@ function network_metrics = ...
 %       coupling_pvalue_gcamp_mtor_by_plane
 %
 %
-% Aucun lag ni résultat brut de shuffle n'est sauvegardé.
+% TEMPORAIRE : pas de shuffles, p-values et q-values toujours NaN.
+% Nouvelle version de cache pour ne pas reutiliser d'anciennes p-values.
 
 
     %==============================================================%
@@ -110,7 +111,7 @@ function network_metrics = ...
         data, 'electroporated_plane', m, 'DF_electroporated_by_plane');
 
     nPlanes = max(numel(DFg_planes), numel(DFb_planes));
-    cache_version = 'source_shuffle_fdr_1000_v2';
+    cache_version = 'coupling_descriptif_sans_shuffle_v1';
 
 
     %==============================================================%

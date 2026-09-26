@@ -1,7 +1,8 @@
 function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
-          Acttmp2, MAct, thresholds, focus_segs, opts, ...
+          Acttmp2, MAct, thresholds, opts, ...
           has_new_outputs, selected_signal, ...
           selection_summary, ...
+          comment_modified, recording_keep_out, recording_keep_modified, ...
           isort1_plane, isort2_plane, Sm_plane] = ...
     peak_detection_tuner( ...
         type, ...
@@ -37,8 +38,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         camera_folder, ...
         behavior_frame_limit, ...
         deviation, ...
-        bad_frames, ...
-        focus_segs, ...
+        bad_segs, ...
         motion_energy, ...
         speed_active, ...
         metadata, ...
@@ -53,7 +53,8 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         first_stim_frame_global, ...
         include_stims, ...
         stim_frames_global, ...
-        recap_comment_saved)
+        recap_comment_saved, ...
+        auto_confirm_after_processing)
 
     %==============================================================
     % Options
@@ -75,29 +76,43 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
             fs_plane);
     
     selection_summary = struct();
+    comment_modified = false;
+    recording_keep_out = [];
+    recording_keep_modified = false;
     isort1_plane = [];
     isort2_plane = [];
     Sm_plane = [];
 
     % Les trois indices sont relatifs aux LIGNES du DF deja sauvegarde.
     % L'ordre d'origine est conserve pour toute la duree du Viewer.
-    if nargin < 43, isort1_saved = []; end
-    if nargin < 44, isort2_saved = []; end
-    if nargin < 45, Sm_saved = []; end
-    if nargin < 46, recording_keep_saved = []; end
-    if nargin < 47, first_stim_frame_global = []; end
-    if nargin < 48 || isempty(include_stims), include_stims = false; end
-    if nargin < 49, stim_frames_global = []; end
+    if nargin < 42, isort1_saved = []; end
+    if nargin < 43, isort2_saved = []; end
+    if nargin < 44, Sm_saved = []; end
+    if nargin < 45, recording_keep_saved = []; end
+    if nargin < 46, first_stim_frame_global = []; end
+    if nargin < 47 || isempty(include_stims), include_stims = false; end
+    if nargin < 48, stim_frames_global = []; end
     % Commentaire issu exclusivement de recap_all_animal, jamais du
     % selection_summary de detection. L'argument est facultatif pour
     % conserver la compatibilite des anciens appels.
-    if nargin < 50 || isempty(recap_comment_saved)
+    if nargin < 49 || isempty(recap_comment_saved)
         recap_comment_saved = '';
     elseif isstring(recap_comment_saved)
         recap_comment_saved = char(recap_comment_saved(1));
     elseif iscell(recap_comment_saved)
         recap_comment_saved = char(string(recap_comment_saved{1}));
     end
+
+    % Reprocessing after clear_outputs_requested is intentionally
+    % non-interactive at the confirmation stage: once the new cutoff,
+    % manual overrides and final sort are ready, save immediately.
+    if nargin < 50 || isempty(auto_confirm_after_processing)
+        auto_confirm_after_processing = false;
+    else
+        auto_confirm_after_processing = ...
+            logical(auto_confirm_after_processing(1));
+    end
+
     % The tuner always works with full-length signals and returns full
     % outputs; the caller saves them before cropping its returned data.
     include_stims = logical(include_stims(1));
@@ -111,17 +126,20 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         end
     end
 
-    if nargin < 41 || isempty(selection_summary_saved)
+    if nargin < 40 || isempty(selection_summary_saved)
         selection_summary_saved = struct();
     end
+    % Ancien summary conserve comme reference, sans meta temporelle.
+    selection_summary_saved = ...
+        strip_selection_summary_temporal_fields(selection_summary_saved);
 
-    if nargin < 42 || isempty(comment_saved)
+    if nargin < 41 || isempty(comment_saved)
         comment_saved = '';
     end
 
     % Compatibilite avec un ancien appel sans argument comment_saved.
     % Un commentaire explicitement fourni, meme vide, est prioritaire.
-    if nargin < 42 && ...
+    if nargin < 41 && ...
             isstruct(selection_summary_saved) && ...
             isfield(selection_summary_saved,'comment') && ...
             ~isempty(selection_summary_saved.comment)
@@ -159,197 +177,70 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     % reconstruction Viewer.
     valid_cells_saved_input = ...
         valid_cells;
-    
+
     if viewer_mode
-    
+
+        %==========================================================
+        % VIEWER : DF SAUVEGARDE = REFERENTIEL
+        %
+        % Hypothese du pipeline :
+        %   - DF_sg / DF_raw / F0 sont sauvegardes AVANT tout crop ;
+        %   - les matrices sauvegardees contiennent toutes les cellules ;
+        %   - aucun remapping ni controle par rapport a F n'est necessaire.
+        %
+        % F reste disponible uniquement comme source brute si un parametre
+        % impose ulterieurement un vrai recalcul de DF/F0.
+        %==========================================================
+
+        if isempty(DF_sg)
+
+            error( ...
+                'peak_detection_tuner:MissingViewerDF', ...
+                'Viewer : DF_sg sauvegarde est vide.');
+        end
+
         nCells_full = ...
-            size(F,1);
-    
-        nFrames_full = ...
-            size(F,2);
-    
+            size(DF_sg,1);
+
         %==========================================================
-        % Indices originaux des cellules conservées
+        % Indices originaux des cellules conservees
         %==========================================================
-    
+
         viewer_valid_indices = [];
-    
+
         if ~isempty(valid_cells_saved_input)
-    
+
             viewer_valid_indices = ...
                 round( ...
                     double( ...
                         valid_cells_saved_input(:)));
-    
-        elseif isstruct(selection_summary_saved) && ...
-            isfield(selection_summary_saved, ...
-                    'valid_cells') && ...
-            ~isempty(selection_summary_saved.valid_cells)
-    
-        viewer_valid_indices = ...
-            round( ...
-                double( ...
-                    selection_summary_saved. ...
-                    valid_cells(:)));
+
+        elseif isstruct(selection_summary_saved)
+
+            viewer_valid_indices = ...
+                get_valid_cells_from_selection_summary( ...
+                    selection_summary_saved, ...
+                    nCells_full);
         end
-    
+
         viewer_valid_indices = ...
             viewer_valid_indices( ...
                 isfinite(viewer_valid_indices) & ...
                 viewer_valid_indices >= 1 & ...
                 viewer_valid_indices <= nCells_full);
-    
+
         viewer_valid_indices = ...
             unique( ...
                 viewer_valid_indices, ...
                 'stable');
-    
+
         %==========================================================
-        % Calcul complet uniquement pour permettre l'affichage
-        % des cellules exclues.
+        % Quality
         %
-        % Les valeurs sauvegardées des cellules conservées seront
-        % ensuite remises par-dessus.
+        % Calculee directement a partir du DF/noise sauvegardes.
+        % Aucun F_processing / savgol_transform / estimate_noise ici.
         %==========================================================
-    
-        [DF_raw_full, F0_full] = ...
-            F_processing( ...
-                F, ...
-                bad_frames, ...
-                fs_plane, ...
-                window_size);
-    
-        DF_sg_full = ...
-            savgol_transform( ...
-                DF_raw_full, ...
-                opts);
-    
-        noise_est_full = ...
-            estimate_noise( ...
-                DF_raw_full);
-    
-        %==========================================================
-        % Remettre DF_sg sauvegardé des cellules conservées
-        %==========================================================
-    
-        if ~isempty(DF_sg)
-    
-            if size(DF_sg,1) == nCells_full
-    
-                % Nouveau format éventuel : déjà complet.
-                DF_sg_full = ...
-                    DF_sg;
-    
-            elseif ~isempty(viewer_valid_indices) && ...
-                    size(DF_sg,1) == numel(viewer_valid_indices)
-    
-                nFramesCopy = ...
-                    min( ...
-                        size(DF_sg,2), ...
-                        nFrames_full);
-    
-                DF_sg_full( ...
-                    viewer_valid_indices, ...
-                    1:nFramesCopy) = ...
-                    DF_sg(:,1:nFramesCopy);
-            end
-        end
-    
-        %==========================================================
-        % Remettre DF_raw sauvegardé
-        %==========================================================
-    
-        if ~isempty(DF_raw)
-    
-            if size(DF_raw,1) == nCells_full
-    
-                DF_raw_full = ...
-                    DF_raw;
-    
-            elseif ~isempty(viewer_valid_indices) && ...
-                    size(DF_raw,1) == numel(viewer_valid_indices)
-    
-                nFramesCopy = ...
-                    min( ...
-                        size(DF_raw,2), ...
-                        nFrames_full);
-    
-                DF_raw_full( ...
-                    viewer_valid_indices, ...
-                    1:nFramesCopy) = ...
-                    DF_raw(:,1:nFramesCopy);
-            end
-        end
-    
-        %==========================================================
-        % Remettre F0 sauvegardé
-        %==========================================================
-    
-        if ~isempty(F0)
-    
-            if size(F0,1) == nCells_full
-    
-                F0_full = ...
-                    F0;
-    
-            elseif ~isempty(viewer_valid_indices) && ...
-                    size(F0,1) == numel(viewer_valid_indices)
-    
-                nFramesCopy = ...
-                    min( ...
-                        size(F0,2), ...
-                        nFrames_full);
-    
-                F0_full( ...
-                    viewer_valid_indices, ...
-                    1:nFramesCopy) = ...
-                    F0(:,1:nFramesCopy);
-            end
-        end
-    
-        %==========================================================
-        % Remettre noise sauvegardé
-        %==========================================================
-    
-        if ~isempty(noise_est)
-    
-            noise_saved = ...
-                noise_est(:);
-    
-            if numel(noise_saved) == nCells_full
-    
-                noise_est_full = ...
-                    noise_saved;
-    
-            elseif ~isempty(viewer_valid_indices) && ...
-                    numel(noise_saved) == numel(viewer_valid_indices)
-    
-                noise_est_full( ...
-                    viewer_valid_indices) = ...
-                    noise_saved;
-            end
-        end
-    
-        %==========================================================
-        % Utiliser maintenant le référentiel COMPLET
-        %==========================================================
-    
-        DF_raw = ...
-            DF_raw_full;
-    
-        DF_sg = ...
-            DF_sg_full;
-    
-        F0 = ...
-            F0_full;
-    
-        noise_est = ...
-            noise_est_full;
-    
-        %==========================================================
-        % Quality sur toutes les cellules
-        %==========================================================
-    
+
         [ ...
             ~, ...
             SNR, ...
@@ -363,26 +254,26 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
                 DF_sg, ...
                 noise_est, ...
                 opts, ...
-                bad_frames);
-    
+                bad_segs);
+
     else
-    
+
         [DF_raw, F0] = ...
             F_processing( ...
                 F, ...
-                bad_frames, ...
+                bad_segs, ...
                 fs_plane, ...
                 window_size);
-    
+
         DF_sg = ...
             savgol_transform( ...
                 DF_raw, ...
                 opts);
-    
+
         noise_est = ...
             estimate_noise( ...
                 DF_raw);
-    
+
         [ ...
             ~, ...
             SNR, ...
@@ -396,8 +287,9 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
                 DF_sg, ...
                 noise_est, ...
                 opts, ...
-                bad_frames);
+                bad_segs);
     end
+
     %==============================================================
     % POPULATIONS
     %
@@ -410,8 +302,21 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     % Aucun recalcul de DF/F0 lors d'un changement de population.
     %==============================================================
 
-    nCells = ...
-        size(F,1);
+    if viewer_mode
+
+        nCells = ...
+            size(DF_sg,1);
+
+    else
+
+        nCells = ...
+            size(F,1);
+    end
+
+    % Migration automatique des anciens selection_summary vers le
+    % format minimal. Les décisions manuelles sont conservées.
+    [selection_summary_saved, ~] = ...
+        normalize_selection_summary(selection_summary_saved,nCells);
 
     electroporated_indices = ...
         normalize_electroporated_indices( ...
@@ -624,50 +529,46 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     
     manual_status_init = ...
         zeros(nCells,1);
-    
+
     cutoff_status_init = ...
         zeros(nCells,1);
-    
-    if viewer_mode && ...
-            isstruct(selection_summary_saved)
-    
-        %==========================================================
-        % Manual
-        %==========================================================
-    
-        if isfield(selection_summary_saved, ...
-                'manual_status') && ...
-                ~isempty(selection_summary_saved.manual_status)
-    
-            tmp = ...
-                selection_summary_saved.manual_status(:);
-    
-            if numel(tmp) == nCells
-    
-                manual_status_init = ...
-                    tmp;
-            end
-        end
-    
-        %==========================================================
-        % Cutoff
-        %==========================================================
-    
-        if isfield(selection_summary_saved, ...
-                'cutoff_status') && ...
-                ~isempty(selection_summary_saved.cutoff_status)
-    
-            tmp = ...
-                selection_summary_saved.cutoff_status(:);
-    
-            if numel(tmp) == nCells
-    
-                cutoff_status_init = ...
-                    tmp;
-            end
+
+    % Anciennes décisions MANUELLES :
+    %   - TOUJOURS restaurées comme référence dès qu'un ancien
+    %     selection_summary compatible existe, quel que soit le mode ;
+    %   - un clear outputs ne doit donc jamais perdre ces décisions ;
+    %   - une nouvelle détection recalcule le cutoff automatique mais
+    %     conserve les keep/exclude manuels précédents.
+    %
+    % L'ancien cutoff automatique, lui, n'est restauré qu'en Viewer.
+    use_saved_manual_status = ...
+        isstruct(selection_summary_saved);
+
+    if use_saved_manual_status && ...
+            isfield(selection_summary_saved,'manual_status') && ...
+            ~isempty(selection_summary_saved.manual_status)
+
+        tmp = ...
+            selection_summary_saved.manual_status(:);
+
+        if numel(tmp) == nCells
+            manual_status_init = tmp;
         end
     end
-    
+
+    if viewer_mode && ...
+            isstruct(selection_summary_saved) && ...
+            isfield(selection_summary_saved,'cutoff_status') && ...
+            ~isempty(selection_summary_saved.cutoff_status)
+
+        tmp = ...
+            selection_summary_saved.cutoff_status(:);
+
+        if numel(tmp) == nCells
+            cutoff_status_init = tmp;
+        end
+    end
+
     setappdata( ...
         fig, ...
         'manual_status', ...
@@ -728,8 +629,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'speed_active', speed_active);
 
     setappdata(fig, 'deviation', deviation);
-    setappdata(fig, 'bad_frames', bad_frames);
-    setappdata(fig, 'focus_segs', focus_segs);
+    setappdata(fig, 'bad_segs', bad_segs);
 
     setappdata( ...
         fig, ...
@@ -811,10 +711,23 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     setappdata(fig, 'age', age);
     setappdata(fig, 'plane', plane);
 
+    if viewer_mode
+
+        % Reference temporelle UNIQUE du Viewer : DF sauvegarde complet.
+        % F est seulement une reserve brute pour le preprocessing.
+        nFramesViewer = ...
+            size(DF_sg,2);
+
+    else
+
+        nFramesViewer = ...
+            size(F,2);
+    end
+
     setappdata( ...
         fig, ...
         'total_frame_count', ...
-        size(F,2));
+        nFramesViewer);
 
     setappdata(fig, 'masks', masks);
 
@@ -831,269 +744,189 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     %==============================================================
     % VIEWER SAVED DATA
     %
-    % En Viewer, reconstruire Raster / Acttmp2 / thresholds dans
-    % le référentiel ORIGINAL contenant toutes les cellules.
+    % DF_sg sauvegarde est le referentiel complet du Viewer.
+    %
+    % Les nouveaux results_*.mat contiennent Raster / Acttmp2 / thresholds
+    % pour TOUTES les cellules. Pour compatibilite avec les anciens
+    % resultats qui ne contenaient les pics que des valid_cells, les pics
+    % des cellules rejetees sont reconstruits ici depuis DF_sg sauvegarde.
+    %
+    % Aucun F_processing et aucune comparaison/remapping avec F.
     %==============================================================
-    
+
     if viewer_mode
-    
+
         nCells_view = ...
-            nCells;
-    
+            size(DF_sg,1);
+
         nFrames_view = ...
-            size(F,2);
-    
+            size(DF_sg,2);
+
         valid_cells_tmp = ...
             round( ...
                 double( ...
                     valid_cells_saved_input(:)));
-        
+
         if isempty(valid_cells_tmp) && ...
-                isstruct(selection_summary_saved) && ...
-                isfield(selection_summary_saved,'valid_cells') && ...
-                ~isempty(selection_summary_saved.valid_cells)
-        
+                isstruct(selection_summary_saved)
+
             valid_cells_tmp = ...
-                round( ...
-                    double( ...
-                        selection_summary_saved.valid_cells(:)));
+                get_valid_cells_from_selection_summary( ...
+                    selection_summary_saved, ...
+                    nCells_view);
         end
-    
+
         valid_cells_tmp = ...
             valid_cells_tmp( ...
                 isfinite(valid_cells_tmp) & ...
                 valid_cells_tmp >= 1 & ...
                 valid_cells_tmp <= nCells_view);
-    
-        %==========================================================
-        % Acttmp2 complet
-        %==========================================================
-    
+
+        valid_cells_tmp = ...
+            unique( ...
+                valid_cells_tmp, ...
+                'stable');
+
+        Raster_view = ...
+            false(nCells_view,nFrames_view);
+
+        if ~isempty(Raster)
+
+            nRowsCopy = ...
+                min(nCells_view,size(Raster,1));
+
+            nFramesCopy = ...
+                min(nFrames_view,size(Raster,2));
+
+            Raster_view( ...
+                1:nRowsCopy, ...
+                1:nFramesCopy) = ...
+                logical( ...
+                    Raster( ...
+                        1:nRowsCopy, ...
+                        1:nFramesCopy));
+        end
+
         Acttmp2_view = ...
             cell(nCells_view,1);
-    
-        %==========================================================
-        % Raster complet
-        %==========================================================
-    
-        Raster_view = ...
-            false( ...
-                nCells_view, ...
-                nFrames_view);
-    
-        %==========================================================
-        % Threshold complet
-        %==========================================================
-    
+
+        if iscell(Acttmp2)
+
+            nCopy = ...
+                min(nCells_view,numel(Acttmp2));
+
+            Acttmp2_view(1:nCopy) = ...
+                Acttmp2(1:nCopy);
+        end
+
         thresholds_view = ...
             nan(nCells_view,1);
-    
-        %==========================================================
-        % Remettre les résultats réellement sauvegardés
-        %==========================================================
-    
-        if iscell(Acttmp2)
-    
-            if numel(Acttmp2) == nCells_view
-    
-                Acttmp2_view = ...
-                    Acttmp2(:);
-    
-            elseif ~isempty(valid_cells_tmp)
-    
-                nCopy = ...
-                    min( ...
-                        numel(valid_cells_tmp), ...
-                        numel(Acttmp2));
-    
-                for ii = 1:nCopy
-    
-                    Acttmp2_view{ ...
-                        valid_cells_tmp(ii)} = ...
-                        Acttmp2{ii};
-                end
-            end
-        end
-    
-        if ~isempty(Raster)
-    
-            if size(Raster,1) == nCells_view
-    
-                nFramesCopy = ...
-                    min( ...
-                        size(Raster,2), ...
-                        nFrames_view);
-    
-                Raster_view(:,1:nFramesCopy) = ...
-                    logical( ...
-                        Raster(:,1:nFramesCopy));
-    
-            elseif ~isempty(valid_cells_tmp)
-    
-                nCopy = ...
-                    min( ...
-                        numel(valid_cells_tmp), ...
-                        size(Raster,1));
-    
-                nFramesCopy = ...
-                    min( ...
-                        size(Raster,2), ...
-                        nFrames_view);
-    
-                Raster_view( ...
-                    valid_cells_tmp(1:nCopy), ...
-                    1:nFramesCopy) = ...
-                    logical( ...
-                        Raster( ...
-                            1:nCopy, ...
-                            1:nFramesCopy));
-            end
-        end
-    
+
         if ~isempty(thresholds)
-    
+
             thresholds_tmp = ...
                 thresholds(:);
-    
-            if numel(thresholds_tmp) == nCells_view
-    
-                thresholds_view = ...
-                    thresholds_tmp;
-    
-            elseif ~isempty(valid_cells_tmp)
-    
-                nCopy = ...
-                    min( ...
-                        numel(valid_cells_tmp), ...
-                        numel(thresholds_tmp));
-    
-                thresholds_view( ...
-                    valid_cells_tmp(1:nCopy)) = ...
-                    thresholds_tmp(1:nCopy);
-            end
+
+            nCopy = ...
+                min(nCells_view,numel(thresholds_tmp));
+
+            thresholds_view(1:nCopy) = ...
+                thresholds_tmp(1:nCopy);
         end
-    
-        %==========================================================
-        % Pour les cellules exclues, recalculer uniquement les pics
-        % nécessaires à l'AFFICHAGE Viewer.
-        %
-        % Cela permet notamment de distinguer :
-        %   - 0 pics
-        %   - pics < cutoff
-        %   - exclusion masque/connectivité
-        %
-        % Cela ne modifie pas les résultats sauvegardés.
-        %==========================================================
-    
-        valid_saved_mask = ...
-            false(nCells_view,1);
-    
-        valid_saved_mask(valid_cells_tmp) = ...
-            true;
-    
-        for cid = 1:nCells_view
-    
-            if valid_saved_mask(cid)
-                continue;
-            end
-    
+
+        rejected_mask = ...
+            true(nCells_view,1);
+
+        rejected_mask(valid_cells_tmp) = ...
+            false;
+
+        rejected_ids = ...
+            find(rejected_mask);
+
+        for cid = rejected_ids(:).'
+
             x_detect = ...
                 DF_sg(cid,:).';
-    
-            sigma = ...
-                noise_est(cid);
-    
+
             if isempty(x_detect) || ...
                     all(~isfinite(x_detect))
-    
+
                 continue;
             end
-    
+
+            sigma = ...
+                noise_est(cid);
+
             if ~isfinite(sigma) || ...
                     sigma <= 0
-    
+
                 sigma = ...
                     std( ...
                         x_detect, ...
                         'omitnan');
             end
-    
+
             if ~isfinite(sigma) || ...
                     sigma <= 0
-    
+
                 sigma = eps;
             end
-    
+
             out = ...
                 detect_peaks_cell_core( ...
                     x_detect, ...
                     sigma, ...
                     opts, ...
-                    bad_frames);
-    
+                    bad_segs);
+
+            Raster_view(cid,:) = ...
+                false;
+
             Acttmp2_view{cid} = ...
                 out.locs_raw;
-    
+
             thresholds_view(cid) = ...
                 out.threshold;
-    
+
             if ~isempty(out.locs_raw)
-    
+
                 Raster_view( ...
                     cid, ...
                     out.locs_raw) = ...
                     true;
             end
         end
-    
-        setappdata( ...
-            fig, ...
-            'Raster_saved', ...
-            Raster_view);
-    
-        setappdata( ...
-            fig, ...
-            'Acttmp2_saved', ...
-            Acttmp2_view);
-    
-        setappdata( ...
-            fig, ...
-            'thresholds_saved', ...
-            thresholds_view);
-    
-        setappdata( ...
-            fig, ...
-            'valid_cells_saved', ...
-            valid_cells_tmp);
-    
+
+        setappdata(fig,'Raster_saved',Raster_view);
+        setappdata(fig,'Acttmp2_saved',Acttmp2_view);
+        setappdata(fig,'thresholds_saved',thresholds_view);
+        setappdata(fig,'valid_cells_saved',valid_cells_tmp);
+
     else
-    
+
         setappdata(fig,'Raster_saved',Raster);
         setappdata(fig,'Acttmp2_saved',Acttmp2);
         setappdata(fig,'thresholds_saved',thresholds);
         setappdata(fig,'valid_cells_saved',valid_cells);
     end
 
-    % En Viewer, la liste des IDs effectivement enregistres est la seule
-    % source de verite de la selection. Les anciens manual_status sont des
-    % informations de provenance : ils ne doivent jamais pouvoir exclure
-    % en bloc les cellules lors du premier clic sur Exclure cellule.
-    % Les deux masques sont dans le referentiel ORIGINAL de F (nCells).
+    % En Viewer, valid_cells reste la source de verite de la selection
+    % EFFECTIVE chargee. En revanche, manual_status conserve INTEGRALEMENT
+    % la reference des anciennes decisions manuelles, meme si elle est
+    % historiquement differente de valid_cells.
+    %
+    % Ainsi :
+    %   - viewer_kept_mask pilote ce qui est actuellement garde/exclu ;
+    %   - manual_status reste une trace persistante des decisions humaines ;
+    %   - aucun ancien keep/exclude manuel n'est efface automatiquement.
     if viewer_mode
         initial_kept = false(nCells,1);
         initial_kept(valid_cells_tmp) = true;
-        % Les statuts historiques peuvent etre contradictoires avec le
-        % vecteur valid_cells reellement sauvegarde. Ne pas laisser leur
-        % libelle afficher "exclue" pour une cellule effectivement gardee.
         manual_status_init = manual_status_init(:);
-        manual_status_init(initial_kept & manual_status_init==-1) = 0;
-        manual_status_init(~initial_kept & manual_status_init==+1) = 0;
         setappdata(fig,'manual_status',manual_status_init);
         setappdata(fig,'viewer_initial_kept_mask',initial_kept);
         setappdata(fig,'viewer_kept_mask',initial_kept);
         % Une decision par ID ORIGINAL de Combined (NaN = inchangee).
-        % Ne jamais reconstruire la selection a partir des statuts manuels
-        % historiques ou des rangs locaux GCaMP/Electroporated.
         setappdata(fig,'viewer_cell_decisions',nan(nCells,1));
         setappdata(fig,'viewer_initial_manual_status',manual_status_init);
     end
@@ -1303,17 +1136,48 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         'FontSize', 9, ...
         'FontWeight', 'bold');
 
+    % Identifiants fixes du référentiel Combined / Suite2p, avec accès
+    % direct par saisie. Entrée dans un carré déplace la navigation vers
+    % la cellule demandée sans modifier son statut manuel.
     uicontrol( ...
         'Parent', ctrl_panel, ...
         'Style', 'text', ...
         'String', '', ...
         'Units', 'normalized', ...
-        'Position', [0.47 0.950 0.49 0.043], ...
+        'Position', [0.47 0.950 0.27 0.043], ...
         'Tag', 'lbl_nav_identification', ...
         'HorizontalAlignment', 'left', ...
         'BackgroundColor', [.97 .97 .98], ...
         'FontSize', 9, ...
         'FontWeight', 'bold');
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'edit', ...
+        'String', '', ...
+        'Units', 'normalized', ...
+        'Position', [0.76 0.973 0.18 0.020], ...
+        'Tag', 'edit_goto_combined', ...
+        'HorizontalAlignment', 'center', ...
+        'BackgroundColor', 'white', ...
+        'FontSize', 9, ...
+        'TooltipString', 'Entrer un indice Combined puis appuyer sur Entrée', ...
+        'KeyReleaseFcn', @(src,evnt) goto_identifier_keyrelease( ...
+            fig,src,evnt,'combined'));
+
+    uicontrol( ...
+        'Parent', ctrl_panel, ...
+        'Style', 'edit', ...
+        'String', '', ...
+        'Units', 'normalized', ...
+        'Position', [0.76 0.950 0.18 0.020], ...
+        'Tag', 'edit_goto_iscell', ...
+        'HorizontalAlignment', 'center', ...
+        'BackgroundColor', 'white', ...
+        'FontSize', 9, ...
+        'TooltipString', 'Entrer un indice iscell (0-based) puis appuyer sur Entrée', ...
+        'KeyReleaseFcn', @(src,evnt) goto_identifier_keyrelease( ...
+            fig,src,evnt,'iscell'));
 
     % Deux cases exclusives, comme pour le choix de population.
     % Par defaut, utiliser le tri par similarite deja calcule (isort1).
@@ -2210,30 +2074,30 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     %==============================================================
     % BAD-FRAME SEGMENTS FOR DISPLAY
     %
-    % focus_segs is expressed in PLANE frames.
+    % bad_segs is expressed in PLANE frames.
     % Convert once to seconds because all linked X axes are in time.
     %==============================================================
 
-    focus_segs_time = [];
+    bad_segs_time = [];
 
-    if ~isempty(focus_segs)
+    if ~isempty(bad_segs)
 
-        focus_segs_time = ...
-            double(focus_segs);
+        bad_segs_time = ...
+            double(bad_segs);
 
-        focus_segs_time(:,1) = ...
+        bad_segs_time(:,1) = ...
             plane_time_offset + ...
-            (focus_segs_time(:,1) - 1) / fs_plane;
+            (bad_segs_time(:,1) - 1) / fs_plane;
 
-        focus_segs_time(:,2) = ...
+        bad_segs_time(:,2) = ...
             plane_time_offset + ...
-            focus_segs_time(:,2) / fs_plane;
+            bad_segs_time(:,2) / fs_plane;
     end
 
     setappdata( ...
         fig, ...
-        'focus_segs_time', ...
-        focus_segs_time);
+        'bad_segs_time', ...
+        bad_segs_time);
 
     %==============================================================
     % STIMULATION PERIODS FOR DISPLAY
@@ -2246,26 +2110,26 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         stim_frames_global, fs_motion);
     setappdata(fig,'stim_segs_time',stim_segs_time);
 
-    if ~isempty(focus_segs_time)
+    if ~isempty(bad_segs_time)
 
         hBad1 = ...
             create_badframe_patch( ...
                 ax1, ...
-                focus_segs_time);
+                bad_segs_time);
 
         setappdata(fig,'hBadPatch_ax1',hBad1);
 
         hBadF0 = ...
             create_badframe_patch( ...
                 axF0, ...
-                focus_segs_time);
+                bad_segs_time);
 
         setappdata(fig,'hBadPatch_axF0',hBadF0);
 
         hBadDev = ...
             create_badframe_patch( ...
                 axDev, ...
-                focus_segs_time);
+                bad_segs_time);
 
         setappdata(fig,'hBadPatch_axDev',hBadDev);
 
@@ -2274,7 +2138,7 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         hBadMotion = ...
             create_badframe_patch( ...
                 axMotion, ...
-                focus_segs_time);
+                bad_segs_time);
 
         setappdata(fig,'hBadPatch_axMotion',hBadMotion);
     end
@@ -2424,10 +2288,35 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
     sync_raster_cell_navigation(fig);
 
     %==============================================================
+    % AUTO-CONFIRM APRES CLEAR OUTPUTS
+    %
+    % clear_outputs_requested correspond a un vrai reprocessing :
+    %   - le cutoff vient d'etre recalcule sur toutes les cellules ;
+    %   - les anciennes decisions manuelles compatibles sont restaurees ;
+    %   - aucune confirmation utilisateur n'est necessaire.
+    %
+    % Appeler directement finalize_and_close() plutot que
+    % confirm_selection_and_close() afin de ne pas ouvrir la question
+    % Keep/Reject recording. Le statut existant est conserve ; s'il est
+    % vide, il reste vide.
+    %==============================================================
+
+    if auto_confirm_after_processing && ~viewer_mode
+        setappdata(fig,'selection_confirmed',true);
+        finalize_and_close(fig,synchronous_frames);
+    end
+
+    %==============================================================
     % WAIT
     %==============================================================
 
-    uiwait(fig);
+    % En reprocessing automatique, finalize_and_close a deja construit
+    % last_save_outputs : ne pas attendre une interaction utilisateur.
+    if ishghandle(fig) && ...
+            ~(isappdata(fig,'last_save_outputs') && ...
+              ~isempty(getappdata(fig,'last_save_outputs')))
+        uiwait(fig);
+    end
 
     %==============================================================
     % MODIFICATION DU COMMENTAIRE
@@ -2541,8 +2430,19 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         has_new_outputs = ...
             false;
     
-        Raster = ...
-            false(size(F));
+        if viewer_mode
+
+            % Ne pas utiliser F pour dimensionner une sortie Viewer.
+            Raster = ...
+                false( ...
+                    nCells, ...
+                    size(DF_sg,2));
+
+        else
+
+            Raster = ...
+                false(size(F));
+        end
     
         Acttmp2 = ...
             repmat( ...
@@ -2589,42 +2489,24 @@ function [F0, noise_est, valid_cells, DF_sg, DF_raw, Raster, ...
         end
     end
     
-    %==============================================================
-    % FULL OUTPUTS: the caller saves before cropping its returned data.
-    %==============================================================
-    if has_new_outputs
-        if ~isstruct(selection_summary)
-            selection_summary = struct();
-        end
-        selection_summary.include_stims = include_stims;
-        selection_summary.results_include_stims = true;
-        selection_summary.n_frames_full = size(F,2);
-        selection_summary.n_frames_saved = size(DF_sg,2);
-        % Actual n_frames_data is set by the caller after determining
-        % the pre-stimulation cutoff in the global frame reference.
-    end
+    % Le summary retourné reste strictement minimal.
+    [selection_summary, ~] = ...
+        normalize_selection_summary(selection_summary,nCells);
 
-    %==============================================================
-    % Signaler séparément si le commentaire a changé
-    %
-    % CE FLAG NE DOIT PAS servir à modified_plane.
-    %==============================================================
-    
-    selection_summary.comment_modified = ...
-        comment_modified;
-
+    % Métadonnées UI renvoyées séparément du selection_summary.
     committed = (isappdata(fig,'selection_confirmed') && ...
         getappdata(fig,'selection_confirmed')) || ...
         (isappdata(fig,'recording_keep_metadata_commit') && ...
         getappdata(fig,'recording_keep_metadata_commit'));
+
+    recording_keep_out = ...
+        normalize_recording_keep(getappdata(fig,'recording_keep'));
+
     if committed
-        decision = normalize_recording_keep(getappdata(fig,'recording_keep'));
-        % [] signifie reellement "non renseigne" : jamais assimile a 0.
-        selection_summary.recording_keep = decision;
-        selection_summary.recording_keep_modified = ...
-            ~isequal(getappdata(fig,'recording_keep_initial'),decision);
+        recording_keep_modified = ...
+            ~isequal(getappdata(fig,'recording_keep_initial'),recording_keep_out);
     else
-        selection_summary.recording_keep_modified = false;
+        recording_keep_modified = false;
     end
 
     if ishghandle(fig)
@@ -3135,10 +3017,10 @@ function DF_sg = savgol_transform(DF, opts)
     end
 end
 
-function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
+function out = detect_peaks_cell_core(x, sigma, opts, bad_segs)
 
     if nargin < 4
-        bad_frames = [];
+        bad_segs = [];
     end
 
     out = struct( ...
@@ -3157,7 +3039,7 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
         return;
     end
 
-    bad_mask = make_bad_mask(bad_frames, Nx);
+    bad_mask = make_bad_mask_from_segments(bad_segs, Nx);
     out.bad_mask = bad_mask;
 
     %seuil_detection = 2.33 * sigma;
@@ -3247,14 +3129,14 @@ function out = detect_peaks_cell_core(x, sigma, opts, bad_frames)
 end
 
 function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, quality_thr0] = ...
-    compute_snr_quality(DF, noise_est, opts, bad_frames)
+    compute_snr_quality(DF, noise_est, opts, bad_segs)
 
     if nargin < 3 || isempty(opts)
         error('compute_snr_quality requires DF, noise_est, and opts.');
     end
 
     if nargin < 4
-        bad_frames = [];
+        bad_segs = [];
     end
 
     if isempty(DF) || ndims(DF) ~= 2
@@ -3284,7 +3166,7 @@ function [A, SNR, score, cells_sorted_by_quality, quality_min, quality_max, qual
             continue;
         end
 
-        out = detect_peaks_cell_core(x_detect, sigma, opts, bad_frames);
+        out = detect_peaks_cell_core(x_detect, sigma, opts, bad_segs);
 
         if isempty(out.locs_raw)
             continue;
@@ -3352,24 +3234,55 @@ function noise_est = estimate_noise(DF)
     end
 end
 
-function bad_mask = make_bad_mask(bad_frames, Nx)
+function bad_mask = make_bad_mask_from_segments(bad_segs, Nx)
 
     bad_mask = false(Nx,1);
 
-    if isempty(bad_frames)
+    if isempty(bad_segs) || Nx <= 0
         return;
     end
 
-    if islogical(bad_frames)
-        bf = bad_frames(:);
-        L = min(Nx, numel(bf));
-        bad_mask(1:L) = bf(1:L);
-    else
-        bad_idx = round(bad_frames(:));
-        bad_idx = bad_idx(isfinite(bad_idx) & bad_idx >= 1 & bad_idx <= Nx);
-        bad_mask(bad_idx) = true;
+    bad_segs = double(bad_segs);
+
+    if isvector(bad_segs) && numel(bad_segs) == 2
+        bad_segs = reshape(bad_segs,1,2);
+    end
+
+    if size(bad_segs,2) < 2
+        error( ...
+            'peak_detection_tuner:InvalidBadSegments', ...
+            'bad_segs doit etre une matrice Nx2 [debut fin].');
+    end
+
+    bad_segs = bad_segs(:,1:2);
+
+    for k = 1:size(bad_segs,1)
+
+        a = bad_segs(k,1);
+        b = bad_segs(k,2);
+
+        if ~isfinite(a) || ~isfinite(b)
+            continue;
+        end
+
+        a = round(a);
+        b = round(b);
+
+        if a > b
+            tmp = a;
+            a = b;
+            b = tmp;
+        end
+
+        a = max(1,a);
+        b = min(Nx,b);
+
+        if a <= b
+            bad_mask(a:b) = true;
+        end
     end
 end
+
 
 %% ===================== PEAK DETECTION AND SAVE =====================
 function auto_detect_and_add(fig)
@@ -3450,10 +3363,10 @@ function auto_detect_and_add(fig)
     opts      = getappdata(fig,'opts');
     noise_est = getappdata(fig,'noise_est');
 
-    if isappdata(fig,'bad_frames')
-        bad_frames = getappdata(fig,'bad_frames');
+    if isappdata(fig,'bad_segs')
+        bad_segs = getappdata(fig,'bad_segs');
     else
-        bad_frames = [];
+        bad_segs = [];
     end
 
     x = DF(cid,:).';
@@ -3466,7 +3379,7 @@ function auto_detect_and_add(fig)
         sigma = eps;
     end
 
-    out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
+    out = detect_peaks_cell_core(x, sigma, opts, bad_segs);
 
     setappdata(fig,'auto_peaks', out.locs_raw);
     setappdata(fig,'seuil_detection_last', out.threshold);
@@ -3486,10 +3399,10 @@ function recompute_n_peaks_all(fig)
     peaks_all = cell(nCells,1);
     thresholds_all = nan(nCells,1);
 
-    if isappdata(fig,'bad_frames')
-        bad_frames = getappdata(fig,'bad_frames');
+    if isappdata(fig,'bad_segs')
+        bad_segs = getappdata(fig,'bad_segs');
     else
-        bad_frames = [];
+        bad_segs = [];
     end
 
     for cid = 1:nCells
@@ -3503,7 +3416,7 @@ function recompute_n_peaks_all(fig)
             sigma = eps;
         end
 
-        out = detect_peaks_cell_core(x, sigma, opts, bad_frames);
+        out = detect_peaks_cell_core(x, sigma, opts, bad_segs);
         peaks_all{cid} = out.locs_raw;
         thresholds_all(cid) = out.threshold;
         n_peaks_all(cid) = numel(out.locs_raw);
@@ -3535,14 +3448,14 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
     noise_est = ...
         getappdata(fig,'noise_est');
 
-    if isappdata(fig,'bad_frames')
+    if isappdata(fig,'bad_segs')
 
-        bad_frames = ...
-            getappdata(fig,'bad_frames');
+        bad_segs = ...
+            getappdata(fig,'bad_segs');
 
     else
 
-        bad_frames = [];
+        bad_segs = [];
     end
 
     nCells = ...
@@ -3552,16 +3465,15 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
         size(DF,2);
 
     %==============================================================
-    % Population active dans le référentiel courant
-    %==============================================================
-
-    active_indices = ...
-        get_active_population_indices( ...
-            fig, ...
-            nCells);
-
-    %==============================================================
-    % État global
+    % ETAT GLOBAL DE SELECTION = SOURCE UNIQUE DE VERITE
+    %
+    % cutoff_status : decision automatique
+    % manual_status : correction humaine prioritaire
+    % effective_status : combinaison finale des deux
+    %
+    % IMPORTANT : il n'existe plus de second filtre "au moins un pic"
+    % au moment de construire valid_cells. Le nombre de pics intervient
+    % deja dans le cutoff automatique via min_n_peaks_cutoff.
     %==============================================================
 
     manual_status = ...
@@ -3577,41 +3489,43 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
     effective_status = ...
         get_effective_cell_status(fig);
 
+    effective_status = ...
+        effective_status(:);
+
+    if numel(effective_status) ~= nCells
+        error( ...
+            'peak_detection_tuner:EffectiveStatusSizeMismatch', ...
+            ['effective_status contient %d cellules ; ' ...
+             'DF en contient %d.'], ...
+            numel(effective_status), ...
+            nCells);
+    end
+
     %==============================================================
-    % Cellules autorisées
+    % VALID CELLS
     %
-    % -1 = rejetée
-    %  0 = non évaluée
-    % +1 = conservée
+    % +1 = conservee
+    %  0 = non evaluee -> non valide
+    % -1 = exclue
     %==============================================================
 
-    candidate_keep = ...
-        effective_status ~= -1;
+    valid_cells = ...
+        find(effective_status == +1);
+
+    valid_cells = ...
+        valid_cells(:);
+
+    invalid_cells = ...
+        effective_status ~= +1;
 
     %==============================================================
-    % Exclusion automatique des cellules sans pic
+    % MATRICES DE DETECTION COMPLETES
     %
-    % Exception :
-    % une cellule gardée manuellement reste autorisée.
-    %==============================================================
-
-    n_peaks_all = ...
-        getappdata( ...
-            fig, ...
-            'n_peaks_all');
-
-    has_peaks = ...
-        n_peaks_all > 0;
-
-    manual_keep = ...
-        manual_status == +1;
-
-    candidate_keep = ...
-        candidate_keep & ...
-        (has_peaks | manual_keep);
-
-    %==============================================================
-    % Matrices globales dans le référentiel courant
+    % Raster / Acttmp2 / thresholds sont calcules pour TOUTES les cellules
+    % du plan, y compris les cellules rejetees.
+    %
+    % La selection finale reste entierement definie par effective_status :
+    % ce calcul des pics ne peut ni ajouter ni retirer une valid_cell.
     %==============================================================
 
     Raster_all = ...
@@ -3623,18 +3537,7 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
     thresholds_all = ...
         nan(nCells,1);
 
-    keep_mask = ...
-        false(nCells,1);
-
-    %==============================================================
-    % Détection des cellules candidates
-    %==============================================================
-
-    candidate_indices = ...
-        find(candidate_keep);
-
-    for cid = ...
-            candidate_indices(:).'
+    for cid = 1:nCells
 
         x = ...
             DF(cid,:).';
@@ -3668,7 +3571,7 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
                 x, ...
                 sigma, ...
                 opts, ...
-                bad_frames);
+                bad_segs);
 
         Acttmp2_all{cid} = ...
             out.locs_raw;
@@ -3682,53 +3585,30 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
                 cid, ...
                 out.locs_raw) = ...
                 true;
-
-            keep_mask(cid) = ...
-                true;
-
-        elseif manual_status(cid) == +1
-
-            % Une cellule gardée manuellement peut être
-            % conservée même sans pic.
-            keep_mask(cid) = ...
-                true;
         end
     end
 
     %==============================================================
-    % Indices conservés dans le référentiel courant
-    %==============================================================
-
-    valid_cells = ...
-        find(keep_mask);
-
-    valid_cells = ...
-        valid_cells(:);
-
-    invalid_cells = ...
-        ~keep_mask;
-
-    %==============================================================
     % OUTPUT MATRICES
+    %
+    % IMPORTANT :
+    % les traces renvoyees restent dans le referentiel ORIGINAL de F.
+    % Elles seront sauvegardees telles quelles dans results_*.mat.
+    % Le filtrage aux valid_cells est effectue ensuite par le caller,
+    % uniquement pour data.
     %==============================================================
-
-    DF = ...
-        DF(valid_cells,:);
-
-    F0 = ...
-        F0(valid_cells,:);
-
-    noise_est = ...
-        noise_est(valid_cells);
 
     Raster = ...
-        Raster_all(valid_cells,:);
+        Raster_all;
 
     Acttmp2 = ...
-        Acttmp2_all(valid_cells);
+        Acttmp2_all;
 
     thresholds = ...
-        thresholds_all(valid_cells);
+        thresholds_all;
+
+    Raster_kept = ...
+        Raster_all(valid_cells,:);
 
     %==============================================================
     % MAct
@@ -3746,7 +3626,7 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
             MAct(i) = ...
                 sum( ...
                     max( ...
-                        Raster(:, ...
+                        Raster_kept(:, ...
                             i:i+synchronous_frames), ...
                         [], ...
                         2));
@@ -3759,118 +3639,20 @@ function [invalid_cells, valid_cells, DF, F0, noise_est, ...
     end
 
     %==============================================================
-    % SELECTION SUMMARY
-    %
-    % Tous les indices sont exprimés dans le référentiel courant.
-    %
-    % selected_signal permet de savoir lequel :
-    %
-    %   'gcamp'
-    %   'combined'
-    %   'electroporated'
-    %
-    % Aucun champ du summary n'impose donc "combined".
+    % SELECTION SUMMARY MINIMAL
     %==============================================================
-
-    selected_signal = ...
-        char( ...
-            string( ...
-                getappdata( ...
-                    fig, ...
-                    'selected_signal')));
 
     summary = struct();
-
-    summary.selected_signal = ...
-        selected_signal;
-
-    summary.active_indices = ...
-        active_indices(:);
-
-    summary.valid_cells = ...
-        valid_cells(:);
-
-    summary.manual_status = ...
-        manual_status(:);
-
-    summary.cutoff_status = ...
-        cutoff_status(:);
-
-    summary.effective_status = ...
-        effective_status(:);
-
-    %==============================================================
-    % Informations sur les populations
-    %==============================================================
-
-    electroporated_indices = ...
-        getappdata( ...
-            fig, ...
-            'electroporated_indices');
-
-    electroporated_indices = ...
-        normalize_electroporated_indices( ...
-            electroporated_indices, ...
-            nCells);
-
-    summary.electroporated_indices = ...
-        electroporated_indices(:);
-
-    if isempty(electroporated_indices)
-
-        summary.gcamp_indices = ...
-            (1:nCells).';
-
-    else
-
-        summary.gcamp_indices = ...
-            setdiff( ...
-                (1:nCells).', ...
-                electroporated_indices, ...
-                'stable');
-    end
-
-    %==============================================================
-    % Statistiques
-    %==============================================================
-
-    valid_active_cells = ...
-        intersect( ...
-            valid_cells, ...
-            active_indices, ...
-            'stable');
-
-    summary.n_total = ...
-        numel(active_indices);
-
-    summary.n_kept_final = ...
-        numel(valid_active_cells);
-
-    summary.n_manual_keep = ...
-        sum( ...
-            manual_status(active_indices) == +1);
-
-    summary.n_manual_excl = ...
-        sum( ...
-            manual_status(active_indices) == -1);
-
-    summary.n_cutoff_keep = ...
-        sum( ...
-            cutoff_status(active_indices) == +1);
-
-    summary.n_cutoff_excl = ...
-        sum( ...
-            cutoff_status(active_indices) == -1);
-
-    %==============================================================
-    % Commentaire
-    %==============================================================
+    summary.manual_status = manual_status(:);
+    summary.cutoff_status = cutoff_status(:);
+    summary.effective_status = effective_status(:);
 
     if isappdata(fig,'comment')
         summary.comment = getappdata(fig,'comment');
     else
         summary.comment = '';
     end
+
 end
 
 %% ===================== NAVIGATION AND CUTOFF =====================
@@ -4080,12 +3862,14 @@ function apply_auto_cutoff(fig)
     nCells = ...
         numel(n_peaks_all);
 
-    active_indices = ...
-        get_active_population_indices( ...
-            fig, ...
-            nCells);
+    % Le cutoff automatique est TOUJOURS calcule sur le referentiel
+    % complet du plan. La population actuellement affichee dans le tuner
+    % ne sert qu'a la navigation/visualisation et ne doit jamais modifier
+    % les statuts sauvegardes.
+    all_indices = ...
+        (1:nCells).';
 
-    if isempty(active_indices)
+    if isempty(all_indices)
         return;
     end
 
@@ -4159,10 +3943,9 @@ function apply_auto_cutoff(fig)
     %==========================================================
     % cutoff_status GLOBAL
     %
-    % On modifie UNIQUEMENT la population actuellement affichée.
-    %
-    % Mais puisque les indices sont Combined, le résultat est
-    % immédiatement visible dans les autres vues.
+    % Recalculer TOUTES les cellules du plan a chaque validation du
+    % cutoff. selected_signal / population affichee n'intervient jamais
+    % dans le calcul ni dans la selection sauvegardee.
     %==========================================================
 
     cutoff_status = ...
@@ -4177,11 +3960,11 @@ function apply_auto_cutoff(fig)
             zeros(nCells,1);
     end
 
-    cutoff_status(active_indices) = -1;
+    cutoff_status(:) = -1;
 
     cutoff_status( ...
-        active_indices( ...
-            cutoff_good(active_indices))) = +1;
+        all_indices( ...
+            cutoff_good(all_indices))) = +1;
 
     setappdata( ...
         fig, ...
@@ -4199,39 +3982,28 @@ function apply_auto_cutoff(fig)
         true);
 
     selected_cells_from_cutoff = ...
-        active_indices( ...
-            cutoff_status(active_indices) == +1);
+        all_indices( ...
+            cutoff_status(all_indices) == +1);
 
     setappdata( ...
         fig, ...
         'selected_cells_from_cutoff', ...
         selected_cells_from_cutoff(:));
 
-    selected_signal = ...
-        char( ...
-            string( ...
-                getappdata( ...
-                    fig, ...
-                    'selected_signal')));
-
     fprintf('\n');
-    fprintf( ...
-        'Cutoff appliqué à %s\n', ...
-        upper(selected_signal));
+    fprintf('Cutoff applique globalement au plan\n');
 
     fprintf( ...
         '  Total        : %d\n', ...
-        numel(active_indices));
+        nCells);
 
     fprintf( ...
-        '  Conservées   : %d\n', ...
-        sum( ...
-            cutoff_status(active_indices) == +1));
+        '  Conservees   : %d\n', ...
+        sum(cutoff_status == +1));
 
     fprintf( ...
         '  Exclues      : %d\n', ...
-        sum( ...
-            cutoff_status(active_indices) == -1));
+        sum(cutoff_status == -1));
 
     fprintf( ...
         '  Peaks        : >= %d\n', ...
@@ -4620,7 +4392,6 @@ function update_empty_navigation(fig)
     if ~isempty(hIdentity) && isgraphics(hIdentity)
         set(hIdentity,'String','');
     end
-
     % Ne pas laisser la trace d'une cellule rejetee dans une navigation
     % devenue vide. Les badframes et le marqueur temporel sont conserves.
     if isappdata(fig,'ax1')
@@ -4682,8 +4453,10 @@ end
 
 function update_navigation_identification(fig)
 
-    % Indice LOCAL de la cellule dans la population active, a ne pas
-    % confondre avec son rang dans la navigation triee par qualite.
+    % Les identifiants affichés ici sont indépendants de la population
+    % actuellement utilisée comme filtre de navigation :
+    %   - Combined = ID original dans le référentiel complet (1-based) ;
+    %   - iscell   = indice Suite2p affiché dans le tuner (0-based).
     hIdentity = findobj(fig,'Tag','lbl_nav_identification');
 
     if isempty(hIdentity) || ~isgraphics(hIdentity) || ...
@@ -4700,46 +4473,173 @@ function update_navigation_identification(fig)
         return;
     end
 
-    population_indices = ...
-        get_active_population_indices(fig,size(DF,1));
+    nCells = size(DF,1);
+    cell_id = round(double(cell_id));
 
-    population_index = ...
-        find(population_indices == cell_id,1);
-
-    if isempty(population_index)
-        set(hIdentity,'String','');
-        return;
-    end
-
-    selected_signal = char(string(getappdata(fig,'selected_signal')));
-    switch lower(selected_signal)
-        case 'gcamp'
-            signal_name = 'GCaMP';
-        case 'electroporated'
-            signal_name = 'Electroporated';
-        case 'combined'
-            signal_name = 'Combined';
-        otherwise
-            signal_name = selected_signal;
-    end
-
-    index_label = sprintf('%s : %d/%d', ...
-        signal_name, population_index, numel(population_indices));
-
+    iscell_value = NaN;
     if isappdata(fig,'iscell_idx_display')
         iscell_indices = getappdata(fig,'iscell_idx_display');
-
         if cell_id >= 1 && cell_id <= numel(iscell_indices) && ...
                 isfinite(iscell_indices(cell_id))
-            index_label = sprintf('%s\niscell : %d', ...
-                index_label,round(iscell_indices(cell_id))-1);
+            iscell_value = round(double(iscell_indices(cell_id))) - 1;
         end
     end
 
+    if isfinite(iscell_value)
+        index_label = sprintf('Combined : %d/%d\niscell : %d', ...
+            cell_id,nCells,iscell_value);
+    else
+        index_label = sprintf('Combined : %d/%d\niscell : -', ...
+            cell_id,nCells);
+    end
     set(hIdentity,'String',index_label);
+
+    % Les champs editables d'acces direct sont volontairement independants
+    % de la navigation courante. Seul l'utilisateur modifie leur contenu.
+end
+
+function goto_identifier_keyrelease(fig,hEdit,evnt,kind)
+    % Valider uniquement avec Entrée. Utiliser KeyReleaseFcn pour que MATLAB
+    % ait déjà validé la nouvelle String du champ avant de la lire.
+    % Le KeyPressFcn global de la figure utilise aussi Entrée pour
+    % "Garder cellule" ; navigate_cells() ignore donc explicitement Entrée
+    % lorsque l'un de ces champs a le focus.
+    if isempty(evnt)
+        return;
+    end
+    try
+        key = lower(char(string(evnt.Key)));
+    catch
+        return;
+    end
+    if ~ismember(key,{'return','enter'})
+        return;
+    end
+    goto_cell_by_identifier(fig,hEdit,kind);
+end
+
+function goto_cell_by_identifier(fig,hEdit,kind)
+
+    if isempty(fig) || ~ishghandle(fig) || ...
+            isempty(hEdit) || ~isgraphics(hEdit) || ...
+            ~isappdata(fig,'DF_sg')
+        return;
+    end
+
+    DF = getappdata(fig,'DF_sg');
+    nCells = size(DF,1);
+    if nCells < 1
+        return;
+    end
+
+    requested = str2double(get(hEdit,'String'));
+    if ~isfinite(requested) || requested ~= round(requested)
+        warning('peak_detection_tuner:InvalidGotoIndex', ...
+            'Indice invalide : entrer un entier.');
+        update_navigation_identification(fig);
+        return;
+    end
+    requested = round(double(requested));
+
+    switch lower(char(string(kind)))
+        case 'combined'
+            cid = requested;
+            if cid < 1 || cid > nCells
+                warning('peak_detection_tuner:CombinedIndexOutOfRange', ...
+                    'Indice Combined %d hors limites [1, %d].',cid,nCells);
+                update_navigation_identification(fig);
+                return;
+            end
+
+        case 'iscell'
+            if ~isappdata(fig,'iscell_idx_display')
+                warning('peak_detection_tuner:MissingIscellIndex', ...
+                    'Aucun indice iscell disponible pour ce plan.');
+                update_navigation_identification(fig);
+                return;
+            end
+            iscell_indices = getappdata(fig,'iscell_idx_display');
+            displayed_indices = round(double(iscell_indices(:))) - 1;
+            cid = find(isfinite(displayed_indices) & ...
+                displayed_indices == requested,1,'first');
+            if isempty(cid)
+                warning('peak_detection_tuner:IscellIndexNotFound', ...
+                    'Indice iscell %d introuvable dans ce plan.',requested);
+                update_navigation_identification(fig);
+                return;
+            end
+
+        otherwise
+            return;
+    end
+
+    % Si la cible n'appartient pas au filtre de population courant,
+    % basculer automatiquement en Combined. Cela ne modifie aucune
+    % sélection : selected_signal est uniquement un filtre d'affichage.
+    active_ids = get_active_population_indices(fig,nCells);
+    if ~ismember(cid,active_ids)
+        setappdata(fig,'selected_signal','combined');
+        tags = {'cb_population_gcamp', ...
+            'cb_population_electroporated','cb_population_combined'};
+        for kk = 1:numel(tags)
+            h = findobj(fig,'Tag',tags{kk});
+            if ~isempty(h) && isgraphics(h)
+                set(h,'Value',strcmp(tags{kk},'cb_population_combined'));
+            end
+        end
+        update_population_action_buttons(fig);
+        update_population_window_title(fig);
+        refresh_selection_order(fig);
+        refresh_peak_raster(fig);
+    end
+
+    % Une cellule rejetée peut être absente de la navigation lorsque
+    % "Show rejected cells" est décoché. La rendre visible afin que la
+    % commande d'accès direct mène toujours à l'ID demandé.
+    order_cells = [];
+    if isappdata(fig,'order_cells')
+        order_cells = getappdata(fig,'order_cells');
+    end
+    if ~ismember(cid,order_cells)
+        order_all = [];
+        if isappdata(fig,'order_cells_all')
+            order_all = getappdata(fig,'order_cells_all');
+        end
+        if ismember(cid,order_all)
+            setappdata(fig,'show_rejected_cells',true);
+            hShow = findobj(fig,'Tag','cb_show_rejected_cells');
+            if ~isempty(hShow) && isgraphics(hShow)
+                set(hShow,'Value',1);
+            end
+            refresh_selection_order(fig);
+            refresh_peak_raster(fig);
+        end
+    end
+
+    order_cells = getappdata(fig,'order_cells');
+    idx = find(order_cells == cid,1,'first');
+    if isempty(idx)
+        warning('peak_detection_tuner:GotoCellUnavailable', ...
+            'Cellule Combined %d indisponible dans la navigation.',cid);
+        update_navigation_identification(fig);
+        return;
+    end
+
+    update_current_cell(fig,idx);
 end
 
 function navigate_cells(fig, evnt)
+
+    % Entrée dans les champs d'accès direct sert uniquement à naviguer.
+    % Ne jamais laisser ce même appui déclencher le raccourci global
+    % "Garder cellule".
+    hFocus = get(fig,'CurrentObject');
+    if ~isempty(hFocus) && isgraphics(hFocus)
+        focusTag = get(hFocus,'Tag');
+        if any(strcmp(focusTag,{'edit_goto_combined','edit_goto_iscell'}))
+            return;
+        end
+    end
 
     switch evnt.Key
         case 'rightarrow'
@@ -4948,7 +4848,7 @@ function modified = viewer_has_pending_changes(fig)
     params_changed = ~isempty(changed_fields);
     setappdata(fig,'detection_params_modified',params_changed);
     setappdata(fig,'peak_sort_df_changed', ...
-        any(ismember(changed_fields,{'window_size_s','savgol_win_ms'})));
+        any(ismember(changed_fields,{'window_size_s','savgol_win_ms','savgol_poly'})));
 
     recording_changed = ~isequal( ...
         normalize_recording_keep(getappdata(fig,'recording_keep')), ...
@@ -5134,16 +5034,37 @@ function [ ...
     %
     % Pendant le déplacement des sliders, seule la cellule courante
     % est recalculée pour garder une interface fluide.
-    % Au moment de Confirmer, on recalcule tout le plan avec les
-    % paramètres courants avant la sauvegarde.
+    % Au moment de Confirmer :
+    %   - preprocessing modifie -> recalcul complet depuis F brut ;
+    %   - autres paramètres -> recalcul des pics depuis le DF courant,
+    %     sans repasser par F_processing.
     %==============================================================
 
     params_modified = ...
         isappdata(fig,'detection_params_modified') && ...
         getappdata(fig,'detection_params_modified');
 
+    changed_fields = {};
+    if isappdata(fig,'viewer_changed_param_fields')
+        changed_fields = ...
+            getappdata(fig,'viewer_changed_param_fields');
+    end
+
+    preprocessing_changed = ...
+        any( ...
+            ismember( ...
+                changed_fields, ...
+                {'window_size_s','savgol_win_ms','savgol_poly'}));
+
     if params_modified
-        recompute_viewer_detection_all(fig);
+
+        % IMPORTANT :
+        % - preprocessing modifie -> repartir du F brut complet ;
+        % - autre parametre -> conserver DF/F0 sauvegardes et recalculer
+        %   qualite/pics directement a partir du DF courant.
+        recompute_viewer_detection_all( ...
+            fig, ...
+            preprocessing_changed);
     end
 
     %==============================================================
@@ -5207,32 +5128,38 @@ function [ ...
         ~keep_mask;
 
     %==============================================================
-    % Réduction des matrices déjà calculées
+    % Sorties complètes pour results_*.mat
+    %
+    % Les statuts et valid_cells décrivent la sélection. Les traces de
+    % toutes les cellules restent disponibles dans le fichier résultat.
     %==============================================================
 
     DF_sg = ...
-        DF_sg_all(valid_cells,:);
+        DF_sg_all;
 
     DF_raw = ...
-        DF_raw_all(valid_cells,:);
+        DF_raw_all;
 
     F0 = ...
-        F0_all(valid_cells,:);
+        F0_all;
 
     noise_est = ...
-        noise_est_all(valid_cells);
+        noise_est_all;
 
     Raster = ...
-        Raster_all(valid_cells,:);
+        Raster_all;
 
     Acttmp2 = ...
-        Acttmp2_all(valid_cells);
+        Acttmp2_all;
 
     thresholds = ...
-        thresholds_all(valid_cells);
+        thresholds_all;
+
+    Raster_kept = ...
+        Raster_all(valid_cells,:);
 
     %==============================================================
-    % MAct doit refléter la nouvelle population retenue
+    % MAct doit refléter uniquement la population retenue
     %==============================================================
 
     if Nz > synchronous_frames
@@ -5247,7 +5174,7 @@ function [ ...
             MAct(i) = ...
                 sum( ...
                     max( ...
-                        Raster(:,i:i+synchronous_frames), ...
+                        Raster_kept(:,i:i+synchronous_frames), ...
                         [], ...
                         2));
         end
@@ -5259,121 +5186,33 @@ function [ ...
     end
 
     %==============================================================
-    % Summary
+    % SELECTION SUMMARY MINIMAL
     %==============================================================
 
-    summary = ...
-        struct();
-
-    if isappdata(fig,'selection_summary_saved')
-
-        tmp = ...
-            getappdata(fig,'selection_summary_saved');
-
-        if isstruct(tmp)
-            summary = tmp;
-        end
-    end
-
     cutoff_status = [];
-
     if isappdata(fig,'cutoff_status')
         cutoff_status = getappdata(fig,'cutoff_status');
     end
-
-    if isempty(cutoff_status) || ...
-            numel(cutoff_status) ~= nCells
-
-        cutoff_status = ...
-            zeros(nCells,1);
-
+    if isempty(cutoff_status) || numel(cutoff_status) ~= nCells
+        cutoff_status = zeros(nCells,1);
     else
-
-        cutoff_status = ...
-            cutoff_status(:);
+        cutoff_status = cutoff_status(:);
     end
 
-    effective_status = ...
-        zeros(nCells,1);
+    effective_status = -ones(nCells,1);
+    effective_status(keep_mask) = +1;
 
-    effective_status(keep_mask) = ...
-        +1;
-
-    effective_status(~keep_mask) = ...
-        -1;
-
-    summary.valid_cells = ...
-        valid_cells(:);
-
-    summary.manual_status = ...
-        manual_status(:);
-
-    summary.cutoff_status = ...
-        cutoff_status(:);
-
-    summary.effective_status = ...
-        effective_status(:);
-
-    summary.selected_signal = ...
-        char(string( ...
-            getappdata(fig,'selected_signal')));
-
-    summary.active_indices = ...
-        (1:nCells).';
-
-    summary.n_total = ...
-        nCells;
-
-    summary.n_kept_final = ...
-        numel(valid_cells);
-
-    summary.n_manual_keep = ...
-        sum(manual_status == +1);
-
-    summary.n_manual_excl = ...
-        sum(manual_status == -1);
-
-    summary.n_cutoff_keep = ...
-        sum(cutoff_status == +1);
-
-    summary.n_cutoff_excl = ...
-        sum(cutoff_status == -1);
-
-    %==============================================================
-    % Populations
-    %==============================================================
-
-    electroporated_indices = [];
-
-    if isappdata(fig,'electroporated_indices')
-
-        electroporated_indices = ...
-            getappdata(fig,'electroporated_indices');
-    end
-
-    electroporated_indices = ...
-        normalize_electroporated_indices( ...
-            electroporated_indices, ...
-            nCells);
-
-    summary.electroporated_indices = ...
-        electroporated_indices(:);
-
-    summary.gcamp_indices = ...
-        setdiff( ...
-            (1:nCells).', ...
-            electroporated_indices, ...
-            'stable');
-
-    %==============================================================
-    % Commentaire
-    %==============================================================
+    summary = struct();
+    summary.manual_status = manual_status(:);
+    summary.cutoff_status = cutoff_status(:);
+    summary.effective_status = effective_status(:);
 
     if isappdata(fig,'comment')
         summary.comment = getappdata(fig,'comment');
     else
         summary.comment = '';
     end
+
 end
 
 
@@ -5472,7 +5311,7 @@ function finalize_and_close( ...
 
     % Confirmer : retrier le DF final, sans retri pendant les exclusions.
     [isort1_selected,isort2_selected,Sm_selected] = ...
-        get_confirmed_peak_sort(fig,valid_cells,DF_sg_selected);
+        get_confirmed_peak_sort(fig,valid_cells,DF_sg_selected(valid_cells,:));
 
     %==========================================================
     % Mise à jour du tableau Excel en mode Viewer
@@ -5482,8 +5321,7 @@ function finalize_and_close( ...
 
         update_cell_selection_summary( ...
             fig, ...
-            valid_cells, ...
-            invalid_cells);
+            valid_cells);
 
     catch ME
 
@@ -5542,8 +5380,8 @@ function finalize_and_close( ...
     %==============================================================
     % NORMAL MODE
     %
-    % On arrive ici UNIQUEMENT après clic sur
-    % "Confirmer sélection".
+    % On arrive ici après validation explicite OU après auto-validation
+    % d'un reprocessing déclenché par clear_outputs_requested.
     %==============================================================
 
     [ ...
@@ -5566,7 +5404,7 @@ function finalize_and_close( ...
 
     % Confirmer : retrier le DF final avec les cellules acceptees.
     [isort1_selected,isort2_selected,Sm_selected] = ...
-        get_confirmed_peak_sort(fig,valid_cells,DF);
+        get_confirmed_peak_sort(fig,valid_cells,DF(valid_cells,:));
 
     %==============================================================
     % Table sélection
@@ -5576,8 +5414,7 @@ function finalize_and_close( ...
 
         update_cell_selection_summary( ...
             fig, ...
-            valid_cells, ...
-            invalid_cells);
+            valid_cells);
 
     catch ME
 
@@ -5598,17 +5435,9 @@ function finalize_and_close( ...
             'DF_raw');
 
 
-    if isfield(summary,'valid_cells') && ...
-            ~isempty(summary.valid_cells) && ...
-            ~isempty(DF_raw_all)
-
-        DF_raw_selected = ...
-            DF_raw_all( ...
-                summary.valid_cells, ...
-                :);
-
+    if ~isempty(valid_cells) && ~isempty(DF_raw_all)
+        DF_raw_selected = DF_raw_all(valid_cells,:);
     else
-
         DF_raw_selected = [];
     end
 
@@ -5658,7 +5487,7 @@ function finalize_and_close( ...
             'valid_cells', valid_cells, ...
             'orig2new', orig2new, ...
             'DF_sg', DF, ...
-            'DF_raw', DF_raw_selected, ...
+            'DF_raw', DF_raw_all, ...
             'F0', F0, ...
             'noise_est', noise_est, ...
             'Raster', Raster, ...
@@ -5962,16 +5791,16 @@ function refresh_data(fig)
 
         if ~isempty(hBadF0) && ...
                 isgraphics(hBadF0) && ...
-                isappdata(fig,'focus_segs_time')
+                isappdata(fig,'bad_segs_time')
 
-            focus_segs_time = ...
+            bad_segs_time = ...
                 getappdata( ...
                     fig, ...
-                    'focus_segs_time');
+                    'bad_segs_time');
 
             update_badframe_patch( ...
                 hBadF0, ...
-                focus_segs_time, ...
+                bad_segs_time, ...
                 ylim(axF0));
 
             uistack( ...
@@ -6119,11 +5948,11 @@ function refresh_data(fig)
     % et les garder derriere la trace et les marqueurs de pics.
     if ~isempty(hBad) && ...
             isgraphics(hBad) && ...
-            isappdata(fig,'focus_segs_time')
+            isappdata(fig,'bad_segs_time')
 
         update_badframe_patch( ...
             hBad, ...
-            getappdata(fig,'focus_segs_time'), ...
+            getappdata(fig,'bad_segs_time'), ...
             ylim(ax));
 
         uistack(hBad,'bottom');
@@ -6644,32 +6473,116 @@ function initialize_peak_raster_sort(fig,source_ids,isort1,isort2,Sm,viewer_mode
     % source_ids est dans le meme ordre que les lignes du DF source.
     source_ids = source_ids(:);
     n = numel(source_ids);
-    if ~viewer_mode && n>0
-        DF = getappdata(fig,'DF_sg');
-        ops = getappdata(fig,'ops');
+
+    saved_sort_valid = ...
+        is_valid_peak_permutation( ...
+            isort1, ...
+            n);
+
+    % ==========================================================
+    % CALCUL DU TRI
+    %
+    % Detection :
+    %   toujours calculer le tri sur les cellules source.
+    %
+    % Viewer :
+    %   reutiliser isort1 sauvegarde s'il est valide ;
+    %   sinon recalculer UNE SEULE FOIS a partir du DF complet
+    %   sauvegarde, sans modifier la selection et sans sauvegarder
+    %   automatiquement le MAT.
+    % ==========================================================
+
+    should_recompute_sort = ...
+        n > 0 && ...
+        (~viewer_mode || ~saved_sort_valid);
+
+    if should_recompute_sort
+
+        DF = ...
+            getappdata( ...
+                fig, ...
+                'DF_sg');
+
+        ops = ...
+            getappdata( ...
+                fig, ...
+                'ops');
+
         try
-            [isort1,isort2,Sm] = raster_processing(double(DF(source_ids,:)),ops);
+
+            [isort1,isort2,Sm] = ...
+                raster_processing( ...
+                    double(DF(source_ids,:)), ...
+                    ops);
+
+            if ~is_valid_peak_permutation(isort1,n)
+
+                error( ...
+                    'peak_detection_tuner:invalidRecomputedSort', ...
+                    ['raster_processing ne renvoie pas une permutation ' ...
+                     'isort1 valide.']);
+            end
+
+            isort1 = ...
+                isort1(:);
+
+            if ~isempty(isort2)
+
+                if is_valid_peak_permutation(isort2,n)
+
+                    isort2 = ...
+                        isort2(:);
+
+                else
+
+                    isort2 = [];
+                end
+            end
+
+            if viewer_mode
+
+                fprintf( ...
+                    ['Viewer : isort1 sauvegarde absent ou invalide -> ' ...
+                     'tri recalcule en memoire a partir du DF sauvegarde.\n']);
+            end
+
         catch ME
-            warning('peak_detection_tuner:rasterSort', ...
-                'Tri du raster indisponible (%s). Ordre original utilise.',ME.message);
-            isort1 = []; isort2 = []; Sm = [];
+
+            warning( ...
+                'peak_detection_tuner:rasterSort', ...
+                ['Tri du raster indisponible (%s). ' ...
+                 'Ordre original utilise.'], ...
+                ME.message);
+
+            isort1 = ...
+                (1:n)';
+
+            isort2 = [];
+            Sm = [];
         end
-    end
-    if ~is_valid_peak_permutation(isort1,n)
-        if viewer_mode && n>0
-            warning('peak_detection_tuner:missingSort', ...
-                'isort1 sauvegarde absent ou invalide : ordre original conserve, sans retrier.');
-        end
-        % Sans permutation fiable, l'orientation des lignes de Sm est
-        % inconnue : ne pas sauvegarder de matrice desynchronisee.
-        Sm = [];
-        isort1 = (1:n)';
+
     else
-        isort1 = isort1(:);
+
+        isort1 = ...
+            isort1(:);
+
+        if ~isempty(isort2) && ...
+                ~is_valid_peak_permutation(isort2,n)
+
+            isort2 = [];
+        end
     end
-    if ~isempty(isort2) && ~is_valid_peak_permutation(isort2,n)
+
+    % n = 0 : permutation vide.
+    if n == 0
+
+        isort1 = ...
+            zeros(0,1);
+
         isort2 = [];
+        Sm = [];
     end
+
     setappdata(fig,'peak_sort_source_ids',source_ids);
     setappdata(fig,'peak_sort_isort1',isort1);
     setappdata(fig,'peak_sort_isort2',isort2);
@@ -7577,7 +7490,7 @@ function refresh_raster_badframe_patch(fig)
     end
 
     h = getappdata(fig,'hBadPatch_axRaster');
-    segs = getappdata(fig,'focus_segs_time');
+    segs = getappdata(fig,'bad_segs_time');
 
     if isempty(segs)
         if ~isempty(h) && isgraphics(h)
@@ -8682,7 +8595,7 @@ end
 
 function make_slider(parent,fig,label,field,minv,maxv,val,pos)
 
-    intFields = {'savgol_win_ms','window_size_s','refrac_ms'};
+    intFields = {'savgol_win_ms','savgol_poly','window_size_s','refrac_ms'};
 
     if ismember(field,intFields)
         val = round(max(minv, min(maxv, val)));
@@ -8832,6 +8745,7 @@ function update_param(fig, field, value)
 
     intFields = { ...
         'savgol_win_ms', ...
+        'savgol_poly', ...
         'window_size_s', ...
         'refrac_ms'};
 
@@ -8868,7 +8782,7 @@ function update_param(fig, field, value)
 
     % Seuls ces parametres changent le DF utilise par raster_processing.
     % La suppression / reintegration d'une cellule ne pose PAS ce flag.
-    if ismember(field,{'window_size_s','savgol_win_ms'})
+    if ismember(field,{'window_size_s','savgol_win_ms','savgol_poly'})
         setappdata(fig,'peak_sort_df_changed',true);
     end
 
@@ -8975,16 +8889,16 @@ function update_param(fig, field, value)
         return;
     end
 
-    if isappdata(fig,'bad_frames')
+    if isappdata(fig,'bad_segs')
 
-        bad_frames = ...
+        bad_segs = ...
             getappdata( ...
                 fig, ...
-                'bad_frames');
+                'bad_segs');
 
     else
 
-        bad_frames = [];
+        bad_segs = [];
     end
 
     %==============================================================
@@ -8997,7 +8911,7 @@ function update_param(fig, field, value)
 
     if ismember( ...
             field, ...
-            {'window_size_s','savgol_win_ms'})
+            {'window_size_s','savgol_win_ms','savgol_poly'})
 
         F = ...
             getappdata( ...
@@ -9019,7 +8933,7 @@ function update_param(fig, field, value)
         ] = ...
             F_processing( ...
                 F_cell, ...
-                bad_frames, ...
+                bad_segs, ...
                 fs_plane, ...
                 opts.window_size);
 
@@ -9154,7 +9068,9 @@ function update_param(fig, field, value)
 end
 
 
-function recompute_viewer_detection_all(fig)
+function recompute_viewer_detection_all( ...
+        fig, ...
+        preprocessing_changed)
 
     if isempty(fig) || ...
             ~ishghandle(fig)
@@ -9162,14 +9078,19 @@ function recompute_viewer_detection_all(fig)
         return;
     end
 
+    if nargin < 2 || ...
+            isempty(preprocessing_changed)
+
+        preprocessing_changed = ...
+            false;
+    end
+
+    preprocessing_changed = ...
+        logical(preprocessing_changed(1));
+
     %==============================================================
     % INPUTS
     %==============================================================
-
-    F = ...
-        getappdata( ...
-            fig, ...
-            'F_raw');
 
     opts = ...
         getappdata( ...
@@ -9181,44 +9102,91 @@ function recompute_viewer_detection_all(fig)
             fig, ...
             'fs_plane');
 
-    if isappdata(fig,'bad_frames')
 
-        bad_frames = ...
+    if isappdata(fig,'bad_segs')
+
+        bad_segs = ...
             getappdata( ...
                 fig, ...
-                'bad_frames');
+                'bad_segs');
 
     else
 
-        bad_frames = [];
-    end
-
-    if isempty(F)
-        return;
+        bad_segs = [];
     end
 
     %==============================================================
-    % PREPROCESSING COMPLET DU PLAN
+    % PREPROCESSING
+    %
+    % F_raw n'est lu QUE si un parametre de preprocessing a change.
+    % Sinon, DF_sg / DF_raw / F0 / noise_est sauvegardes restent la
+    % source de verite et seuls qualite + pics sont recalcules.
     %==============================================================
 
-    [ ...
-        DF_raw_all, ...
-        F0_all ...
-    ] = ...
-        F_processing( ...
-            F, ...
-            bad_frames, ...
-            fs_plane, ...
-            opts.window_size);
+    if preprocessing_changed
 
-    DF_sg_all = ...
-        savgol_transform( ...
+        F = ...
+            getappdata( ...
+                fig, ...
+                'F_raw');
+
+        if isempty(F)
+
+            error( ...
+                'peak_detection_tuner:MissingFullFForPreprocessing', ...
+                ['Viewer : F complet indisponible alors qu''un parametre ' ...
+                 'de preprocessing a ete modifie.']);
+        end
+
+        [ ...
             DF_raw_all, ...
-            opts);
+            F0_all ...
+        ] = ...
+            F_processing( ...
+                F, ...
+                bad_segs, ...
+                fs_plane, ...
+                opts.window_size);
 
-    noise_est_all = ...
-        estimate_noise( ...
-            DF_raw_all);
+        DF_sg_all = ...
+            savgol_transform( ...
+                DF_raw_all, ...
+                opts);
+
+        noise_est_all = ...
+            estimate_noise( ...
+                DF_raw_all);
+
+    else
+
+        DF_raw_all = ...
+            getappdata( ...
+                fig, ...
+                'DF_raw');
+
+        DF_sg_all = ...
+            getappdata( ...
+                fig, ...
+                'DF_sg');
+
+        F0_all = ...
+            getappdata( ...
+                fig, ...
+                'F0');
+
+        noise_est_all = ...
+            getappdata( ...
+                fig, ...
+                'noise_est');
+
+        if isempty(DF_sg_all)
+
+            error( ...
+                'peak_detection_tuner:MissingViewerDFForRecompute', ...
+                ['Viewer : DF_sg sauvegarde indisponible pour le ' ...
+                 'recalcul des pics.']);
+        end
+    end
 
     %==============================================================
     % QUALITY
@@ -9237,7 +9205,7 @@ function recompute_viewer_detection_all(fig)
             DF_sg_all, ...
             noise_est_all, ...
             opts, ...
-            bad_frames);
+            bad_segs);
 
     score_quality_percentile = ...
         nan(size(score));
@@ -9319,7 +9287,7 @@ function recompute_viewer_detection_all(fig)
                 x, ...
                 sigma, ...
                 opts, ...
-                bad_frames);
+                bad_segs);
 
         Acttmp2_all{cid} = ...
             out.locs_raw;
@@ -12486,4 +12454,130 @@ function ok = show_behavior_movie_frame( ...
     ok = true;
 end
 
+
+%% ===================== SELECTION SUMMARY =====================
+
+function [summary, migrated] = normalize_selection_summary(old_summary,nCells)
+    % Migration vers le format minimal persistant :
+    % manual_status, cutoff_status, effective_status, comment.
+    % Les décisions manuelles compatibles sont toujours conservées.
+
+    if nargin < 2 || isempty(nCells) || ~isscalar(nCells) || ...
+            ~isfinite(nCells) || nCells < 0
+        nCells = 0;
+    end
+    nCells = round(double(nCells));
+
+    if ~isstruct(old_summary) || isempty(old_summary) || ...
+            isempty(fieldnames(old_summary))
+        summary = struct();
+        migrated = false;
+        return;
+    end
+
+    manual_status = zeros(nCells,1);
+    cutoff_status = zeros(nCells,1);
+    effective_status = zeros(nCells,1);
+
+    if isfield(old_summary,'manual_status') && ...
+            numel(old_summary.manual_status) == nCells
+        tmp = double(old_summary.manual_status(:));
+        ok = isfinite(tmp) & ismember(tmp,[-1 0 1]);
+        manual_status(ok) = tmp(ok);
+        if ~all(ok)
+            warning('peak_detection_tuner:InvalidLegacyManualStatus', ...
+                'Ancien manual_status : valeurs invalides remises à 0.');
+        end
+    elseif isfield(old_summary,'manual_status') && ...
+            ~isempty(old_summary.manual_status) && nCells > 0
+
+        % Ancien summary construit dans un referentiel cellulaire different
+        % (typiquement des donnees anciennement filtrees/croppees).
+        % Les indices ne peuvent pas etre remappes de facon fiable :
+        % abandonner uniquement les anciennes decisions manuelles et
+        % repartir avec un statut neutre dans le referentiel complet.
+        warning('peak_detection_tuner:LegacyManualStatusSizeMismatch', ...
+            ['Ancien manual_status incompatible (%d cellules) avec le ' ...
+             'referentiel actuel (%d cellules) : anciennes decisions ' ...
+             'manuelles ecrasees et manual_status reinitialise a 0.'], ...
+            numel(old_summary.manual_status),nCells);
+
+        manual_status = zeros(nCells,1);
+    end
+
+    if isfield(old_summary,'cutoff_status') && ...
+            numel(old_summary.cutoff_status) == nCells
+        tmp = double(old_summary.cutoff_status(:));
+        ok = isfinite(tmp) & ismember(tmp,[-1 0 1]);
+        cutoff_status(ok) = tmp(ok);
+    end
+
+    if isfield(old_summary,'effective_status') && ...
+            numel(old_summary.effective_status) == nCells
+        tmp = double(old_summary.effective_status(:));
+        ok = isfinite(tmp) & ismember(tmp,[-1 0 1]);
+        effective_status(ok) = tmp(ok);
+    elseif isfield(old_summary,'valid_cells') && nCells > 0
+        ids = round(double(old_summary.valid_cells(:)));
+        ids = unique(ids(isfinite(ids) & ids>=1 & ids<=nCells),'stable');
+        effective_status = -ones(nCells,1);
+        effective_status(ids) = +1;
+    else
+        effective_status = -ones(nCells,1);
+        effective_status(cutoff_status == +1) = +1;
+        effective_status(manual_status == +1) = +1;
+        effective_status(manual_status == -1) = -1;
+    end
+
+    summary = struct();
+    summary.manual_status = manual_status;
+    summary.cutoff_status = cutoff_status;
+    summary.effective_status = effective_status;
+    if isfield(old_summary,'comment')
+        summary.comment = old_summary.comment;
+    else
+        summary.comment = '';
+    end
+
+    migrated = ~isequaln(old_summary,summary);
+end
+
+function valid_cells = get_valid_cells_from_selection_summary(summary,nCells)
+    valid_cells = zeros(0,1);
+    if nargin < 2 || isempty(nCells), nCells = 0; end
+
+    if isstruct(summary) && isfield(summary,'effective_status') && ...
+            numel(summary.effective_status) == nCells
+        valid_cells = find(double(summary.effective_status(:)) == +1);
+        return;
+    end
+
+    if isstruct(summary) && isfield(summary,'valid_cells') && ...
+            ~isempty(summary.valid_cells)
+        ids = round(double(summary.valid_cells(:)));
+        valid_cells = unique(ids(isfinite(ids) & ids>=1 & ids<=nCells),'stable');
+    end
+end
+
+function value = strip_selection_summary_temporal_fields(value)
+    % selection_summary ne contient que l'état persistant de sélection.
+    % Supprimer aussi les anciens champs liés à l'affichage/population
+    % active du tuner afin qu'ils ne soient jamais restaurés.
+    obsolete = {'include_stims','results_include_stims', ...
+        'data_include_stims','n_frames_full','n_frames_saved', ...
+        'n_frames_data','selected_signal','active_indices', ...
+        'comment_modified','recording_keep_modified'};
+
+    if iscell(value)
+        for ii = 1:numel(value)
+            value{ii} = ...
+                strip_selection_summary_temporal_fields(value{ii});
+        end
+    elseif isstruct(value)
+        fields = intersect(fieldnames(value),obsolete);
+        if ~isempty(fields)
+            value = rmfield(value,fields);
+        end
+    end
+end
 

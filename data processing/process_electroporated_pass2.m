@@ -1,5 +1,5 @@
 function [electroporated_plane, data] = process_electroporated_pass2( ...
-        processing_cache, gcamp_output_folders, meanImgs_gcamp, data, ...
+        processing_cache, numAcquisitions, gcamp_output_folders, meanImgs_gcamp, data, ...
         create_control_figures)
 
     % En load_only, ne jamais ouvrir de fenetre de controle depuis PARFOR.
@@ -23,8 +23,6 @@ function [electroporated_plane, data] = process_electroporated_pass2( ...
         'roi_extraction_completed_by_plane', ...
         'roi_extraction_npy_signature_by_plane'};
 
-    numFolders = numel(processing_cache);
-
     fprintf('\n');
     fprintf('============================================================\n');
     fprintf('ELECTROPORATED-CELL ROI EXTRACTION\n');
@@ -43,7 +41,7 @@ function [electroporated_plane, data] = process_electroporated_pass2( ...
     % ==========================================================
     % Boucle acquisitions
     % ==========================================================
-    for m = 1:numFolders
+    for m = 1:numAcquisitions
 
         cache = processing_cache{m};
 
@@ -67,7 +65,7 @@ function [electroporated_plane, data] = process_electroporated_pass2( ...
 
         fprintf('\n');
         fprintf('------------------------------------------------------------\n');
-        fprintf('Acquisition %d/%d\n', m, numFolders);
+        fprintf('Acquisition %d/%d\n', m, numAcquisitions);
         fprintf('Planes      : %d\n', cache.nPlanes);
         fprintf('------------------------------------------------------------\n');
 

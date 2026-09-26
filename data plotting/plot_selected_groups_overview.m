@@ -548,7 +548,7 @@ function [figs, day_table, animal_table, legend_table] = ...
         legend_table_path);
 
 
-    close all
+    %close all
 end
 
 

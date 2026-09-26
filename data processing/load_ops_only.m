@@ -2,153 +2,311 @@ function ops = load_ops_only(suite2p_path)
 
     ops = [];
 
-    [~, ~, ext] = fileparts(suite2p_path);
+    % =============================================================
+    % Localiser ops.npy
+    % =============================================================
+
+    if isempty(suite2p_path)
+        return;
+    end
+
+    suite2p_path = ...
+        char(string(suite2p_path));
 
     if isfolder(suite2p_path)
 
-        ops_npy = fullfile(suite2p_path, 'ops.npy');
-        ops_mat = fullfile(suite2p_path, 'ops.mat');
+        ops_path = ...
+            fullfile( ...
+                suite2p_path, ...
+                'ops.npy');
 
-        if isfile(ops_mat)
-            try
-                S = load(ops_mat);
-                if isfield(S, 'ops')
-                    ops = make_matlab_saveable_recursive(S.ops);
-                    return;
-                end
-            catch ME
-                warning('load_ops_only:opsmat', ...
-                    'Impossible de lire ops.mat (%s).', ME.message);
-            end
+    elseif isfile(suite2p_path)
+
+        [~, name, ext] = ...
+            fileparts(suite2p_path);
+
+        if strcmpi([name ext], 'ops.npy')
+            ops_path = suite2p_path;
+        else
+            warning( ...
+                'load_ops_only:InvalidPath', ...
+                'Le fichier fourni n''est pas ops.npy : %s', ...
+                suite2p_path);
+            return;
         end
 
-        if isfile(ops_npy)
-            try
-                mod = py.importlib.import_module('python_function');
-                ops_py = mod.read_npy_file(ops_npy);
-                ops = make_matlab_saveable_recursive(ops_py);
-                return;
-            catch ME
-                warning('load_ops_only:opsnpy', ...
-                    'Impossible de lire ops.npy (%s).', ME.message);
-            end
-        end
+    else
 
-    elseif strcmpi(ext, '.mat') && isfile(suite2p_path)
-        try
-            S = load(suite2p_path);
-            if isfield(S, 'ops')
-                ops = make_matlab_saveable_recursive(S.ops);
-                return;
-            end
-        catch ME
-            warning('load_ops_only:matfile', ...
-                'Impossible de lire le fichier mat (%s).', ME.message);
-        end
-    end
-end
+        warning( ...
+            'load_ops_only:MissingPath', ...
+            'Chemin Suite2p introuvable : %s', ...
+            suite2p_path);
 
-function out = make_matlab_saveable_recursive(x)
-
-    if isempty(x)
-        out = [];
         return;
     end
 
-    cls = class(x);
 
-    if isnumeric(x) || islogical(x) || ischar(x) || isstring(x)
-        out = x;
+    if exist(ops_path, 'file') ~= 2
+
+        warning( ...
+            'load_ops_only:MissingOps', ...
+            'ops.npy introuvable : %s', ...
+            ops_path);
+
         return;
     end
 
-    if iscell(x)
-        out = cell(size(x));
-        for i = 1:numel(x)
-            out{i} = make_matlab_saveable_recursive(x{i});
-        end
-        return;
-    end
 
-    if isstruct(x)
-        out = x;
-        for j = 1:numel(x)
-            fns = fieldnames(x(j));
-            for k = 1:numel(fns)
-                fn = fns{k};
-                out(j).(fn) = make_matlab_saveable_recursive(x(j).(fn));
-            end
-        end
-        return;
-    end
-
-    if startsWith(cls, 'py.')
-        out = pyobj_to_matlab(x);
-        return;
-    end
+    % =============================================================
+    % Lecture directe avec NumPy
+    % =============================================================
 
     try
-        out = double(x);
-    catch
-        out = [];
+
+        np = ...
+            py.importlib.import_module( ...
+                'numpy');
+
+        np_data = ...
+            np.load( ...
+                ops_path, ...
+                pyargs( ...
+                    'allow_pickle', ...
+                    true));
+
+        % Suite2p sauvegarde normalement ops sous la forme
+        % d'un ndarray 0-D contenant un dictionnaire Python.
+        try
+
+            py_ops = ...
+                np_data.item();
+
+        catch
+
+            py_ops = ...
+                np_data;
+        end
+
+
+        % =========================================================
+        % Conversion Python -> MATLAB
+        % =========================================================
+
+        ops = ...
+            python_to_matlab( ...
+                py_ops);
+
+    catch ME
+
+        warning( ...
+            'load_ops_only:ReadFailed', ...
+            'Impossible de lire ops.npy : %s', ...
+            ME.message);
+
+        ops = [];
+        return;
+    end
+
+
+    % =============================================================
+    % Contrôle
+    % =============================================================
+
+    if ~isstruct(ops)
+
+        warning( ...
+            'load_ops_only:InvalidOps', ...
+            'ops.npy n''a pas produit une structure MATLAB valide.');
+
+        ops = [];
+        return;
     end
 end
 
-function out = pyobj_to_matlab(x)
 
-    cls = class(x);
+% =================================================================
+% Conversion récursive Python -> MATLAB
+% =================================================================
 
-    if strcmp(cls, 'py.numpy.ndarray')
-        try
-            out = double(x);
-            return;
-        catch
-        end
-        try
-            out = cell(x.tolist());
-            out = make_matlab_saveable_recursive(out);
-            return;
-        catch
-        end
+function out = python_to_matlab(value)
+
+    if isempty(value)
+
+        out = [];
+        return;
     end
 
-    if strcmp(cls, 'py.dict')
+
+    % =============================================================
+    % Types MATLAB déjà convertis
+    % =============================================================
+
+    if isnumeric(value) || ...
+            islogical(value) || ...
+            ischar(value) || ...
+            isstring(value)
+
+        out = value;
+        return;
+    end
+
+
+    % =============================================================
+    % Python dict
+    % =============================================================
+
+    if isa(value, 'py.dict')
+
         out = struct();
-        keys = cell(py.list(x.keys()));
-        for i = 1:numel(keys)
-            key_char = char(keys{i});
-            safe_key = matlab.lang.makeValidName(key_char);
-            out.(safe_key) = make_matlab_saveable_recursive(x{keys{i}});
+
+        keys = ...
+            cell( ...
+                py.list( ...
+                    value.keys()));
+
+        for k = 1:numel(keys)
+
+            key_py = ...
+                keys{k};
+
+            key = ...
+                char(key_py);
+
+            field_name = ...
+                matlab.lang.makeValidName( ...
+                    key);
+
+            out.(field_name) = ...
+                python_to_matlab( ...
+                    value{key_py});
         end
+
         return;
     end
 
-    if strcmp(cls, 'py.list') || strcmp(cls, 'py.tuple')
-        c = cell(x);
-        out = cell(size(c));
-        for i = 1:numel(c)
-            out{i} = make_matlab_saveable_recursive(c{i});
+
+    % =============================================================
+    % NumPy ndarray
+    % =============================================================
+
+    if isa(value, 'py.numpy.ndarray')
+
+        % La conversion directe fonctionne pour beaucoup
+        % de tableaux numériques.
+        try
+
+            out = ...
+                double(value);
+
+            return;
+
+        catch
         end
+
+
+        % Fallback : ndarray -> liste Python -> MATLAB.
+        try
+
+            value_list = ...
+                value.tolist();
+
+            out = ...
+                python_to_matlab( ...
+                    value_list);
+
+            return;
+
+        catch
+        end
+
+
+        out = [];
         return;
     end
 
-    try
-        out = double(x);
+
+    % =============================================================
+    % Python list / tuple
+    % =============================================================
+
+    if isa(value, 'py.list') || ...
+            isa(value, 'py.tuple')
+
+        c = ...
+            cell(value);
+
+        converted = ...
+            cell(size(c));
+
+        for k = 1:numel(c)
+
+            converted{k} = ...
+                python_to_matlab( ...
+                    c{k});
+        end
+
+
+        % Si tous les éléments sont des scalaires numériques,
+        % reconstruire directement un vecteur MATLAB.
+        if ~isempty(converted) && ...
+                all( ...
+                    cellfun( ...
+                        @(x) isnumeric(x) && isscalar(x), ...
+                        converted))
+
+            try
+
+                out = ...
+                    cell2mat( ...
+                        converted);
+
+                return;
+
+            catch
+            end
+        end
+
+        out = converted;
         return;
+    end
+
+
+    % =============================================================
+    % Scalars Python
+    % =============================================================
+
+    try
+
+        out = ...
+            double(value);
+
+        return;
+
     catch
     end
 
+
     try
-        out = logical(x);
+
+        out = ...
+            logical(value);
+
         return;
+
     catch
     end
 
+
     try
-        out = char(x);
+
+        out = ...
+            char(value);
+
         return;
+
     catch
     end
+
 
     out = [];
 end

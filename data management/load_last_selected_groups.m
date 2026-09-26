@@ -1,22 +1,36 @@
-function [selected_groups, selected_groups_reloaded] = ...
-    load_last_selected_groups( ...
-        root_folders, ...
-        choices, ...
-        group_order, ...
-        selection_mode, ...
-        age_group, ...
-        include_electroporated)
+function [selected_groups, selected_groups_reloaded, recap_all] = ...
+        load_last_selected_groups( ...
+            root_folders, ...
+            choices, ...
+            group_order, ...
+            selection_mode, ...
+            age_group, ...
+            include_electroporated)
 
-    %==============================================================%
+    %==============================================================
     % Initialisation
-    %==============================================================%
+    %==============================================================
 
-    selected_groups = ...
-        struct();
+    selected_groups = struct();
 
+    selected_groups_reloaded = false;
 
-    selected_groups_reloaded = ...
-        false;
+    % recap_all devient un conteneur par type :
+    %
+    % recap_all.FCD  = tableau recap FCD
+    % recap_all.SHAM = tableau recap SHAM
+    % etc.
+    %
+    % Les fichiers .mat eux-mêmes peuvent continuer à contenir
+    % simplement :
+    %
+    % recap_all = tableau
+    %
+    % La séparation par type est faite uniquement ici au chargement.
+
+    recap_all = struct();
+
+    recap_loaded = false;
 
 
     if isempty(choices) || ...
@@ -25,22 +39,17 @@ function [selected_groups, selected_groups_reloaded] = ...
             ~isstruct(age_group)
 
         return;
+
     end
 
 
-    %==============================================================%
+    %==============================================================
     % Vérifier s'il existe au moins une présélection
-    %
-    % Si tous les types sont en mode manuel :
-    % retour immédiat.
-    %==============================================================%
+    %==============================================================
 
-    mode_names = ...
-        fieldnames(selection_mode);
+    mode_names = fieldnames(selection_mode);
 
-
-    is_preselected = ...
-        false;
+    is_preselected = false;
 
 
     for i = 1:numel(mode_names)
@@ -49,22 +58,25 @@ function [selected_groups, selected_groups_reloaded] = ...
                 selection_mode.(mode_names{i}), ...
                 'preselected')
 
-            is_preselected = ...
-                true;
+            is_preselected = true;
 
             break;
+
         end
+
     end
 
 
     if ~is_preselected
+
         return;
+
     end
 
 
-    %==============================================================%
+    %==============================================================
     % Electroporated / non-electroporated
-    %==============================================================%
+    %==============================================================
 
     if include_electroporated
 
@@ -75,21 +87,24 @@ function [selected_groups, selected_groups_reloaded] = ...
 
         electroporated_name = ...
             'non-electroporated';
+
     end
 
 
-    %==============================================================%
+    %==============================================================
     % Boucle sur les groupes sélectionnés
-    %==============================================================%
+    %==============================================================
 
     for i = 1:numel(choices)
 
-        choice = ...
-            choices(i);
+        choice = choices(i);
 
 
-        if choice > numel(group_order)
+        if choice < 1 || ...
+                choice > numel(group_order)
+
             continue;
+
         end
 
 
@@ -97,15 +112,16 @@ function [selected_groups, selected_groups_reloaded] = ...
             group_order{choice};
 
 
-        %----------------------------------------------------------%
+        %----------------------------------------------------------
         % Uniquement pour les présélections
-        %----------------------------------------------------------%
+        %----------------------------------------------------------
 
         if ~isfield( ...
                 selection_mode, ...
                 current_type)
 
             continue;
+
         end
 
 
@@ -118,34 +134,41 @@ function [selected_groups, selected_groups_reloaded] = ...
                 'preselected')
 
             continue;
+
         end
 
 
-        %----------------------------------------------------------%
+        %==========================================================
         % Age group
-        %----------------------------------------------------------%
+        %==========================================================
 
         if ~isfield( ...
                 age_group, ...
                 current_type) || ...
-                isempty(age_group.(current_type))
+                isempty( ...
+                    age_group.(current_type))
 
             fprintf( ...
-                ['Impossible de rechercher selected_groups pour %s : ' ...
-                 'age_group absent.\n'], ...
+                'Age group absent pour %s.\n', ...
                 current_type);
 
             continue;
+
         end
 
 
         current_age_group = ...
-            age_group.(current_type);
+            strrep( ...
+                char( ...
+                    string( ...
+                        age_group.(current_type))), ...
+                ' ', ...
+                '_');
 
 
-        %----------------------------------------------------------%
+        %==========================================================
         % Root folder
-        %----------------------------------------------------------%
+        %==========================================================
 
         if i > numel(root_folders) || ...
                 isempty(root_folders{i})
@@ -156,6 +179,7 @@ function [selected_groups, selected_groups_reloaded] = ...
                 current_type);
 
             continue;
+
         end
 
 
@@ -163,15 +187,14 @@ function [selected_groups, selected_groups_reloaded] = ...
             root_folders{i};
 
 
-        %==========================================================%
+        %==========================================================
         % Nom du fichier attendu
-        %==============================================================%
+        %==========================================================
 
-        file_name = ...
-            sprintf( ...
-                'selected_groups_%s_preselected_%s.mat', ...
-                char(string(current_age_group)), ...
-                electroporated_name);
+        file_name = sprintf( ...
+            'selected_groups_%s_preselected_%s.mat', ...
+            current_age_group, ...
+            electroporated_name);
 
 
         selected_groups_path = ...
@@ -180,9 +203,9 @@ function [selected_groups, selected_groups_reloaded] = ...
                 file_name);
 
 
-        %----------------------------------------------------------%
-        % Aucun fichier existant
-        %----------------------------------------------------------%
+        %==========================================================
+        % Vérifier l'existence du fichier
+        %==========================================================
 
         if exist( ...
                 selected_groups_path, ...
@@ -192,95 +215,158 @@ function [selected_groups, selected_groups_reloaded] = ...
                 ['Aucun selected_groups précédent trouvé pour :\n' ...
                  '  %s | %s | %s\n'], ...
                 current_type, ...
-                char(string(current_age_group)), ...
+                current_age_group, ...
                 electroporated_name);
 
             continue;
+
         end
 
 
-        %==========================================================%
+        %==========================================================
         % Informations sur le fichier
-        %==========================================================%
+        %==========================================================
 
         file_info = ...
-            dir( ...
-                selected_groups_path);
+            dir(selected_groups_path);
 
 
         if isempty(file_info)
 
-            saved_date = ...
-                '';
+            saved_date = '';
 
         else
 
             saved_date = ...
                 file_info.date;
+
         end
 
 
-        %==========================================================%
-        % Demander à l'utilisateur
-        %==========================================================%
+        %==========================================================
+        % Confirmation utilisateur
+        %==========================================================
 
-        answer = ...
-            questdlg( ...
-                sprintf( ...
-                    [ ...
-                    'Un selected_groups enregistré existe pour :\n\n' ...
-                    'Type : %s\n' ...
-                    'Age group : %s\n' ...
-                    'Mode : preselected\n' ...
-                    'Cellules : %s\n\n' ...
-                    'Dernière sauvegarde : %s\n\n' ...
-                    'Voulez-vous le charger ?' ...
-                    ], ...
-                    current_type, ...
-                    char(string(current_age_group)), ...
-                    electroporated_name, ...
-                    saved_date), ...
-                'Load selected_groups', ...
-                'Yes', ...
-                'No', ...
-                'Yes');
+        answer = questdlg( ...
+            sprintf( ...
+                ['Un selected_groups enregistré existe pour :\n\n' ...
+                 'Type : %s\n' ...
+                 'Age group : %s\n' ...
+                 'Mode : preselected\n' ...
+                 'Cellules : %s\n\n' ...
+                 'Dernière sauvegarde : %s\n\n' ...
+                 'Voulez-vous charger selected_groups et recap_all ?'], ...
+                current_type, ...
+                current_age_group, ...
+                electroporated_name, ...
+                saved_date), ...
+            'Load selected_groups', ...
+            'Yes', ...
+            'No', ...
+            'Yes');
 
 
-        if isempty(answer) || ...
-                ~strcmpi( ...
-                    answer, ...
-                    'Yes')
+        if ~strcmpi( ...
+                answer, ...
+                'Yes')
 
             fprintf( ...
                 'Ancien selected_groups non chargé pour %s.\n', ...
                 current_type);
 
             continue;
+
         end
 
 
-        %==========================================================%
-        % Charger le fichier
-        %==========================================================%
+        %==========================================================
+        % Vérifier les variables disponibles
+        %==========================================================
 
-        loaded_data = ...
-            load( ...
+        try
+
+            variables_in_file = ...
+                who( ...
+                    '-file', ...
+                    selected_groups_path);
+
+
+            has_selected_groups = ...
+                ismember( ...
+                    'selected_groups', ...
+                    variables_in_file);
+
+
+            has_recap_all = ...
+                ismember( ...
+                    'recap_all', ...
+                    variables_in_file);
+
+
+            if ~has_selected_groups
+
+                warning( ...
+                    'load_last_selected_groups:InvalidFile', ...
+                    'selected_groups absent : %s', ...
+                    selected_groups_path);
+
+                continue;
+
+            end
+
+
+            %------------------------------------------------------
+            % Charger uniquement les variables nécessaires
+            %------------------------------------------------------
+
+            if has_recap_all
+
+                loaded_data = ...
+                    load( ...
+                        selected_groups_path, ...
+                        'selected_groups', ...
+                        'recap_all');
+
+            else
+
+                loaded_data = ...
+                    load( ...
+                        selected_groups_path, ...
+                        'selected_groups');
+
+            end
+
+
+        catch ME
+
+            warning( ...
+                'load_last_selected_groups:LoadFailed', ...
+                'Chargement impossible : %s\n%s', ...
                 selected_groups_path, ...
-                'selected_groups');
+                ME.message);
 
+            continue;
+
+        end
+
+
+        %==========================================================
+        % Vérifier selected_groups
+        %==========================================================
 
         if ~isfield( ...
                 loaded_data, ...
                 'selected_groups') || ...
-                ~isstruct(loaded_data.selected_groups)
+                ~isstruct( ...
+                    loaded_data.selected_groups)
 
             warning( ...
                 'load_last_selected_groups:InvalidFile', ...
-                ['Le fichier ne contient pas de structure ', ...
-                 'selected_groups valide :\n%s'], ...
+                'Structure selected_groups invalide : %s', ...
                 selected_groups_path);
 
             continue;
+
         end
 
 
@@ -288,43 +374,105 @@ function [selected_groups, selected_groups_reloaded] = ...
             loaded_data.selected_groups;
 
 
-        %----------------------------------------------------------%
-        % Vérifier que le type est présent
-        %----------------------------------------------------------%
-
         if ~isfield( ...
                 loaded_selected_groups, ...
                 current_type)
 
             warning( ...
                 'load_last_selected_groups:MissingType', ...
-                ['Le fichier existe mais ne contient pas ', ...
+                ['Le fichier ne contient pas ' ...
                  'selected_groups.%s.'], ...
                 current_type);
 
             continue;
+
         end
 
 
-        %==========================================================%
-        % Récupérer le type correspondant
-        %==========================================================%
+        %==========================================================
+        % Récupérer selected_groups du type correspondant
+        %==========================================================
 
         selected_groups.(current_type) = ...
             loaded_selected_groups.(current_type);
 
 
-        %==========================================================%
-        % Flag : au moins un selected_groups a été rechargé
-        %==========================================================%
-
-        selected_groups_reloaded = ...
-            true;
+        selected_groups_reloaded = true;
 
 
         fprintf( ...
-            ['Dernier selected_groups chargé :\n' ...
-             '%s\n'], ...
+            'selected_groups chargé pour %s :\n%s\n', ...
+            current_type, ...
             selected_groups_path);
+
+
+        %==========================================================
+        % Récupérer recap_all
+        %==========================================================
+
+        if ~has_recap_all
+
+            fprintf( ...
+                ['recap_all absent du fichier pour %s.\n' ...
+                 'selected_groups a néanmoins été chargé.\n'], ...
+                current_type);
+
+            continue;
+
+        end
+
+
+        %----------------------------------------------------------
+        % IMPORTANT :
+        %
+        % Dans le fichier :
+        %
+        % loaded_data.recap_all = tableau
+        %
+        % Dans la variable de sortie :
+        %
+        % recap_all.FCD  = tableau FCD
+        % recap_all.SHAM = tableau SHAM
+        %
+        % Ainsi, aucun type ne peut écraser le recap d'un autre.
+        %----------------------------------------------------------
+
+        recap_all.(current_type) = ...
+            loaded_data.recap_all;
+
+
+        recap_loaded = true;
+
+
+        fprintf( ...
+            'recap_all chargé pour %s.\n', ...
+            current_type);
+
     end
+
+
+    %==============================================================
+    % Bilan final
+    %==============================================================
+
+    if selected_groups_reloaded
+
+        fprintf( ...
+            '\nselected_groups : chargement terminé.\n');
+
+    end
+
+
+    if recap_loaded
+
+        fprintf( ...
+            'recap_all : chargement terminé.\n');
+
+    else
+
+        fprintf( ...
+            'Aucun recap_all précédent chargé.\n');
+
+    end
+
 end

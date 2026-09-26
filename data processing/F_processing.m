@@ -1,75 +1,151 @@
-function [DFF0, Fzero] = F_processing(Tr1b, bad_frames, sampling_rate, window_size) 
+function [DFF0, Fzero] = F_processing( ...
+        Tr1b, ...
+        bad_segs, ...
+        sampling_rate, ...
+        window_size)
+
     [NCell, Nz] = size(Tr1b);
-    
-    % Paramètres de la fenêtre glissante
-    half_win = floor(window_size / 2);        % Demi-fenêtre pour centrer le calcul
-    step_size = floor(sampling_rate * 5);     % Avancement de la fenêtre (ex: tous les 5 sec)
-    percentile_value = 10;
-    
-    % NOUVEAU : Taille du lissage pour contrer le bruit (1 seconde)
-    % max(1, ...) assure qu'on a au moins 1 frame si le sampling_rate est très bas
-    frames_pour_1sec = max(1, floor(sampling_rate * 1)); 
-    
-    % Création de tous les centres X où le percentile sera calculé
-    centers = 1:step_size:Nz;
-    if centers(end) ~= Nz
-        centers = [centers, Nz]; % S'assure de toujours inclure la toute dernière frame
+
+    if Nz == 0
+        DFF0 = zeros(NCell,0);
+        Fzero = zeros(NCell,0);
+        return;
     end
-    num_steps = length(centers);
-    
-    % Initialisation des matrices de sortie (pour la rapidité)
-    DFF0 = zeros(NCell, Nz);
-    Fzero = zeros(NCell, Nz);
-    
+
+    half_win = floor(window_size / 2);
+    step_size = max(1, floor(sampling_rate * 5));
+    percentile_value = 10;
+
+    frames_pour_1sec = ...
+        max(1, floor(sampling_rate));
+
+    % ==========================================================
+    % Masque unique construit directement depuis bad_segs
+    % ==========================================================
+
+    bad_mask = false(1,Nz);
+
+    if ~isempty(bad_segs)
+
+        bad_segs = double(bad_segs);
+
+        if isvector(bad_segs) && numel(bad_segs) == 2
+            bad_segs = reshape(bad_segs,1,2);
+        end
+
+        if size(bad_segs,2) < 2
+            error( ...
+                'F_processing:InvalidBadSegments', ...
+                'bad_segs doit etre une matrice Nx2 [debut fin].');
+        end
+
+        bad_segs = bad_segs(:,1:2);
+
+        for k = 1:size(bad_segs,1)
+
+            a = bad_segs(k,1);
+            b = bad_segs(k,2);
+
+            if ~isfinite(a) || ~isfinite(b)
+                continue;
+            end
+
+            a = round(a);
+            b = round(b);
+
+            if a > b
+                tmp = a;
+                a = b;
+                b = tmp;
+            end
+
+            a = max(1,a);
+            b = min(Nz,b);
+
+            if a <= b
+                bad_mask(a:b) = true;
+            end
+        end
+    end
+
+    centers = 1:step_size:Nz;
+
+    if centers(end) ~= Nz
+        centers = [centers, Nz];
+    end
+
+    num_steps = numel(centers);
+
+    DFF0 = zeros(NCell,Nz);
+    Fzero = zeros(NCell,Nz);
+
     for n = 1:NCell
-        trace = Tr1b(n, :);
-        
-        % 1. Masquer les bad frames
+
+        trace = Tr1b(n,:);
+
+        % Les segments artefactes sont exclus uniquement du calcul de F0.
         trace_masked = trace;
-        if exist('bad_frames', 'var') && ~isempty(bad_frames)
-            trace_masked(bad_frames) = NaN;
-        end
-        
-        anchor_X = zeros(1, num_steps);
-        anchor_Y = zeros(1, num_steps);
-        
-        % 2. Calcul du percentile glissant (au lieu de blocs)
+        trace_masked(bad_mask) = NaN;
+
+        anchor_X = zeros(1,num_steps);
+        anchor_Y = nan(1,num_steps);
+
         for i = 1:num_steps
+
             c = centers(i);
-            % La fenêtre prend les N frames avant et après le centre
-            idx_s = max(1, c - half_win);
-            idx_e = min(Nz, c + half_win);
-            
-            % Extraction du segment pour cette fenêtre
+
+            idx_s = max(1,c-half_win);
+            idx_e = min(Nz,c+half_win);
+
             segment = trace_masked(idx_s:idx_e);
-            
-            % --- LE CORRECTIF CONTRE LE BRUIT EST ICI ---
-            % Lissage du segment pour écraser le "shot noise" vers le haut
-            segment_lisse = movmean(segment, frames_pour_1sec, 'omitnan');
-            
+
+            segment_lisse = ...
+                movmean( ...
+                    segment, ...
+                    frames_pour_1sec, ...
+                    'omitnan');
+
             anchor_X(i) = c;
-            % On applique le prctile sur le segment LISSÉ, pas sur le brut !
-            anchor_Y(i) = prctile(segment_lisse, percentile_value);
-            % ---------------------------------------------
+
+            finite_segment = ...
+                segment_lisse(isfinite(segment_lisse));
+
+            if ~isempty(finite_segment)
+                anchor_Y(i) = ...
+                    prctile( ...
+                        finite_segment, ...
+                        percentile_value);
+            end
         end
-        
-        % 3. Nettoyage des ancres (si un segment entier était NaN)
-        valid_anchors = ~isnan(anchor_Y);
+
+        valid_anchors = isfinite(anchor_Y);
+
         anchor_X = anchor_X(valid_anchors);
         anchor_Y = anchor_Y(valid_anchors);
-        
-        % 4. Interpolation des petits espaces de 5 sec pour créer F0
-        if length(anchor_X) > 1
-            F0 = interp1(anchor_X, anchor_Y, 1:Nz, 'pchip', 'extrap');
+
+        if numel(anchor_X) > 1
+
+            F0 = ...
+                interp1( ...
+                    anchor_X, ...
+                    anchor_Y, ...
+                    1:Nz, ...
+                    'pchip', ...
+                    'extrap');
+
+        elseif numel(anchor_X) == 1
+
+            F0 = repmat(anchor_Y(1),1,Nz);
+
         else
-            % Cas rare : signal trop court ou tout est NaN
-            F0 = repmat(nanmean(anchor_Y), 1, Nz);
+
+            F0 = nan(1,Nz);
         end
-        
-        % 5. Calcul dF/F
-        % Remarquez qu'on utilise "trace" (le signal brut d'origine), 
-        % le lissage n'a servi qu'à trouver un meilleur F0 !
-        DFF0(n, :) = (trace - F0) ./ F0;
-        Fzero(n, :) = F0;
+
+        DFF0(n,:) = ...
+            (trace - F0) ./ F0;
+
+        Fzero(n,:) = ...
+            F0;
     end
 end
